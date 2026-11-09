@@ -1,0 +1,62 @@
+name: support-hub
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-support_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-support_hub}
+      # Fails fast unless provided via .env — no usable default secret.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-support_hub} -d ${POSTGRES_DB:-support_hub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Object storage (MinIO) is intentionally NOT part of local development stack:
+  # attachments arrive at stage 5, and the corporate network provides its own
+  # object storage. MinIO client code is kept as a foundation (app/infra/minio_client.py).
+
+  # Application service is opt-in: `docker compose --profile app up`.
+  backend:
+    profiles: ["app"]
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-support_hub}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-support_hub}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:
