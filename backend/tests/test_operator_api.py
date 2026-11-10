@@ -21,14 +21,18 @@ from app.config import get_settings
 from app.infra.container import Dependencies
 from app.infra.db import DatabaseClient
 from app.infra.redis_client import EVENTS_CHANNEL, RedisClient
+from app.integrations.tag.dispatch import RoutingOutboxHandler
 from app.main import create_app
 from app.models import (
     AiHandoff,
     Conversation,
     DialogMode,
     Operator,
+    OutboxEvent,
+    OutboxStatus,
     TicketCategory,
 )
+from app.services.outbox import LoggingOutboxHandler, OutboxService
 from tests.conftest import TEST_DB_URL
 from tests.fakes import FakeProbe
 from tests.test_ai_runs import _seed_user_message
@@ -447,6 +451,105 @@ async def test_queue_filter_by_tag(client: TestClient, seed) -> None:
         "/api/v1/operator/tickets", params={"tag": "другое"}, headers=headers()
     )
     assert other.json()["tickets"] == []
+
+
+@pytest.mark.anyio
+async def test_operator_reply_reaches_bot_via_outbox(
+    client: TestClient, seed, session_factory
+) -> None:
+    """Stage-7 criterion: reply -> PENDING_USER -> Outbox -> bot (mock)."""
+    _, conversation_id = await seed()
+    ticket_id = _first_ticket_id(client)
+
+    replied = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/replies",
+        json={"text": "Передаём специалисту"},
+        headers=headers(),
+    )
+    assert replied.status_code == 200
+    assert replied.json()["status"] == "PENDING_USER"
+    reply_message_id = replied.json()["message_id"]
+
+    delivered: list[dict] = []
+
+    class OkBot:
+        async def send_message(self, payload: dict) -> None:
+            delivered.append(payload)
+
+    handler = RoutingOutboxHandler(bot=OkBot(), fallback=LoggingOutboxHandler())
+    async with session_factory() as session:
+        # message.user_received (ingress) + message.outbound (the reply).
+        dispatched = await OutboxService(handler=handler).process_batch(session)
+
+    assert dispatched == 2
+    assert delivered == [
+        {
+            "message_id": reply_message_id,
+            "conversation_id": str(conversation_id),
+        }
+    ]
+
+    async with session_factory() as check:
+        row = (
+            await check.scalars(
+                select(OutboxEvent).where(
+                    OutboxEvent.event_type == "message.outbound"
+                )
+            )
+        ).one()
+        assert row.status == OutboxStatus.PROCESSED
+
+
+@pytest.mark.anyio
+async def test_queue_pagination(client: TestClient, session_factory) -> None:
+    for user in ("user-a", "user-b", "user-c"):
+        await _seed_user_message(session_factory, external_user_id=user, text=f"Вопрос {user}")
+
+    all_ids = {
+        t["ticket_id"] for t in client.get(
+            "/api/v1/operator/tickets", headers=headers()
+        ).json()["tickets"]
+    }
+    assert len(all_ids) == 3
+
+    page1 = client.get(
+        "/api/v1/operator/tickets", params={"limit": 2, "offset": 0}, headers=headers()
+    )
+    page2 = client.get(
+        "/api/v1/operator/tickets", params={"limit": 2, "offset": 2}, headers=headers()
+    )
+    assert page1.status_code == 200
+    assert page2.status_code == 200
+    ids1 = [t["ticket_id"] for t in page1.json()["tickets"]]
+    ids2 = [t["ticket_id"] for t in page2.json()["tickets"]]
+    assert len(ids1) == 2
+    assert len(ids2) == 1
+    assert not set(ids1) & set(ids2)
+    assert set(ids1) | set(ids2) == all_ids
+
+
+@pytest.mark.anyio
+async def test_ticket_card_does_not_leak_other_conversation(
+    client: TestClient, session_factory
+) -> None:
+    """Security (09 §3): each card carries only its own conversation's history."""
+    await _seed_user_message(session_factory, external_user_id="user-a", text="Проблема А")
+    await _seed_user_message(session_factory, external_user_id="user-b", text="Проблема Б")
+
+    listed = client.get("/api/v1/operator/tickets", headers=headers())
+    assert listed.status_code == 200
+    tickets = listed.json()["tickets"]
+    assert len(tickets) == 2
+
+    by_conversation: dict[str, list[str]] = {}
+    for ticket in tickets:
+        card = client.get(f"/api/v1/operator/tickets/{ticket['ticket_id']}", headers=headers())
+        assert card.status_code == 200
+        body = card.json()
+        by_conversation[body["conversation_id"]] = [m["text"] for m in body["messages"]]
+
+    assert len(by_conversation) == 2
+    assert sorted(by_conversation.values()) == [["Проблема А"], ["Проблема Б"]]
 
 
 def test_ws_delivers_published_events(operator_env) -> None:

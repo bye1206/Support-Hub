@@ -169,9 +169,16 @@ docs/               # существующая документация + implem
 
 **Блокеры:** D-029 OPEN; решение G-07.
 
-## Этап 7. Operator API и WebSocket
+## Этап 7. Operator API и WebSocket — **ПРОПУСКИ 1–3 РЕАЛИЗОВАНЫ 2026-11-10**
 
-**Результат:**
+**Что сделано (факт):**
+- Пропуск 1 (коммит `af2e6de`): dev-авторизация (P-22 PROPOSED) — Bearer `OPERATOR_DEV_TOKEN` + заголовки `X-Operator-Email`/`X-Operator-Name`, автопроvisioning профиля, `is_active` на каждый запрос; задан `keycloak_issuer_url` → dev-токен отклоняется (fail-closed). API: очередь (фильтры status/assignee `me`/`unassigned`, пагинация), карточка с полной историей, публичный ответ (message + PENDING_USER + Outbox одной транзакцией), resolve/close, ручное назначение/снятие, приём handoff (HUMAN_PENDING → HUMAN_ACTIVE, повторный accept → 409). WebSocket: `/ws?token=`, авторизация, `ready`, доставка опубликованных событий (тест — реальный uvicorn + Redis pub/sub; keepalive по времени, фикс ложных ping).
+- Пропуск 2 (коммит `8dfb7a4`): внутренние заметки (миграция `0006_internal_notes`, D-025: не сообщения — в историю/ИИ/Outbox не попадают, статус не меняют, аудит `note.created`); категории и теги (миграция `0007_categories_tags`, D-026: `ticket_categories`-дерево, `tags` case-insensitive unique по `lower(name)` (P-23), `ticket_tags`, `tickets.category_id`); API: `POST/GET /conversations/{id}/notes`, `PATCH /tickets/{id}/category`, `POST /tickets/{id}/tags` (get_or_create), `DELETE /tickets/{id}/tags/{tag_id}`; фильтры очереди `?category`/`?tag`; `category_id` + `tags` в карточке и очереди; аудит `ticket.category_changed`/`ticket.tag_added`/`ticket.tag_removed`.
+- Пропуск 3: критерий этапа «оператор отвечает → PENDING_USER → Outbox → бот (mock) → PROCESSED» на уровне API (`RoutingOutboxHandler` + мок-бот); пагинация очереди; security-тест «карточка тикета несёт только историю своего диалога» (09 §3, cross-ticket leakage). Конкурентный claim тикета покрыт тестами этапа 4 (оптимистичный конфликт resolve).
+- Тесты: 165 passed на реальном PostgreSQL (WS — реальный Redis + uvicorn); `ruff` чисто; `mypy app` — 70 файлов, 0 ошибок.
+- Ожидают владельца (не блокируют код): Q-09 — параметры Keycloak (пропуск 2 auth); G-08 — матрица прав (сейчас все операторы равноправны, RBAC-матрица не применяется); D-046 — URL/API-ключи MinIO (вложения, D-044: ИИ вложения не получает).
+
+**Исходный план**
 - Keycloak OIDC (Authorization Code + PKCE), проверка подписи/issuer/audience, маппинг `sub` → `operators`, отказ деактивированным (`08` §1).
 - Очереди, список/фильтры тикетов, карточка, переписка, публичный ответ (транзакция: message + PENDING_USER + Outbox — `06` §4), внутренние заметки отдельным ресурсом, назначения (ручные; автоматические по D-031/P-07 за флагом), статусы, приоритеты, категории, теги, uploads.
 - WebSocket с авторизацией, события новых тикетов/сообщений/назначений/доставки; reconnect — синхронизация по REST (`06` §7).
@@ -245,13 +252,12 @@ docs/               # существующая документация + implem
 |---|---|
 | 0. Обследование | Выполнено, согласовано владельцем |
 | 1. Bootstrap | **Выполнен** 2026-11-09 (D-035/D-036/D-037: без Git, корень — рабочий каталог); ограничения по окружению см. отчёт этапа |
-| 2. Конфигурация, логирование, health checks | **Выполнен** 2026-11-09: клиенты PostgreSQL/Redis/MinIO в `app/infra/`, `/readyz` с реальными проверками (503 при деградации), маскирование секретов в логах, спайк ARQ (D-030: частично — без Redis round-trip); интеграционные проверки на живых сервисах не выполнялись (нет Docker) |
-| 2b. Доверерка этапа 2 | **Выполнено** 2026-11-09 после установки Docker/Node: `docker compose config` ✓, postgres/redis healthy ✓, живой `/readyz` (postgres 46ms, redis 15ms, minio fail → 503) ✓, ARQ round-trip на живом Redis ✓, frontend lint/typecheck/test/build ✓. Блокер MinIO: публичные образы недоступны (Docker Hub удалён, quay приватен, dl.min.io недоступен) — нужен `docker login quay.io` или внутренний mirror |
-| 3. PostgreSQL, SQLAlchemy, Alembic, первая группа моделей | **Выполнен** 2026-11-09: 8 таблиц (`users`, `user_identities`, `corporate_accounts`, `channels`, `conversations`, `conversation_sessions`, `tickets`, `messages`), миграция `0001_first_group`, StrEnum + `sa.Enum(native_enum=False)`, UUID PK. Тесты на реальном PostgreSQL: 27 passed (миграции upgrade/downgrade, 9 constraint-тестов, 2 конкурентных теста аллокации sequence_no). Открытое решение: каталог `migrations/` (не `alembic/` — затеняет пакет) |
-| 2–3 | Готовы к старту после этапа 1; проверяемость ограничена R-03 |
-| 4 | Требует решений G-03, G-06 (P-04), G-13 |
-| 5 | Требует кода/контракта бота и 11.A |
-| 6 | Требует D-029 (контракты Orchestrator) и G-07 |
-| 7, 9 | Требуют матрицы прав G-08 |
-| 8 | Требует Node.js |
-| 10 | Требует нормативов SLA (11.D.5) |
+| 2. Конфигурация, логирование, health checks | **Выполнен** 2026-11-09 (+ доверка 2b: `docker compose config` ✓, живые postgres/redis/minio-проверки `/readyz` ✓, ARQ round-trip на живом Redis ✓, frontend lint/typecheck/test/build ✓). Блокер MinIO: публичные образы недоступны (Docker Hub удалён, quay приватен, dl.min.io недоступен) — нужен `docker login quay.io` или внутренний mirror |
+| 3. PostgreSQL, SQLAlchemy, Alembic, первая группа моделей | **Выполнен** 2026-11-09: 8 таблиц, миграция `0001_first_group`, 27 integration-тестов (включая конкурентную аллокацию sequence_no) |
+| 4. Доменные сервисы + Outbox | **Выполнен** 2026-11-09: FSM, Outbox + worker, аудит, 90 passed; ожидают подтверждения P-14/P-06/P-04/P-15 |
+| 5. Tag ingress/outbound | **Пропуск 1 выполнен** 2026-11-09 (PROPOSED-контракты D-040/D-042): webhook + дедуп + dispatch в бот, 106 passed; production-ready ждёт ответы 11.A и сверки с реальным ботом |
+| 6. AI Orchestrator | **Выполнен** 2026-11-10 по реальному контракту (D-043): runs/handoffs, gateway client, триггер-коды (P-21), worker, 142 passed |
+| 7. Operator API + WebSocket | **Пропуски 1–3 выполнены** 2026-11-10 (`af2e6de`, `8dfb7a4` + пропуск 3): очередь/карточка/ответ/статусы/назначение/handoff, WS-события, dev-auth (P-22), заметки (D-025), категории/теги (D-026), E2E «ответ → Outbox → бот (mock)», 165 passed. Ожидают владельца: Q-09 (Keycloak, пропуск 2 auth), G-08 (RBAC-матрица), D-046 (MinIO, вложения) |
+| 8. Operator UI | Не начат; блокер Node.js снят (Node v26.13.0, npm, `frontend/package-lock.json` — P-08 фактически npm) |
+| 9. Admin API/UI | Не начат; ждёт G-08 (RBAC) |
+| 10. SLA, hardening, deployment | Не начат; ждёт нормативов SLA (11.D.5) и требований инфраструктурной команды |
