@@ -134,7 +134,6 @@ async function api<T>(
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       Authorization: `Bearer ${auth.token}`,
       "X-Operator-Email": auth.email,
-      ...(auth.name ? { "X-Operator-Name": auth.name } : {}),
       ...init?.headers,
     },
   });
