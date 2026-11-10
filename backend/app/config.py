@@ -8,6 +8,7 @@ placeholders and must be overridden via environment/.env in any shared environme
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +44,31 @@ class Settings(BaseSettings):
     # Maximum time one readiness probe may take before the dependency counts as down.
     # Generous default: first connection on a cold machine can be slow (IPv6 fallback).
     readiness_timeout_seconds: float = 5.0
+
+    # Stage 5: service authentication of the existing bot calling our webhook
+    # (11.A.1 is an open question; shared-secret header is the PROPOSED measure,
+    # token lives outside Support Hub, sent by the bot in Authorization: Bearer).
+    # Local-only placeholder; MUST be overridden in any shared environment.
+    bot_webhook_token: str = Field(
+        default="CHANGE_ME_LOCAL_ONLY_BOT_TOKEN",
+        validation_alias=AliasChoices("BOT_TO_SUPPORT_HUB_TOKEN", "BOT_WEBHOOK_TOKEN"),
+    )
+    # Where the bot's own API lives (PROPOSED contract, POST /internal/v1/tag/messages;
+    # must be verified against the actual bot implementation, D-028).
+    bot_internal_base_url: str = Field(
+        default="http://localhost:8080",
+        validation_alias=AliasChoices(
+            "MATTERMOST_BOT_INTERNAL_BASE_URL", "BOT_INTERNAL_BASE_URL"
+        ),
+    )
+    # Optional service token for Support Hub -> bot outbound calls (PROPOSED;
+    # empty means no Authorization header until the real bot contract is known).
+    support_hub_to_bot_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SUPPORT_HUB_TO_BOT_TOKEN", "SUPPORT_HUB_TO_BOT_TOKEN_LOCAL"
+        ),
+    )
 
 
 @lru_cache

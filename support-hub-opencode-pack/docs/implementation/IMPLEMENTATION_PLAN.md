@@ -109,9 +109,19 @@ docs/               # существующая документация + implem
 
 **Блокеры:** G-03, G-06 (P-04), G-13 — без решений переходы тикета и маршрутизация не финализируются.
 
-## Этап 5. Bot/Tag ingress и outbound
+## Этап 5. Bot/Tag ingress и outbound — **ПРОПУСК 1 РЕАЛИЗОВАН 2026-11-09 (на PROPOSED-контрактах)**
 
-**Результат:**
+**Что сделано (факт):**
+- `POST /api/v1/integrations/tag/messages` — приём callback бота (`app/api/tag_ingress.py`): без бизнес-логики, одна транзакция — `MessageService`.
+- Схема payload по описанию владельца (D-027): `team_id/team_domain/channel_id/channel_name/timestamp/user_id/user_name/post_id/text/file_ids` (`app/integrations/tag/schemas.py`); `timestamp` — ISO-8601 или epoch-автодетект (D-041). `file_ids` пишутся в аудит (P-18: хранение вложений — следующий проход).
+- Сервисная авторизация бота: `Authorization: Bearer <BOT_TO_SUPPORT_HUB_TOKEN>` (D-040, PROPOSED; констан-time сравнение, 401 в едином конверте).
+- Идемпотентность по `post_id` — уже в `MessageService` (этап 4), подтверждена тестом на уровне API.
+- Регистрация канала: `(channel_type='tag', external_channel_id)` race-safe get_or_create (P-16).
+- Outbound: адаптер бота `app/integrations/tag/bot_client.py` (`POST /internal/v1/tag/messages`, D-042 PROPOSED) + диспетчер `message.outbound` → бот, остальное → log (этап 6); retry/backoff через Outbox.
+- Тесты: 106 passed — 401/422/happy path/dedup/timestamp-форматы на API-уровне (реальный PostgreSQL), юниты клиента (2xx/5xx/timeout/заголовок токена via MockTransport), интеграционные диспетчера (PROCESSED / retry-scheduled на реальном outbox).
+- Проверки: `ruff` чисто, `mypy app` — 50 файлов, 0 ошибок, `pytest -q --timeout=60` — 106 passed.
+
+**Исходный план**
 - `POST /api/v1/integrations/tag/messages` — приём нормализованных событий от бота: валидация схемы, сервисная авторизация Bot → Support Hub, идемпотентность по `post_id` (`04` §4).
 - Outbound: worker читает Outbox, вызывает внутренний API бота (предложен `POST /internal/v1/tag/messages` — сверить с фактическим ботом), обрабатывает результаты `SENT/FAILED/UNKNOWN` + reconciliation (R-04).
 - Вложения: получение file_ids через бота, сохранение в MinIO, защищённый endpoint выдачи файлов боту (`04` §6, `08` §4).

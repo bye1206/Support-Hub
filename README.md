@@ -54,7 +54,8 @@ cd backend
 
 Эндпоинты:
 - `GET /healthz` — liveness: процесс жив;
-- `GET /readyz` — readiness: живые проверки PostgreSQL и Redis (таймаут настраивается); при недоступности зависимостей — `503` со статусом `degraded`.
+- `GET /readyz` — readiness: живые проверки PostgreSQL и Redis (таймаут настраивается); при недоступности зависимостей — `503` со статусом `degraded`;
+- `POST /api/v1/integrations/tag/messages` — входящий callback бота Tag (авторизация `Authorization: Bearer <BOT_TO_SUPPORT_HUB_TOKEN>`); идемпотентно по `post_id`.
 
 Каждый ответ содержит `X-Request-ID`; все ошибки возвращают единый конверт `{"error": {"code", "message", "details"}, "correlation_id"}`.
 
@@ -91,7 +92,8 @@ docker compose --env-file .env -f deploy/docker-compose.yml down
 ## Статус
 
 - Этапы 1–3 — выполнены (bootstrap: health endpoints, correlation ID, единый формат ошибок; инфраструктура: ORM-клиенты PG/Redis, readiness-проверки, спайк ARQ; БД: 8 таблиц + очередь/аудит, миграции 0001–0002, тесты на реальном PostgreSQL).
-- Этап 4 — выполнен: доменные сервисы и FSM жизненного цикла (тикет/диалог/сессия, статус «Обработка ИИ» = `AI_PROCESSING` по D-039), маршрутизация входящих (P-04, PROPOSED), сервисы `sessions`/`tickets`/`messages`/`outbox`/`audit`, транзакционный Outbox с lease/retry/backoff, ARQ-worker (`process_outbox`, cron `expire_sessions`), миграция 0003. Детализация и открытые пункты — `support-hub-opencode-pack/docs/implementation/IMPLEMENTATION_PLAN.md` (этап 4).
+- Этап 4 — выполнен: доменные сервисы и FSM жизненного цикла (тикет/диалог/сессия, статус «Обработка ИИ» = `AI_PROCESSING` по D-039), маршрутизация входящих (P-04, PROPOSED), сервисы `sessions`/`tickets`/`messages`/`outbox`/`audit`, транзакционный Outbox с lease/retry/backoff, ARQ-worker (`process_outbox`, cron `expire_sessions`), миграция 0003.
+- Этап 5 — первый пропуск выполнен на PROPOSED-контрактах: ingress API (`/api/v1/integrations/tag/messages`, авторизация токеном, дедуп `post_id`, timestamp ISO/epoch), outbound-адаптер бота (`message.outbound` → `POST /internal/v1/tag/messages`, PUB-контракт на сверку), диспетчер Outbox. Ожидает сверки с реальным ботом (D-028) и решения по вложениям (P-18). Детализация и открытые пункты — `support-hub-opencode-pack/docs/implementation/IMPLEMENTATION_PLAN.md` (этап 4).
 
 Запуск worker (обычно в отдельном терминале поверх запущенных PostgreSQL/Redis):
 

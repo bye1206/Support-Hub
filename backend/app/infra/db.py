@@ -5,7 +5,7 @@ engine lifecycle and a minimal liveness probe.
 """
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 
 class DatabaseClient:
@@ -16,6 +16,12 @@ class DatabaseClient:
             pool_size=5,
             max_overflow=5,
         )
+        self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
+
+    @property
+    def session_factory(self) -> async_sessionmaker:
+        """Sessions for service calls: one per request/worker task."""
+        return self._session_factory
 
     async def health_check(self) -> None:
         """Raise if the database is unreachable; return otherwise."""

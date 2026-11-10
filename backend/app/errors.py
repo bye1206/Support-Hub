@@ -58,7 +58,13 @@ def install_error_handlers(app: FastAPI) -> None:
     async def handle_validation_error(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        return _envelope(422, "VALIDATION_ERROR", "Request validation failed", exc.errors())
+        # Raw errors() contain non-serializable objects (e.g. ValueError in
+        # ctx); keep only the JSON-safe summary.
+        safe_details = [
+            {"loc": err.get("loc"), "msg": err.get("msg"), "type": err.get("type")}
+            for err in exc.errors()
+        ]
+        return _envelope(422, "VALIDATION_ERROR", "Request validation failed", safe_details)
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_exception(
