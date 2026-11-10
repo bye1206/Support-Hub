@@ -23,7 +23,6 @@ from app.models import (
     Operator,
     Tag,
     Ticket,
-    TicketCategory,
     TicketStatus,
 )
 from app.repositories.categories import TicketCategoryRepository
