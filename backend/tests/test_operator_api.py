@@ -552,6 +552,139 @@ async def test_ticket_card_does_not_leak_other_conversation(
     assert sorted(by_conversation.values()) == [["Проблема А"], ["Проблема Б"]]
 
 
+@pytest.mark.anyio
+async def test_get_current_operator_profile(client: TestClient) -> None:
+    me = client.get("/api/v1/operator/me", headers=headers())
+    assert me.status_code == 200
+    body = me.json()
+    assert body["email"] == "op1@corp.test"
+    assert body["display_name"] == "Operator One"
+    assert body["role"] == "OPERATOR"
+
+    # Stage-8 UI sends only token + email (non-Latin names break HTTP
+    # headers): display_name must fall back to the email.
+    anon = client.get(
+        "/api/v1/operator/me",
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "X-Operator-Email": "op2@corp.test",
+        },
+    )
+    assert anon.status_code == 200
+    assert anon.json()["display_name"] == "op2@corp.test"
+
+
+@pytest.mark.anyio
+async def test_list_categories(client: TestClient, seed, session_factory) -> None:
+    await seed()
+    async with session_factory() as session:
+        session.add(TicketCategory(name="Техническая поддержка"))
+        await session.commit()
+
+    listed = client.get("/api/v1/operator/categories", headers=headers())
+    assert listed.status_code == 200
+    assert [c["name"] for c in listed.json()["categories"]] == [
+        "Техническая поддержка"
+    ]
+
+
+@pytest.mark.anyio
+async def test_list_user_previous_tickets(
+    client: TestClient, session_factory
+) -> None:
+    """Customer card (docs/06 §5): only this user's recent tickets."""
+    await _seed_user_message(
+        session_factory, external_user_id="user-a", text="Первый вопрос"
+    )
+    await _seed_user_message(
+        session_factory, external_user_id="user-b", text="Чужой вопрос"
+    )
+
+    listed = client.get("/api/v1/operator/tickets", headers=headers())
+    assert listed.status_code == 200
+    tickets = listed.json()["tickets"]
+    assert len(tickets) == 2
+
+    # Map user_id -> the ticket's own text via each card.
+    text_by_user: dict[str, list[str]] = {}
+    for ticket in tickets:
+        card = client.get(
+            f"/api/v1/operator/tickets/{ticket['ticket_id']}", headers=headers()
+        )
+        text_by_user[ticket["user_id"]] = [
+            m["text"] for m in card.json()["messages"]
+        ]
+    user_a = next(u for u, t in text_by_user.items() if "Первый вопрос" in t)
+    user_b = next(u for u, t in text_by_user.items() if "Чужой вопрос" in t)
+
+    history = client.get(
+        f"/api/v1/operator/users/{user_a}/tickets", headers=headers()
+    )
+    assert history.status_code == 200
+    rows = history.json()["tickets"]
+    assert [t["user_id"] for t in rows] == [user_a]
+    assert user_b not in [t["user_id"] for t in rows]
+
+
+@pytest.mark.anyio
+async def test_assignment_history_records_assignee(
+    client: TestClient, seed, session_factory
+) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+    async with session_factory() as session:
+        operator = (await session.scalars(select(Operator))).one()
+        operator_id = operator.id
+
+    assigned = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/assign",
+        json={"assignee_id": str(operator_id)},
+        headers=headers(),
+    )
+    assert assigned.status_code == 200
+
+    history = client.get(
+        f"/api/v1/operator/tickets/{ticket_id}/assignment-history",
+        headers=headers(),
+    )
+    assert history.status_code == 200
+    events = history.json()["events"]
+    assert len(events) == 1
+    assert events[0]["actor_id"] == str(operator_id)
+    assert events[0]["assignee_id"] == str(operator_id)
+
+    missing = client.get(
+        f"/api/v1/operator/tickets/{uuid.uuid4()}/assignment-history",
+        headers=headers(),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_tag_details_for_card_actions(client: TestClient, seed) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+    created = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/tags",
+        json={"name": "VPN"},
+        headers=headers(),
+    )
+    assert created.status_code == 200
+
+    details = client.get(
+        f"/api/v1/operator/tickets/{ticket_id}/tag-details", headers=headers()
+    )
+    assert details.status_code == 200
+    assert details.json()["tags"] == [
+        {"tag_id": created.json()["tag_id"], "name": "VPN"}
+    ]
+
+    missing = client.get(
+        f"/api/v1/operator/tickets/{uuid.uuid4()}/tag-details", headers=headers()
+    )
+    assert missing.status_code == 404
+
+
 def test_ws_delivers_published_events(operator_env) -> None:
     """Real Redis pub/sub delivery, verified against a real uvicorn loop.
 
