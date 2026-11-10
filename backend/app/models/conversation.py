@@ -62,6 +62,9 @@ class Conversation(UuidPkMixin, TimestampMixin, Base):
     last_message_sequence: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default=text("0")
     )
+    # Gateway (RAG Assistant Gateway) chat id for this dialog, D-043. One
+    # dialog = one gateway chat: the gateway keeps its own context there.
+    ai_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class ConversationSession(UuidPkMixin, TimestampMixin, Base):

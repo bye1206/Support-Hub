@@ -70,6 +70,27 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Stage 6: RAG Assistant Gateway (real contract D-043, owner-provided
+    # 2026-11-10): synchronous HTTP, X-API-Key + X-User-Id headers, no
+    # callbacks. The gateway keeps its own context; we never send history.
+    ai_gateway_base_url: str = Field(
+        default="https://ai-gateway.invalid",
+        validation_alias=AliasChoices(
+            "AI_ORCHESTRATOR_BASE_URL", "AI_GATEWAY_BASE_URL"
+        ),
+    )
+    # The API key is issued by the gateway integration team, lives outside git.
+    ai_gateway_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("SUPPORT_HUB_TO_AI_TOKEN", "AI_GATEWAY_API_KEY"),
+    )
+    # Contract §5: LLM answers take 30-60 s; client timeout MUST be >= 130 s.
+    ai_gateway_timeout_seconds: float = 130.0
+    # Trigger codes (D-043 §7). Codes can be rotated on the gateway side; the
+    # integration team must be notified in advance - update these then.
+    ai_trigger_resolved_code: str = "hnQRDemsuPZY"
+    ai_trigger_operator_code: str = "tY7Ve077FyZR1"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -43,6 +43,18 @@ class ConversationRepository:
             raise StateConflict(f"Conversation {conversation_id} disappeared")
         return int(sequence)
 
+    async def set_ai_chat_id(
+        self, session: AsyncSession, conversation_id: uuid.UUID, *, chat_id: int
+    ) -> None:
+        """Cache the gateway chat id on the dialog (D-043: one dialog = one
+        gateway chat, the gateway keeps its own context there). Written once
+        by the single AI worker of the dialog; no optimistic check needed."""
+        await session.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation_id)
+            .values(ai_chat_id=chat_id)
+        )
+
     async def change_mode(
         self,
         session: AsyncSession,

@@ -5,12 +5,15 @@ inject a test-DB factory; production builds one from the app settings.
 """
 
 import logging
+import uuid
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.integrations.tag.dispatch import build_default_outbox_handler
+from app.integrations.tag.dispatch import RoutingOutboxHandler, build_default_outbox_handler
+from app.models import OutboxEvent
+from app.services.ai_runs import AiRunService, build_gateway_from_settings
 from app.services.outbox import OutboxService
 from app.services.sessions import SessionService
 
@@ -18,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _FACTORY_KEY = "session_factory"
 _HANDLER_KEY = "outbox_handler"
+_GATEWAY_KEY = "ai_gateway"
 
 
 def _session_factory(ctx: dict[str, Any]) -> async_sessionmaker[AsyncSession]:
@@ -28,11 +32,37 @@ def _session_factory(ctx: dict[str, Any]) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
-def _outbox_handler(ctx: dict[str, Any]) -> Any:
+def _outbox_handler(ctx: dict[str, Any]) -> RoutingOutboxHandler:
     handler = ctx.get(_HANDLER_KEY)
     if handler is not None:
         return handler
-    return build_default_outbox_handler()
+
+    async def fallback(event: OutboxEvent) -> None:
+        if event.event_type == "message.user_received":
+            redis = ctx.get("redis")
+            message_id = (event.payload or {}).get("message_id")
+            if redis is not None and message_id is not None:
+                # Re-enqueue is harmless: run registration dedups by
+                # (input_message_id, attempt_no).
+                await redis.enqueue_job("process_ai_runs", str(message_id))
+                return
+        logger.info(
+            "Outbox event dispatched: type=%s key=%s aggregate=%s/%s",
+            event.event_type,
+            event.idempotency_key,
+            event.aggregate_type,
+            event.aggregate_id,
+        )
+
+    default_handler = build_default_outbox_handler()
+    return RoutingOutboxHandler(bot=default_handler._bot, fallback=fallback)  # noqa: SLF001
+
+
+def _ai_gateway(ctx: dict[str, Any]) -> Any:
+    gateway = ctx.get(_GATEWAY_KEY)
+    if gateway is not None:
+        return gateway
+    return build_gateway_from_settings()
 
 
 async def process_outbox(ctx: dict[str, Any], batch_size: int = 10) -> int:
@@ -45,6 +75,22 @@ async def process_outbox(ctx: dict[str, Any], batch_size: int = 10) -> int:
     if dispatched:
         logger.info("Outbox batch dispatched: %s", dispatched)
     return dispatched
+
+
+async def process_ai_runs(
+    ctx: dict[str, Any], message_id: str | None = None, limit: int = 10
+) -> int:
+    """Stage 6: register (dedup) the run for the ingested message, then run
+    every pending dialog against the gateway (synchronous, no retries)."""
+    service = AiRunService(gateway=_ai_gateway(ctx))
+    factory = _session_factory(ctx)
+    if message_id is not None:
+        conversation_id = await service.ensure_run_for_message(
+            factory, uuid.UUID(message_id)
+        )
+        if conversation_id is None:
+            return 0  # not an AI dialog / already registered
+    return await service.process_pending(factory, limit=limit)
 
 
 async def expire_sessions(ctx: dict[str, Any]) -> int:

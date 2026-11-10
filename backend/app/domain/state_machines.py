@@ -24,6 +24,10 @@ class TicketTrigger(StrEnum):
     OPERATOR_REPLY = "OPERATOR_REPLY"
     OPERATOR_RESOLVED = "OPERATOR_RESOLVED"
     OPERATOR_CLOSED = "OPERATOR_CLOSED"
+    # D-043 (gateway trigger codes): the user's magic word confirmed the
+    # problem is solved / asked for a human. AI acts, no message is published.
+    AI_RESOLVED = "AI_RESOLVED"
+    AI_REQUESTED_HANDOFF = "AI_REQUESTED_HANDOFF"
 
 
 # Target status per trigger. A user message (USER_MESSAGE) never uses this
@@ -33,6 +37,9 @@ _TICKET_TARGET: dict[TicketTrigger, str] = {
     TicketTrigger.OPERATOR_REPLY: "PENDING_USER",
     TicketTrigger.OPERATOR_RESOLVED: "RESOLVED",
     TicketTrigger.OPERATOR_CLOSED: "CLOSED",
+    # Gateway trigger codes (D-043): user confirmed solved / asked for human.
+    TicketTrigger.AI_RESOLVED: "RESOLVED",
+    TicketTrigger.AI_REQUESTED_HANDOFF: "OPEN",
 }
 
 # The user's message target depends on the current status (D-039):
@@ -70,6 +77,9 @@ _TICKET_ALLOWED_SOURCES: dict[TicketTrigger, frozenset[str]] = {
     TicketTrigger.OPERATOR_CLOSED: frozenset(
         {"NEW", "AI_PROCESSING", "OPEN", "PENDING_USER", "RESOLVED"}
     ),
+    # Trigger codes arrive while the gateway is processing this dialog.
+    TicketTrigger.AI_RESOLVED: frozenset({"AI_PROCESSING"}),
+    TicketTrigger.AI_REQUESTED_HANDOFF: frozenset({"AI_PROCESSING"}),
 }
 
 

@@ -47,6 +47,10 @@ ALLOWED_TICKET = [
     ("OPEN", TicketTrigger.OPERATOR_CLOSED, "CLOSED"),
     ("PENDING_USER", TicketTrigger.OPERATOR_CLOSED, "CLOSED"),
     ("RESOLVED", TicketTrigger.OPERATOR_CLOSED, "CLOSED"),
+    # Gateway trigger codes (D-043 §7): only from AI_PROCESSING - the code
+    # arrives in the gateway's answer while the dialog is being processed.
+    ("AI_PROCESSING", TicketTrigger.AI_RESOLVED, "RESOLVED"),
+    ("AI_PROCESSING", TicketTrigger.AI_REQUESTED_HANDOFF, "OPEN"),
 ]
 
 FORBIDDEN_TICKET = [
@@ -58,6 +62,18 @@ FORBIDDEN_TICKET = [
     ("PENDING_USER", TicketTrigger.AI_REPLY),
     ("RESOLVED", TicketTrigger.AI_REPLY),
     ("CLOSED", TicketTrigger.AI_REPLY),
+    # Trigger codes only fire while the gateway processes the dialog (D-043):
+    # not on fresh/human/resolved/closed tickets.
+    ("NEW", TicketTrigger.AI_RESOLVED),
+    ("OPEN", TicketTrigger.AI_RESOLVED),
+    ("PENDING_USER", TicketTrigger.AI_RESOLVED),
+    ("RESOLVED", TicketTrigger.AI_RESOLVED),
+    ("CLOSED", TicketTrigger.AI_RESOLVED),
+    ("NEW", TicketTrigger.AI_REQUESTED_HANDOFF),
+    ("OPEN", TicketTrigger.AI_REQUESTED_HANDOFF),
+    ("PENDING_USER", TicketTrigger.AI_REQUESTED_HANDOFF),
+    ("RESOLVED", TicketTrigger.AI_REQUESTED_HANDOFF),
+    ("CLOSED", TicketTrigger.AI_REQUESTED_HANDOFF),
     # Resolve is not repeatable; close/resolve/replies impossible after CLOSED.
     ("RESOLVED", TicketTrigger.OPERATOR_RESOLVED),
     ("CLOSED", TicketTrigger.OPERATOR_RESOLVED),

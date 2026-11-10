@@ -1,5 +1,7 @@
 """SQLAlchemy models. Import registers all tables on Base.metadata."""
 
+from app.models.ai_handoff import AiHandoff, HandoffReason
+from app.models.ai_run import AiProcessingRun, AiRunStatus
 from app.models.audit import AuditActorType, AuditLog
 from app.models.base import Base
 from app.models.channel import Channel
@@ -24,6 +26,9 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.user import CorporateAccount, User, UserIdentity
 
 __all__ = [
+    "AiHandoff",
+    "AiProcessingRun",
+    "AiRunStatus",
     "AuditActorType",
     "AuditLog",
     "Base",
@@ -32,6 +37,7 @@ __all__ = [
     "ConversationSession",
     "CorporateAccount",
     "DialogMode",
+    "HandoffReason",
     "IntegrationEvent",
     "IntegrationEventStatus",
     "Message",

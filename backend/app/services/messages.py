@@ -167,42 +167,53 @@ class MessageService:
         conversation_id: uuid.UUID,
         text: str,
     ) -> IngestResult:
-        """AI Orchestrator result publication (stage 6 adds run checks).
-
-        D-039: the AI answer completes processing -> OPEN. Own transaction.
-        """
+        """AI Orchestrator result publication. Own transaction."""
         async with unit_of_work(session):
-            conversation = await self._require_conversation(session, conversation_id)
-            if conversation.mode != DialogMode.AI_ACTIVE:
-                # AI results are never published after Handoff (D-014).
-                raise TransitionNotAllowed(
-                    "conversation", str(conversation.mode), "AI_REPLY"
-                )
-            ticket = await self._require_ticket_by_conversation(session, conversation_id)
-            sequence = await self._conversations.allocate_sequence(
-                session, conversation_id
+            return await self.publish_ai_answer(
+                session, conversation_id=conversation_id, text=text
             )
-            message = await self._messages.create(
-                session,
-                conversation_id=conversation_id,
-                sequence_no=sequence,
-                author_type=MessageAuthorType.AI,
-                text=text,
+
+    async def publish_ai_answer(
+        self,
+        session: AsyncSession,
+        *,
+        conversation_id: uuid.UUID,
+        text: str,
+    ) -> IngestResult:
+        """Same as add_ai_reply, but INSIDE the caller's transaction (used by
+        the AI run service so the run outcome and the published message commit
+        atomically). Raises TransitionNotAllowed if the dialog left AI mode."""
+        conversation = await self._require_conversation(session, conversation_id)
+        if conversation.mode != DialogMode.AI_ACTIVE:
+            # AI results are never published after Handoff (D-014).
+            raise TransitionNotAllowed(
+                "conversation", str(conversation.mode), "AI_REPLY"
             )
-            # FSM: AI_REPLY completes a processing ticket (D-039).
-            await self._transition_ticket(
-                session, ticket, TicketTrigger.AI_REPLY
-            )
-            await self._register_outbound(session, message, conversation_id)
-            await self._audit.log(
-                session,
-                actor_type=AuditActorType.AI,
-                action="message.created",
-                entity_type="message",
-                entity_id=message.id,
-                details={"conversation_id": str(conversation_id)},
-            )
-            return self._result(message, conversation, ticket)
+        ticket = await self._require_ticket_by_conversation(session, conversation_id)
+        sequence = await self._conversations.allocate_sequence(
+            session, conversation_id
+        )
+        message = await self._messages.create(
+            session,
+            conversation_id=conversation_id,
+            sequence_no=sequence,
+            author_type=MessageAuthorType.AI,
+            text=text,
+        )
+        # FSM: AI_REPLY completes a processing ticket (D-039).
+        await self._transition_ticket(
+            session, ticket, TicketTrigger.AI_REPLY
+        )
+        await self._register_outbound(session, message, conversation_id)
+        await self._audit.log(
+            session,
+            actor_type=AuditActorType.AI,
+            action="message.created",
+            entity_type="message",
+            entity_id=message.id,
+            details={"conversation_id": str(conversation_id)},
+        )
+        return self._result(message, conversation, ticket)
 
     async def add_operator_reply(
         self,
@@ -264,6 +275,16 @@ class MessageService:
                 details={"conversation_id": str(ticket.conversation_id)},
             )
             return self._result(message, conversation, ticket)
+
+    async def apply_ticket_trigger(
+        self,
+        session: AsyncSession,
+        ticket: Ticket,
+        trigger: TicketTrigger,
+    ) -> None:
+        """Public FSM helper (with the bounded conflict retry) for other
+        services that move a ticket inside their own transaction."""
+        return await self._transition_ticket(session, ticket, trigger)
 
     async def _apply_ticket_transition(
         self, session: AsyncSession, routing: RoutingResult

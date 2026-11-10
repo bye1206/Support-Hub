@@ -39,6 +39,9 @@ class MessageRepository:
         await session.flush()
         return message
 
+    async def get(self, session: AsyncSession, message_id: uuid.UUID) -> Message | None:
+        return await session.get(Message, message_id)
+
     async def get_by_external_post_id(
         self, session: AsyncSession, external_post_id: str
     ) -> Message | None:

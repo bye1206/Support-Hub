@@ -137,9 +137,23 @@ docs/               # существующая документация + implem
 
 **Блокеры:** доступ к коду бота и среде Tag; ответы 11.A.1–8 — без них ingress считается не production-ready.
 
-## Этап 6. AI Orchestrator adapter
+## Этап 6. AI Orchestrator adapter — **РЕАЛИЗОВАН 2026-11-10 (реальный контракт D-043)**
 
-**Результат:**
+**Что сделано (факт):**
+- Контракт от команды интеграции разобран (`КОНТРАКТ_ИНТЕГРАЦИИ_ВНЕШНЯЯ_ВЕРСИЯ.md` v1.0): синхронный HTTP, без callback'ов; D-043 CONFIRMED, Q-08 закрыт, Q-04 закрыт без нового статуса тикета (P-19).
+- Модели: `ai_processing_runs` (UNIQUE `input_message_id+attempt_no`, статусы NEW/RUNNING/SUCCEEDED/FAILED/CANCELLED, request_id, trigger_code, error), `ai_handoffs` (reason, is_accepted, partial unique «не более одной принятой на диалог»), `conversations.ai_chat_id`; миграция `0004_ai_runs_handoffs` (применена, alembic upgrade head).
+- FSM: триггеры `AI_RESOLVED` (→ RESOLVED) и `AI_REQUESTED_HANDOFF` (→ OPEN) только из AI_PROCESSING (D-043 §7).
+- Клиент шлюза `app/integrations/ai/gateway_client.py`: `POST /api/v1/chat`, `POST /api/v1/message/{chat_id}`, заголовки `X-API-Key`+`X-User-Id` на каждый запрос, таймаут 130 с (контракт §5: ответ 30–60 с), ошибки → AuthError/NotFound/Rejected/Unavailable.
+- Детектор триггер-кодов `app/integrations/ai/triggers.py`: точное совпадение с конфигом → действие; **неизвестный кодо-подобный ответ рендерится текстом + warning** (P-21 PROPOSED: иначе «abc123» от пользователя перехватил бы диалог).
+- Сервис `app/services/ai_runs.py`: `ensure_run_for_message` (дедуп) + `process_pending` — claim `FOR UPDATE SKIP LOCKED` (≤1 run на диалог, G-11), HTTP-вызов **вне транзакции**, применение ответа одной транзакцией: обычный ответ → AI-сообщение (переиспользует MessageService, FSM AI_REPLY → OPEN) + outbox `message.outbound` + аудит (actor=AI); `resolved` → тикет RESOLVED без публикации; `operator` → диалог HUMAN_PENDING + handoff (is_accepted=false) + тикет OPEN; диалог ушёл из AI mode → run CANCELLED (D-014).
+- Chat-маппинг (P-20): 1 диалог = 1 чат шлюза, id кэшируется в `conversations.ai_chat_id`, история в шлюз не пересылается.
+- Worker: задача `process_ai_runs` (ARQ, timeout 1800 с, max_tries=1 — без авторетраев), фолбэк-обработчик `message.user_received` → enqueue через Redis (повторный enqueue безопасен — дедуп run'ов).
+- Провал шлюза (503/сеть): run → FAILED, тикет остаётся AI_PROCESSING, **авторетраев нет** (у шлюза нет идемпотентности) — Q-04 закрыт (P-19).
+- Конфиг: `AI_ORCHESTRATOR_BASE_URL`/`SUPPORT_HUB_TO_AI_TOKEN` (alias'ы `ai_gateway_*`), таймаут, коды триггеров.
+- Тесты: 142 passed — клиент (заголовки, 201/401/403/404/422/503/таймаут), триггеры (детект, неизвестные коды), интеграционные на реальном PostgreSQL (happy path, operator/resolved триггеры, 503 → FAILED + AI_PROCESSING, дедуп run'а, CANCELLED, worker-фолбэк, end-to-end задача, переиспользование chat_id); FSM-матрица расширена (18 кейсов).
+- Проверки: `ruff` чисто, `mypy app` — 57 файлов, 0 ошибок, `pytest -q --timeout=60` — 142 passed.
+
+**Исходный план (пересмотрен по D-043):**
 - Anti-corruption adapter: реальный контракт запроса/callback (получить у владельца системы, D-029) ↔ внутренние модели.
 - Формирование контекста из собственной БД (`messages`, без внутренних заметок — D-025), текущее сообщение отдельно от контекста (`05` §4).
 - `ai_processing_runs`: последовательная обработка, ≤1 активного run на диалог (G-11), `state_version`.
