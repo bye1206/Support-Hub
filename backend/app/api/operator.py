@@ -24,6 +24,17 @@ from app.services.notes import NoteService
 from app.services.tickets import TicketService
 
 router = APIRouter(prefix="/api/v1/operator", tags=["operator"])
+@router.get("/me")
+async def get_current_operator(
+    operator: Annotated[Operator, Depends(require_operator)],
+) -> dict[str, str]:
+    """Return the authenticated operator profile for workspace actions."""
+    return {
+        "operator_id": str(operator.id),
+        "email": operator.email,
+        "display_name": operator.display_name or operator.email,
+        "role": str(operator.role),
+    }
 
 
 def _ticket_view(

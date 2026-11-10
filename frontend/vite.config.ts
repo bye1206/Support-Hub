@@ -1,13 +1,14 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-
-// Dev proxy forwards health checks to the local backend (uvicorn on :8000).
+// Forward the operator REST and WebSocket APIs to local FastAPI.
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
       "/healthz": "http://localhost:8000",
       "/readyz": "http://localhost:8000",
+      "/api": "http://localhost:8000",
+      "/ws": { target: "ws://localhost:8000", ws: true },
     },
   },
 });
