@@ -91,6 +91,19 @@ class Settings(BaseSettings):
     ai_trigger_resolved_code: str = "hnQRDemsuPZY"
     ai_trigger_operator_code: str = "tY7Ve077FyZR1"
 
+    # Stage 7: operator workspace authentication (docs/08 §1). Target is
+    # Keycloak OIDC (Q-09: issuer/client unknown yet); pass 1 uses a shared
+    # dev token + email header, local environment only. Local-only default.
+    operator_dev_token: str = "CHANGE_ME_LOCAL_ONLY_OPERATOR_TOKEN"
+    # When set (corporate env), operator endpoints demand real OIDC and
+    # dev-token auth is refused (fail-closed, see app/auth/operators.py).
+    keycloak_issuer_url: str = Field(
+        default="", validation_alias=AliasChoices("OIDC_ISSUER_URL", "KEYCLOAK_ISSUER_URL")
+    )
+    keycloak_client_id: str = Field(
+        default="support-hub", validation_alias=AliasChoices("OIDC_CLIENT_ID", "KEYCLOAK_CLIENT_ID")
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

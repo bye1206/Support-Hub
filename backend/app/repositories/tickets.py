@@ -74,3 +74,46 @@ class TicketRepository:
         if new_version is None:
             raise StateConflict(f"Ticket {ticket_id} changed concurrently")
         return int(new_version)
+
+    async def list_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        status: TicketStatus | None = None,
+        assignee_id: uuid.UUID | None = None,
+        unassigned_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Ticket]:
+        """Operator queue: newest activity first (stage 7, docs/06 §2)."""
+        stmt = (
+            select(Ticket)
+            .join(Conversation, Conversation.id == Ticket.conversation_id)
+            .order_by(desc(Conversation.updated_at), desc(Ticket.created_at))
+            .limit(limit)
+            .offset(offset)
+        )
+        if status is not None:
+            stmt = stmt.where(Ticket.status == status)
+        if assignee_id is not None:
+            stmt = stmt.where(Ticket.assignee_id == assignee_id)
+        if unassigned_only:
+            stmt = stmt.where(Ticket.assignee_id.is_(None))
+        return list((await session.scalars(stmt)).all())
+
+    async def set_assignee(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        assignee_id: uuid.UUID | None,
+    ) -> None:
+        """Manual assignment (docs/06 §6); rowcount check catches a deleted
+        ticket - assignment itself is a plain write, no version bump."""
+        result = await session.execute(
+            update(Ticket)
+            .where(Ticket.id == ticket_id)
+            .values(assignee_id=assignee_id)
+        )
+        if not result.rowcount:  # type: ignore[attr-defined]
+            raise StateConflict(f"Ticket {ticket_id} disappeared")

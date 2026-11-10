@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
+from app.infra.redis_client import EVENTS_CHANNEL
 from app.integrations.tag.dispatch import RoutingOutboxHandler, build_default_outbox_handler
 from app.models import OutboxEvent
 from app.services.ai_runs import AiRunService, build_gateway_from_settings
@@ -45,7 +46,25 @@ def _outbox_handler(ctx: dict[str, Any]) -> RoutingOutboxHandler:
                 # Re-enqueue is harmless: run registration dedups by
                 # (input_message_id, attempt_no).
                 await redis.enqueue_job("process_ai_runs", str(message_id))
-                return
+        # Realtime fan-out to workspace clients (stage 7): published after
+        # commit, at-least-once; clients reconcile over REST on reconnect.
+        redis_any = ctx.get("redis")
+        if redis_any is not None:
+            import json
+
+            try:
+                await redis_any.publish(
+                    EVENTS_CHANNEL,
+                    json.dumps(
+                        {
+                            "type": event.event_type,
+                            "payload": event.payload or {},
+                            "event_id": str(event.id),
+                        }
+                    ),
+                )
+            except Exception:  # noqa: BLE001 - notification, never critical
+                logger.warning("WS event publish failed for %s", event.id)
         logger.info(
             "Outbox event dispatched: type=%s key=%s aggregate=%s/%s",
             event.event_type,

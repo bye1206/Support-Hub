@@ -61,6 +61,12 @@ class Ticket(UuidPkMixin, TimestampMixin, Base):
     )
     # Priority vocabulary is not confirmed yet (open question); free string for now.
     priority: Mapped[str] = mapped_column(String(20), nullable=False, default="NORMAL")
+    # Manual assignment (stage 7); auto-assignment stays behind a flag (D-031/P-07).
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("operators.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     state_version: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=1, server_default=text("1")
     )

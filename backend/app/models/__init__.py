@@ -16,6 +16,7 @@ from app.models.message import (
     MessageAuthorType,
     MessageDeliveryState,
 )
+from app.models.operator import Operator, OperatorRole
 from app.models.outbox import (
     IntegrationEvent,
     IntegrationEventStatus,
@@ -43,6 +44,8 @@ __all__ = [
     "Message",
     "MessageAuthorType",
     "MessageDeliveryState",
+    "Operator",
+    "OperatorRole",
     "OutboxEvent",
     "OutboxStatus",
     "SessionStatus",

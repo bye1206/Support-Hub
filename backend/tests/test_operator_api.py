@@ -1,0 +1,315 @@
+"""Integration tests of the Operator API + WebSocket (stage 7, pass 1).
+
+Auth is the DEV mode (P-22 PROPOSED): shared bearer token + email header,
+auto-provisioned operator profile. Keycloak (Q-09) arrives in pass 2.
+
+Covered: 401 (no/wrong token, missing identity), 403 (deactivated), queue
+list + filters, ticket card with full history, reply -> PENDING_USER,
+resolve, close, manual assignment, handoff acceptance, WS event delivery.
+"""
+
+import asyncio
+import json
+import threading
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.config import get_settings
+from app.infra.container import Dependencies
+from app.infra.db import DatabaseClient
+from app.infra.redis_client import EVENTS_CHANNEL, RedisClient
+from app.main import create_app
+from app.models import AiHandoff, Conversation, DialogMode, Operator
+from tests.conftest import TEST_DB_URL
+from tests.fakes import FakeProbe
+from tests.test_ai_runs import _seed_user_message
+
+TOKEN = "test-operator-token"
+
+
+@pytest.fixture
+def operator_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPERATOR_DEV_TOKEN", TOKEN)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def api_deps():
+    db = DatabaseClient(TEST_DB_URL)
+    deps = Dependencies(db=db, redis=FakeProbe())  # type: ignore[arg-type]
+    yield deps
+    asyncio.run(db.close())
+
+
+@pytest.fixture
+def client(operator_env, api_deps) -> TestClient:
+    # One portal/loop for all requests: asyncpg connections are loop-bound.
+    with TestClient(create_app(deps=api_deps)) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def seed(session_factory):
+    """Seed a user message through the real ingress flow."""
+
+    async def _seed(text: str = "Не работает VPN") -> tuple[uuid.UUID, uuid.UUID]:
+        return await _seed_user_message(session_factory, text=text)
+
+    return _seed
+
+
+def headers(token: str = TOKEN, email: str = "op1@corp.test") -> dict[str, str]:
+    # HTTP headers are latin-1/ascii: non-ascii names go percent-free latin.
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Operator-Email": email,
+        "X-Operator-Name": "Operator One",
+    }
+
+
+def _first_ticket_id(client: TestClient) -> str:
+    listed = client.get("/api/v1/operator/tickets", headers=headers())
+    assert listed.status_code == 200
+    tickets = listed.json()["tickets"]
+    assert len(tickets) >= 1
+    return tickets[0]["ticket_id"]
+
+
+def test_missing_token_is_unauthorized(client: TestClient) -> None:
+    response = client.get("/api/v1/operator/tickets")
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "OPERATOR_UNAUTHORIZED"
+
+
+def test_wrong_token_is_unauthorized(client: TestClient) -> None:
+    response = client.get("/api/v1/operator/tickets", headers=headers(token="nope"))
+    assert response.status_code == 401
+
+
+def test_missing_email_header_is_unauthorized(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/operator/tickets", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "OPERATOR_IDENTITY_MISSING"
+
+
+@pytest.mark.anyio
+async def test_deactivated_operator_is_forbidden(
+    client: TestClient, session_factory
+) -> None:
+    # First request provisions the profile; deactivate it in DB afterwards.
+    ok = client.get("/api/v1/operator/tickets", headers=headers())
+    assert ok.status_code == 200
+
+    async with session_factory() as session:
+        operator = (
+            await session.scalars(
+                select(Operator).where(Operator.email == "op1@corp.test")
+            )
+        ).first()
+        assert operator is not None
+        operator.is_active = False
+        await session.commit()
+
+    blocked = client.get("/api/v1/operator/tickets", headers=headers())
+    assert blocked.status_code == 403
+    assert blocked.json()["error"]["code"] == "OPERATOR_DEACTIVATED"
+
+
+@pytest.mark.anyio
+async def test_queue_lists_tickets_and_filters_by_status(client: TestClient, seed) -> None:
+    await seed()
+    listed = client.get("/api/v1/operator/tickets", headers=headers())
+    assert listed.status_code == 200
+    tickets = listed.json()["tickets"]
+    assert len(tickets) == 1
+    assert tickets[0]["status"] == "AI_PROCESSING"  # D-039 ingress effect
+
+    open_only = client.get(
+        "/api/v1/operator/tickets", params={"status": "OPEN"}, headers=headers()
+    )
+    assert open_only.status_code == 200
+    assert open_only.json()["tickets"] == []
+
+
+@pytest.mark.anyio
+async def test_ticket_card_contains_full_history(client: TestClient, seed) -> None:
+    _, conversation_id = await seed()
+    ticket_id = _first_ticket_id(client)
+
+    replied = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/replies",
+        json={"text": "Передаём специалисту"},
+        headers=headers(),
+    )
+    assert replied.status_code == 200
+    assert replied.json()["status"] == "PENDING_USER"
+
+    card = client.get(f"/api/v1/operator/tickets/{ticket_id}", headers=headers())
+    assert card.status_code == 200
+    body = card.json()
+    assert body["conversation_id"] == str(conversation_id)
+    authors = [m["author_type"] for m in body["messages"]]
+    assert authors == ["USER", "OPERATOR"]
+    assert body["messages"][1]["text"] == "Передаём специалисту"
+
+
+@pytest.mark.anyio
+async def test_resolve_then_close_ticket(client: TestClient, seed) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+
+    resolved = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/resolve", headers=headers()
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()["status"] == "RESOLVED"
+
+    closed = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/close", headers=headers()
+    )
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "CLOSED"
+
+
+@pytest.mark.anyio
+async def test_assign_and_unassign_ticket(client: TestClient, seed, session_factory) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+
+    async with session_factory() as session:
+        operator = (await session.scalars(select(Operator))).one()
+        operator_id = operator.id
+
+    assigned = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/assign",
+        json={"assignee_id": str(operator_id)},
+        headers=headers(),
+    )
+    assert assigned.status_code == 200
+    assert assigned.json()["assignee_id"] == str(operator_id)
+
+    mine = client.get(
+        "/api/v1/operator/tickets", params={"assignee": "me"}, headers=headers()
+    )
+    assert [t["ticket_id"] for t in mine.json()["tickets"]] == [ticket_id]
+
+    unassigned = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/assign",
+        json={"assignee_id": None},
+        headers=headers(),
+    )
+    assert unassigned.status_code == 200
+    assert unassigned.json()["assignee_id"] is None
+
+
+@pytest.mark.anyio
+async def test_accept_handoff_then_second_attempt_conflicts(
+    client: TestClient, seed, session_factory
+) -> None:
+    """AI operator-trigger puts the dialog into HUMAN_PENDING; the operator
+    claims it (D-014). Second accept -> 409."""
+    from app.services.ai_runs import AiRunService
+    from tests.test_ai_runs import FakeGateway
+
+    message_id, conversation_id = await seed()
+    operator_code = get_settings().ai_trigger_operator_code
+    service = AiRunService(gateway=FakeGateway(operator_code))
+    await service.ensure_run_for_message(session_factory, message_id)
+    await service.process_pending(session_factory)
+
+    accepted = client.post(
+        f"/api/v1/operator/conversations/{conversation_id}/handoff/accept",
+        headers=headers(),
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["mode"] == "HUMAN_ACTIVE"
+
+    async with session_factory() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        assert conversation is not None
+        assert conversation.mode == DialogMode.HUMAN_ACTIVE
+        handoff = (await session.scalars(select(AiHandoff))).one()
+        assert handoff.is_accepted is True
+
+    again = client.post(
+        f"/api/v1/operator/conversations/{conversation_id}/handoff/accept",
+        headers=headers(),
+    )
+    assert again.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_unknown_ticket_is_404(client: TestClient) -> None:
+    response = client.get(f"/api/v1/operator/tickets/{uuid.uuid4()}", headers=headers())
+    assert response.status_code == 404
+
+
+def test_ws_delivers_published_events(operator_env) -> None:
+    """Real Redis pub/sub delivery, verified against a real uvicorn loop.
+
+    TestClient runs the app on a side-thread portal; on this dev stack
+    server-initiated pushes to an idle socket do not wake the portal loop,
+    so delivery is proven against a production-shaped uvicorn server.
+    The publisher is a SYNC redis client (an asyncio client would be bound
+    to the wrong loop); the test waits for the server's `ready` frame
+    before publishing - pub/sub retains nothing, an earlier publish
+    would be lost."""
+    import time
+
+    import redis as sync_redis
+    import uvicorn
+    from websockets.sync.client import connect as ws_connect
+
+    real_redis = RedisClient("redis://127.0.0.1:6379/0")
+    deps = Dependencies(db=FakeProbe(), redis=real_redis)  # type: ignore[arg-type]
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(deps=deps), host="127.0.0.1", port=0, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(200):
+        if server.started:
+            break
+        time.sleep(0.05)
+    assert server.started
+    port = server.servers[0].sockets[0].getsockname()[1]  # type: ignore[attr-defined]
+    try:
+        published = {
+            "type": "message.user_received",
+            "payload": {"message_id": str(uuid.uuid4())},
+        }
+        with ws_connect(f"ws://127.0.0.1:{port}/ws?token={TOKEN}") as ws:
+            ready = json.loads(ws.recv(timeout=10))
+            assert ready["type"] == "ready"
+            publisher = sync_redis.Redis.from_url("redis://127.0.0.1:6379/0")
+            try:
+                publisher.publish(EVENTS_CHANNEL, json.dumps(published))
+                received = json.loads(ws.recv(timeout=10))
+            finally:
+                publisher.close()
+            assert received["type"] == "message.user_received"
+            assert (
+                received["payload"]["message_id"]
+                == published["payload"]["message_id"]
+            )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        asyncio.run(real_redis.close())
+
+
+def test_ws_rejects_bad_token(operator_env, api_deps) -> None:
+    real_redis = RedisClient("redis://127.0.0.1:6379/0")
+    deps = Dependencies(db=api_deps.db, redis=real_redis)  # type: ignore[arg-type]
+    with TestClient(create_app(deps=deps)) as client:
+        with pytest.raises(Exception):  # noqa: B017 - starlette raises on 1008
+            with client.websocket_connect("/ws?token=wrong"):
+                pass
+    asyncio.run(real_redis.close())

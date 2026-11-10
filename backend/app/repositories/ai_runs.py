@@ -49,6 +49,28 @@ class AiHandoffRepository:
         )
         return (await session.scalars(stmt)).first()
 
+    async def accept_latest_open(
+        self, session: AsyncSession, *, conversation_id: uuid.UUID
+    ) -> bool:
+        """Mark the newest NOT-accepted handoff accepted; False when there is
+        none. The partial unique index guarantees at most one accepted row."""
+        stmt = (
+            select(AiHandoff)
+            .where(
+                AiHandoff.conversation_id == conversation_id,
+                AiHandoff.is_accepted.is_(False),
+            )
+            .order_by(AiHandoff.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+        handoff = (await session.scalars(stmt)).first()
+        if handoff is None:
+            return False
+        handoff.is_accepted = True
+        await session.flush()
+        return True
+
 
 class AiRunRepository:
     async def register(

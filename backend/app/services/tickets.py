@@ -19,7 +19,9 @@ from app.models import (
     Ticket,
     TicketStatus,
 )
+from app.repositories.ai_runs import AiHandoffRepository
 from app.repositories.conversations import ConversationRepository
+from app.repositories.operators import OperatorRepository
 from app.repositories.tickets import TicketRepository
 from app.services._tx import unit_of_work
 from app.services.audit import AuditService
@@ -41,11 +43,15 @@ class TicketService:
         conversations: ConversationRepository | None = None,
         sessions: SessionService | None = None,
         audit: AuditService | None = None,
+        operators: OperatorRepository | None = None,
+        handoffs: AiHandoffRepository | None = None,
     ) -> None:
         self._tickets = tickets or TicketRepository()
         self._conversations = conversations or ConversationRepository()
         self._sessions = sessions or SessionService()
         self._audit = audit or AuditService()
+        self._operators = operators or OperatorRepository()
+        self._handoffs = handoffs or AiHandoffRepository()
 
     async def route_incoming(
         self,
@@ -199,3 +205,83 @@ class TicketService:
             )
             await session.refresh(ticket)
         return ticket
+
+    async def assign(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        assignee_id: uuid.UUID | None,
+        actor_id: uuid.UUID,
+    ) -> Ticket:
+        """Manual assignment (docs/06 §6); D-031 auto-assignment stays behind
+        a flag (P-07). Own transaction."""
+        async with unit_of_work(session):
+            ticket = await self._tickets.get(session, ticket_id)
+            if ticket is None:
+                raise ValueError(f"Ticket {ticket_id} not found")
+            if assignee_id is not None:
+                assignee = await self._operators.get(session, assignee_id)
+                if assignee is None:
+                    raise ValueError(f"Operator {assignee_id} not found")
+                if not assignee.is_active:
+                    raise ValueError(f"Operator {assignee_id} is deactivated")
+            await self._tickets.set_assignee(
+                session, ticket_id, assignee_id=assignee_id
+            )
+            await session.refresh(ticket)
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.OPERATOR,
+                action="ticket.assigned",
+                entity_type="ticket",
+                entity_id=ticket_id,
+                actor_id=actor_id,
+                details={"assignee_id": str(assignee_id) if assignee_id else None},
+            )
+            return ticket
+
+    async def accept_handoff(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        *,
+        actor_id: uuid.UUID,
+    ) -> None:
+        """The operator claims the dialog offered by AI (D-014 one way):
+        HUMAN_PENDING -> HUMAN_ACTIVE, the open handoff becomes accepted.
+        Own transaction. Idempotency: accepting twice is an error (410-style
+        ValueError; the API maps it to 409)."""
+        async with unit_of_work(session):
+            handoff = await self._handoffs.get_accepted(session, conversation_id=conversation_id)
+            if handoff is not None:
+                raise ValueError(f"Handoff of conversation {conversation_id} is already accepted")
+            conversation = await self._conversations.get(session, conversation_id)
+            if conversation is None:
+                raise ValueError(f"Conversation {conversation_id} not found")
+            if conversation.mode != DialogMode.HUMAN_PENDING:
+                raise ValueError(
+                    f"Conversation {conversation_id} is not awaiting an operator "
+                    f"(mode={conversation.mode})"
+                )
+            # Claim: HUMAN_PENDING -> HUMAN_ACTIVE (docs/01 §4).
+            new_mode = next_dialog_mode(
+                str(conversation.mode), DialogTrigger.OPERATOR_TOOK_OVER
+            )
+            await self._conversations.change_mode(
+                session,
+                conversation.id,
+                from_mode=conversation.mode,
+                to_mode=DialogMode(new_mode),
+                expected_state_version=conversation.state_version,
+            )
+            # Mark the newest open handoff accepted (partial unique: one).
+            await self._handoffs.accept_latest_open(session, conversation_id=conversation_id)
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.OPERATOR,
+                action="handoff.accepted",
+                entity_type="conversation",
+                entity_id=conversation_id,
+                actor_id=actor_id,
+            )

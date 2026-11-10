@@ -12,7 +12,9 @@ from fastapi import FastAPI
 
 from app import __version__
 from app.api.health import router as health_router
+from app.api.operator import router as operator_router
 from app.api.tag_ingress import router as tag_ingress_router
+from app.api.ws import router as ws_router
 from app.config import Settings, get_settings
 from app.errors import install_error_handlers
 from app.infra.container import Dependencies, build_dependencies
@@ -48,6 +50,8 @@ def create_app(deps: Dependencies | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(tag_ingress_router)
+    app.include_router(operator_router)
+    app.include_router(ws_router)
     return app
 
 
