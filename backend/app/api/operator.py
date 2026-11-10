@@ -12,10 +12,21 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
 
 from app.auth.operators import require_operator
 from app.errors import ApiError
-from app.models import InternalNote, Message, Operator, Tag, Ticket, TicketStatus
+from app.models import (
+    AuditLog,
+    InternalNote,
+    Message,
+    Operator,
+    Tag,
+    Ticket,
+    TicketCategory,
+    TicketStatus,
+)
+from app.repositories.categories import TicketCategoryRepository
 from app.repositories.messages import MessageRepository
 from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
@@ -24,6 +35,8 @@ from app.services.notes import NoteService
 from app.services.tickets import TicketService
 
 router = APIRouter(prefix="/api/v1/operator", tags=["operator"])
+
+
 @router.get("/me")
 async def get_current_operator(
     operator: Annotated[Operator, Depends(require_operator)],
@@ -310,6 +323,97 @@ async def list_notes(
         except ValueError as exc:
             raise _map_value_error(exc) from exc
     return {"notes": [_note_view(n) for n in notes]}
+
+
+@router.get("/categories")
+async def list_categories(
+    operator: Annotated[Operator, Depends(require_operator)], request: Request
+) -> dict[str, Any]:
+    """Read-only category directory; category management is stage 9."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        categories = await TicketCategoryRepository().list(session)
+    return {
+        "categories": [
+            {
+                "category_id": str(category.id),
+                "name": category.name,
+                "parent_id": str(category.parent_id) if category.parent_id else None,
+            }
+            for category in categories
+        ]
+    }
+
+
+@router.get("/users/{user_id}/tickets")
+async def list_user_tickets(
+    user_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
+    """Previous requests for the customer card (docs/06 §5)."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        tickets = await TicketRepository().list_for_user(session, user_id, limit=limit)
+        tag_map = await TagRepository().map_for_tickets(
+            session, [ticket.id for ticket in tickets]
+        )
+    return {
+        "tickets": [
+            _ticket_view(ticket, tags=tag_map.get(ticket.id, [])) for ticket in tickets
+        ]
+    }
+
+
+@router.get("/tickets/{ticket_id}/assignment-history")
+async def ticket_assignment_history(
+    ticket_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Read assignment audit events without exposing unrelated audit records."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        ticket = await TicketRepository().get(session, ticket_id)
+        if ticket is None:
+            raise ApiError(code="NOT_FOUND", message="Ticket not found", status_code=404)
+        stmt = (
+            select(AuditLog)
+            .where(
+                AuditLog.entity_type == "ticket",
+                AuditLog.entity_id == ticket_id,
+                AuditLog.action == "ticket.assigned",
+            )
+            .order_by(desc(AuditLog.created_at))
+        )
+        events = list((await session.scalars(stmt)).all())
+    return {
+        "events": [
+            {
+                "actor_id": str(event.actor_id) if event.actor_id else None,
+                "assignee_id": (event.details or {}).get("assignee_id"),
+                "created_at": event.created_at.isoformat(),
+            }
+            for event in events
+        ]
+    }
+
+
+@router.get("/tickets/{ticket_id}/tag-details")
+async def ticket_tag_details(
+    ticket_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        if await TicketRepository().get(session, ticket_id) is None:
+            raise ApiError(code="NOT_FOUND", message="Ticket not found", status_code=404)
+        tags = await TicketService().list_tags(session, ticket_id)
+    return {
+        "tags": [{"tag_id": str(tag.id), "name": tag.name} for tag in tags]
+    }
 
 
 class CategoryIn(BaseModel):

@@ -1326,3 +1326,56 @@
     display: none;
   }
 }
+.history-event {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+  margin: 8px 0;
+  color: #7d8796;
+  font-size: 9px;
+}
+.history-event time,
+.past-ticket time {
+  color: #a3aab6;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.tag.removable {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tag.removable button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8176ca;
+  font-size: 13px;
+  line-height: 1;
+}
+.category-label {
+  display: block;
+}
+.category-select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px solid #e8ebf0;
+  border-radius: 6px;
+  background: #fff;
+  color: #5d6879;
+  font-size: 10px;
+}
+.past-ticket {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid #f1f2f5;
+  background: transparent;
+  color: #717c8c;
+  text-align: left;
+  font-size: 9px;
+}

@@ -25,6 +25,18 @@ class TicketRepository:
         await session.flush()
         return ticket
 
+    async def list_for_user(
+        self, session: AsyncSession, user_id: uuid.UUID, *, limit: int = 20
+    ) -> list[Ticket]:
+        """Recent ticket history for the operator customer card (docs/06 §5)."""
+        stmt = (
+            select(Ticket)
+            .where(Ticket.user_id == user_id)
+            .order_by(desc(Ticket.updated_at), desc(Ticket.created_at))
+            .limit(limit)
+        )
+        return list((await session.scalars(stmt)).all())
+
     async def get_last_for_user(
         self, session: AsyncSession, user_id: uuid.UUID
     ) -> Ticket | None:

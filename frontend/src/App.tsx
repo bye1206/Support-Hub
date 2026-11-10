@@ -7,13 +7,19 @@ import {
   type FormEvent,
 } from "react";
 import "./App.css";
-type Status = "OPEN" | "AI_PROCESSING" | "PENDING_USER" | "RESOLVED" | "CLOSED";
+type Status =
+  | "NEW"
+  | "OPEN"
+  | "AI_PROCESSING"
+  | "PENDING_USER"
+  | "RESOLVED"
+  | "CLOSED";
 type Ticket = {
   ticket_id: string;
   conversation_id: string;
   user_id: string;
   status: Status;
-  priority: number;
+  priority: string;
   assignee_id: string | null;
   category_id: string | null;
   tags: string[];
@@ -36,6 +42,13 @@ type Note = {
   created_at: string;
 };
 type Credentials = { token: string; email: string; name: string };
+type Category = { category_id: string; name: string; parent_id: string | null };
+type AssignmentEvent = {
+  actor_id: string | null;
+  assignee_id: string | null;
+  created_at: string;
+};
+type TicketTag = { tag_id: string; name: string };
 type OperatorProfile = {
   operator_id: string;
   email: string;
@@ -59,7 +72,14 @@ const filters: { key: Filter; label: string; icon: string }[] = [
   { key: "waiting", label: "Ожидают пользователя", icon: "◌" },
   { key: "resolved", label: "Решённые", icon: "✓" },
 ];
+const priorityName: Record<string, string> = {
+  LOW: "Низкий",
+  NORMAL: "Обычный",
+  HIGH: "Высокий",
+  URGENT: "Срочный",
+};
 const statusName: Record<Status, string> = {
+  NEW: "Новый",
   OPEN: "Открыт",
   AI_PROCESSING: "ИИ обрабатывает",
   PENDING_USER: "Ждём пользователя",
@@ -139,6 +159,10 @@ export default function App() {
     [selectedId, setSelectedId] = useState<string | null>(null),
     [current, setCurrent] = useState<Ticket | null>(null),
     [operatorId, setOperatorId] = useState(""),
+    [categories, setCategories] = useState<Category[]>([]),
+    [assignmentHistory, setAssignmentHistory] = useState<AssignmentEvent[]>([]),
+    [previousTickets, setPreviousTickets] = useState<Ticket[]>([]),
+    [ticketTags, setTicketTags] = useState<TicketTag[]>([]),
     [notes, setNotes] = useState<Note[]>([]),
     [mode, setMode] = useState<"reply" | "note">("reply"),
     [text, setText] = useState(""),
@@ -166,8 +190,8 @@ export default function App() {
     if (filter === "mine") q.set("assignee", "me");
     if (filter === "unassigned") q.set("assignee", "unassigned");
     const status: Partial<Record<Filter, Status>> = {
-      new: "OPEN",
-      working: "AI_PROCESSING",
+      new: "NEW",
+      working: "OPEN",
       waiting: "PENDING_USER",
       resolved: "RESOLVED",
     };
@@ -191,12 +215,33 @@ export default function App() {
       setLoading(true);
       try {
         const ticket = await api<Ticket>(`/tickets/${id}`, auth);
-        const data = await api<{ notes: Note[] }>(
-          `/conversations/${ticket.conversation_id}/notes`,
-          auth,
-        );
+        const [noteData, categoryData, historyData, pastData, tagData] =
+          await Promise.all([
+            api<{ notes: Note[] }>(
+              `/conversations/${ticket.conversation_id}/notes`,
+              auth,
+            ),
+            api<{ categories: Category[] }>("/categories", auth),
+            api<{ events: AssignmentEvent[] }>(
+              `/tickets/${id}/assignment-history`,
+              auth,
+            ),
+            api<{ tickets: Ticket[] }>(
+              `/users/${ticket.user_id}/tickets?limit=20`,
+              auth,
+            ),
+            api<{ tags: TicketTag[] }>(`/tickets/${id}/tag-details`, auth),
+          ]);
         setCurrent(ticket);
-        setNotes(data.notes);
+        setNotes(noteData.notes);
+        setCategories(categoryData.categories);
+        setAssignmentHistory(historyData.events);
+        setPreviousTickets(
+          pastData.tickets.filter(
+            (item) => item.ticket_id !== ticket.ticket_id,
+          ),
+        );
+        setTicketTags(tagData.tags);
         setError("");
       } catch (e) {
         setError(
@@ -317,6 +362,51 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Отправка не удалась");
     } finally {
       setSending(false);
+    }
+  };
+  const addTag = async () => {
+    if (!current) return;
+    const name = window.prompt("Название тега");
+    if (!name?.trim()) return;
+    try {
+      await api(`/tickets/${current.ticket_id}/tags`, auth, {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      await sync();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Не удалось добавить тег",
+      );
+    }
+  };
+  const removeTag = async (tagId: string) => {
+    if (!current) return;
+    try {
+      await api(`/tickets/${current.ticket_id}/tags/${tagId}`, auth, {
+        method: "DELETE",
+      });
+      await sync();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Не удалось удалить тег",
+      );
+    }
+  };
+  const updateCategory = async (categoryId: string) => {
+    if (!current) return;
+    try {
+      await api(`/tickets/${current.ticket_id}/category`, auth, {
+        method: "PATCH",
+        body: JSON.stringify({ category_id: categoryId || null }),
+      });
+      await sync();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Не удалось обновить категорию",
+      );
     }
   };
   const action = async (kind: "assign" | "resolve" | "close") => {
@@ -492,7 +582,7 @@ export default function App() {
                   {statusName[t.status]}
                 </span>
                 <span className="priority-mark">
-                  {t.priority >= 3 ? "↑" : ""}
+                  {t.priority === "HIGH" || t.priority === "URGENT" ? "↑" : ""}
                 </span>
               </div>
             </button>
@@ -791,11 +881,11 @@ export default function App() {
               </div>
               <div className="detail-label spaced">ПРИОРИТЕТ</div>
               <div className="priority-control">
-                <span className="priority-stars">
-                  {"★".repeat(Math.min(current.priority, 5))}
-                  {"☆".repeat(Math.max(0, 5 - current.priority))}
+                <span className="priority-stars">✦</span>
+                <span>
+                  {priorityName[current.priority.toUpperCase()] ||
+                    current.priority}
                 </span>
-                <span>{current.priority >= 3 ? "Высокий" : "Обычный"}</span>
               </div>
               <div className="detail-label spaced">SLA</div>
               <div className="sla-card">
@@ -832,50 +922,93 @@ export default function App() {
               </div>
               <div className="assignment-history">
                 <span className="history-line" />
-                История назначений пока недоступна через API
+                {assignmentHistory.length
+                  ? assignmentHistory.slice(0, 5).map((event) => (
+                      <div
+                        className="history-event"
+                        key={`${event.created_at}-${event.actor_id}`}
+                      >
+                        {event.assignee_id
+                          ? `Назначено оператору ${shortId(event.assignee_id)}`
+                          : "Снято назначение"}
+                        <time>{ago(event.created_at)}</time>
+                      </div>
+                    ))
+                  : "История назначений пока пуста"}
               </div>
             </section>
             <section className="detail-section">
               <div className="detail-heading">
                 <div className="detail-label">ТЕГИ</div>
-                <button
-                  className="text-action"
-                  onClick={() =>
-                    setToast(
-                      "Справочник категорий и редактор тегов появятся на следующем этапе.",
-                    )
-                  }
-                >
+                <button className="text-action" onClick={() => void addTag()}>
                   + Добавить
                 </button>
               </div>
               <div className="tag-list">
-                {current.tags.length ? (
-                  current.tags.map((tag) => (
-                    <span className="tag" key={tag}>
-                      {tag}
+                {ticketTags.length ? (
+                  ticketTags.map((tag) => (
+                    <span className="tag removable" key={tag.tag_id}>
+                      {tag.name}
+                      <button
+                        aria-label={`Удалить тег ${tag.name}`}
+                        onClick={() => void removeTag(tag.tag_id)}
+                      >
+                        ×
+                      </button>
                     </span>
                   ))
                 ) : (
                   <span className="muted">Нет тегов</span>
                 )}
               </div>
-              <div className="detail-label spaced">КАТЕГОРИЯ</div>
-              <div className="detail-value muted">
-                {current.category_id
-                  ? shortId(current.category_id)
-                  : "Не выбрана"}
-              </div>
+              <label
+                className="detail-label spaced category-label"
+                htmlFor="ticket-category"
+              >
+                КАТЕГОРИЯ
+              </label>
+              <select
+                id="ticket-category"
+                className="category-select"
+                value={current.category_id || ""}
+                onChange={(event) => void updateCategory(event.target.value)}
+              >
+                <option value="">Не выбрана</option>
+                {categories.map((category) => (
+                  <option
+                    key={category.category_id}
+                    value={category.category_id}
+                  >
+                    {category.name}
+                  </option>
+                ))}
+              </select>
             </section>
             <section className="detail-section history-section">
               <div className="detail-heading">
                 <div className="detail-label">ПРОШЛЫЕ ОБРАЩЕНИЯ</div>
-                <span className="history-count">—</span>
+                <span className="history-count">{previousTickets.length}</span>
               </div>
-              <div className="past-empty">
-                История обращений пользователя пока не предоставляется Operator
-                API.
-              </div>
+              {previousTickets.length ? (
+                previousTickets.slice(0, 5).map((ticket) => (
+                  <button
+                    className="past-ticket"
+                    key={ticket.ticket_id}
+                    onClick={() => {
+                      setFilter("all");
+                      setSelectedId(ticket.ticket_id);
+                      setMobile("conversation");
+                    }}
+                  >
+                    <span>
+                      #{shortId(ticket.ticket_id)} · {statusName[ticket.status]}
+                    </span>
+                    <time>{ago(ticket.updated_at)}</time>
+                  </button>
+                ))
+              ) : (
+                <div className="past-empty">Других обращений пока нет.</div>
+              )}
             </section>
             <section className="detail-section action-section">
               <button
