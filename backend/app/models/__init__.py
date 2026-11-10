@@ -4,6 +4,7 @@ from app.models.ai_handoff import AiHandoff, HandoffReason
 from app.models.ai_run import AiProcessingRun, AiRunStatus
 from app.models.audit import AuditActorType, AuditLog
 from app.models.base import Base
+from app.models.category import TicketCategory
 from app.models.channel import Channel
 from app.models.conversation import (
     Conversation,
@@ -16,6 +17,7 @@ from app.models.message import (
     MessageAuthorType,
     MessageDeliveryState,
 )
+from app.models.note import InternalNote
 from app.models.operator import Operator, OperatorRole
 from app.models.outbox import (
     IntegrationEvent,
@@ -23,6 +25,7 @@ from app.models.outbox import (
     OutboxEvent,
     OutboxStatus,
 )
+from app.models.tag import Tag, TicketTag
 from app.models.ticket import Ticket, TicketStatus
 from app.models.user import CorporateAccount, User, UserIdentity
 
@@ -41,6 +44,7 @@ __all__ = [
     "HandoffReason",
     "IntegrationEvent",
     "IntegrationEventStatus",
+    "InternalNote",
     "Message",
     "MessageAuthorType",
     "MessageDeliveryState",
@@ -49,8 +53,11 @@ __all__ = [
     "OutboxEvent",
     "OutboxStatus",
     "SessionStatus",
+    "Tag",
     "Ticket",
+    "TicketCategory",
     "TicketStatus",
+    "TicketTag",
     "User",
     "UserIdentity",
 ]

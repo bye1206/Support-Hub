@@ -22,7 +22,13 @@ from app.infra.container import Dependencies
 from app.infra.db import DatabaseClient
 from app.infra.redis_client import EVENTS_CHANNEL, RedisClient
 from app.main import create_app
-from app.models import AiHandoff, Conversation, DialogMode, Operator
+from app.models import (
+    AiHandoff,
+    Conversation,
+    DialogMode,
+    Operator,
+    TicketCategory,
+)
 from tests.conftest import TEST_DB_URL
 from tests.fakes import FakeProbe
 from tests.test_ai_runs import _seed_user_message
@@ -249,6 +255,198 @@ async def test_accept_handoff_then_second_attempt_conflicts(
 async def test_unknown_ticket_is_404(client: TestClient) -> None:
     response = client.get(f"/api/v1/operator/tickets/{uuid.uuid4()}", headers=headers())
     assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_create_and_list_note(client: TestClient, seed, session_factory) -> None:
+    _, conversation_id = await seed()
+    _first_ticket_id(client)  # authenticated call auto-provisions the profile
+
+    async with session_factory() as session:
+        operator = (await session.scalars(select(Operator))).one()
+        operator_id = operator.id
+
+    created = client.post(
+        f"/api/v1/operator/conversations/{conversation_id}/notes",
+        json={"body": "Проверить у отдела сети"},
+        headers=headers(),
+    )
+    assert created.status_code == 201
+    assert created.json()["body"] == "Проверить у отдела сети"
+    assert created.json()["author_id"] == str(operator_id)
+
+    listed = client.get(
+        f"/api/v1/operator/conversations/{conversation_id}/notes", headers=headers()
+    )
+    assert listed.status_code == 200
+    notes = listed.json()["notes"]
+    assert len(notes) == 1
+    assert notes[0]["note_id"] == created.json()["note_id"]
+
+
+@pytest.mark.anyio
+async def test_note_is_not_a_message_and_keeps_status(
+    client: TestClient, seed, session_factory
+) -> None:
+    """D-025: a note never reaches the public history and changes no status."""
+    _, conversation_id = await seed()
+    ticket_id = _first_ticket_id(client)
+
+    created = client.post(
+        f"/api/v1/operator/conversations/{conversation_id}/notes",
+        json={"body": "Секретная служебная заметка"},
+        headers=headers(),
+    )
+    assert created.status_code == 201
+
+    card = client.get(f"/api/v1/operator/tickets/{ticket_id}", headers=headers())
+    assert card.status_code == 200
+    body = card.json()
+    texts = [m["text"] for m in body["messages"]]
+    assert "Секретная служебная заметка" not in texts
+    assert [m["author_type"] for m in body["messages"]] == ["USER"]
+    assert body["status"] == "AI_PROCESSING"  # a note must not move the status
+
+
+@pytest.mark.anyio
+async def test_note_unknown_conversation_is_404(client: TestClient) -> None:
+    response = client.post(
+        f"/api/v1/operator/conversations/{uuid.uuid4()}/notes",
+        json={"body": "Текст"},
+        headers=headers(),
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_set_category_and_filter_queue(
+    client: TestClient, seed, session_factory
+) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+
+    async with session_factory() as session:
+        category = TicketCategory(name="Техническая поддержка")
+        session.add(category)
+        await session.commit()
+        category_id = category.id
+
+    set_category = client.patch(
+        f"/api/v1/operator/tickets/{ticket_id}/category",
+        json={"category_id": str(category_id)},
+        headers=headers(),
+    )
+    assert set_category.status_code == 200
+    assert set_category.json()["category_id"] == str(category_id)
+
+    card = client.get(f"/api/v1/operator/tickets/{ticket_id}", headers=headers())
+    assert card.json()["category_id"] == str(category_id)
+
+    filtered = client.get(
+        "/api/v1/operator/tickets",
+        params={"category": str(category_id)},
+        headers=headers(),
+    )
+    assert [t["ticket_id"] for t in filtered.json()["tickets"]] == [ticket_id]
+
+    cleared = client.patch(
+        f"/api/v1/operator/tickets/{ticket_id}/category",
+        json={"category_id": None},
+        headers=headers(),
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["category_id"] is None
+
+
+@pytest.mark.anyio
+async def test_set_unknown_category_is_404(client: TestClient, seed) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+    response = client.patch(
+        f"/api/v1/operator/tickets/{ticket_id}/category",
+        json={"category_id": str(uuid.uuid4())},
+        headers=headers(),
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_add_tag_is_case_insensitive_and_idempotent(
+    client: TestClient, seed
+) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+
+    first = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/tags",
+        json={"name": "VPN"},
+        headers=headers(),
+    )
+    assert first.status_code == 200
+    assert first.json()["name"] == "VPN"
+
+    card = client.get(f"/api/v1/operator/tickets/{ticket_id}", headers=headers())
+    assert card.json()["tags"] == ["VPN"]
+
+    # Same tag with another case: the same row, the link is not duplicated.
+    second = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/tags",
+        json={"name": "vpn"},
+        headers=headers(),
+    )
+    assert second.status_code == 200
+    assert second.json()["tag_id"] == first.json()["tag_id"]
+
+    card = client.get(f"/api/v1/operator/tickets/{ticket_id}", headers=headers())
+    assert card.json()["tags"] == ["VPN"]
+
+
+@pytest.mark.anyio
+async def test_remove_tag(client: TestClient, seed) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+    tag_id = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/tags",
+        json={"name": "Срочный"},
+        headers=headers(),
+    ).json()["tag_id"]
+
+    removed = client.delete(
+        f"/api/v1/operator/tickets/{ticket_id}/tags/{tag_id}", headers=headers()
+    )
+    assert removed.status_code == 204
+
+    card = client.get(f"/api/v1/operator/tickets/{ticket_id}", headers=headers())
+    assert card.json()["tags"] == []
+
+    # Removing the same tag twice -> 409 (no link left).
+    again = client.delete(
+        f"/api/v1/operator/tickets/{ticket_id}/tags/{tag_id}", headers=headers()
+    )
+    assert again.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_queue_filter_by_tag(client: TestClient, seed) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+    added = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/tags",
+        json={"name": "VPN"},
+        headers=headers(),
+    )
+    assert added.status_code == 200
+
+    by_tag = client.get(
+        "/api/v1/operator/tickets", params={"tag": "vpn"}, headers=headers()
+    )
+    assert [t["ticket_id"] for t in by_tag.json()["tickets"]] == [ticket_id]
+    assert by_tag.json()["tickets"][0]["tags"] == ["VPN"]
+
+    other = client.get(
+        "/api/v1/operator/tickets", params={"tag": "другое"}, headers=headers()
+    )
+    assert other.json()["tickets"] == []
 
 
 def test_ws_delivers_published_events(operator_env) -> None:

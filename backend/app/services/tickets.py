@@ -16,12 +16,15 @@ from app.models import (
     AuditActorType,
     Conversation,
     DialogMode,
+    Tag,
     Ticket,
     TicketStatus,
 )
 from app.repositories.ai_runs import AiHandoffRepository
+from app.repositories.categories import TicketCategoryRepository
 from app.repositories.conversations import ConversationRepository
 from app.repositories.operators import OperatorRepository
+from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
 from app.services._tx import unit_of_work
 from app.services.audit import AuditService
@@ -45,6 +48,8 @@ class TicketService:
         audit: AuditService | None = None,
         operators: OperatorRepository | None = None,
         handoffs: AiHandoffRepository | None = None,
+        categories: TicketCategoryRepository | None = None,
+        tags: TagRepository | None = None,
     ) -> None:
         self._tickets = tickets or TicketRepository()
         self._conversations = conversations or ConversationRepository()
@@ -52,6 +57,8 @@ class TicketService:
         self._audit = audit or AuditService()
         self._operators = operators or OperatorRepository()
         self._handoffs = handoffs or AiHandoffRepository()
+        self._categories = categories or TicketCategoryRepository()
+        self._tags = tags or TagRepository()
 
     async def route_incoming(
         self,
@@ -240,6 +247,100 @@ class TicketService:
                 details={"assignee_id": str(assignee_id) if assignee_id else None},
             )
             return ticket
+
+    async def set_category(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        category_id: uuid.UUID | None,
+        actor_id: uuid.UUID,
+    ) -> Ticket:
+        """Set the main category (D-026); null clears it. Own transaction."""
+        async with unit_of_work(session):
+            ticket = await self._tickets.get(session, ticket_id)
+            if ticket is None:
+                raise ValueError(f"Ticket {ticket_id} not found")
+            if category_id is not None:
+                category = await self._categories.get(session, category_id)
+                if category is None:
+                    raise ValueError(f"Category {category_id} not found")
+            await self._tickets.set_category(
+                session, ticket_id, category_id=category_id
+            )
+            await session.refresh(ticket)
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.OPERATOR,
+                action="ticket.category_changed",
+                entity_type="ticket",
+                entity_id=ticket_id,
+                actor_id=actor_id,
+                details={"category_id": str(category_id) if category_id else None},
+            )
+            return ticket
+
+    async def add_tag(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        tag_name: str,
+        actor_id: uuid.UUID,
+    ) -> Tag:
+        """Attach a tag by name (get_or_create, P-23); idempotent.
+        Own transaction."""
+        async with unit_of_work(session):
+            ticket = await self._tickets.get(session, ticket_id)
+            if ticket is None:
+                raise ValueError(f"Ticket {ticket_id} not found")
+            tag = await self._tags.get_or_create_by_name(session, name=tag_name)
+            linked = await self._tags.list_for_ticket(session, ticket_id)
+            if not any(t.id == tag.id for t in linked):
+                await self._tags.link(session, ticket_id=ticket_id, tag=tag)
+                await self._audit.log(
+                    session,
+                    actor_type=AuditActorType.OPERATOR,
+                    action="ticket.tag_added",
+                    entity_type="ticket",
+                    entity_id=ticket_id,
+                    actor_id=actor_id,
+                    details={"tag_id": str(tag.id), "tag_name": tag.name},
+                )
+            return tag
+
+    async def remove_tag(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        tag_id: uuid.UUID,
+        actor_id: uuid.UUID,
+    ) -> None:
+        """Detach a tag; the tag row itself survives (P-23). Own transaction."""
+        async with unit_of_work(session):
+            ticket = await self._tickets.get(session, ticket_id)
+            if ticket is None:
+                raise ValueError(f"Ticket {ticket_id} not found")
+            removed = await self._tags.unlink(
+                session, ticket_id=ticket_id, tag_id=tag_id
+            )
+            if not removed:
+                raise ValueError(f"Tag {tag_id} is not linked to ticket {ticket_id}")
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.OPERATOR,
+                action="ticket.tag_removed",
+                entity_type="ticket",
+                entity_id=ticket_id,
+                actor_id=actor_id,
+                details={"tag_id": str(tag_id)},
+            )
+
+    async def list_tags(
+        self, session: AsyncSession, ticket_id: uuid.UUID
+    ) -> list[Tag]:
+        return await self._tags.list_for_ticket(session, ticket_id)
 
     async def accept_handoff(
         self,

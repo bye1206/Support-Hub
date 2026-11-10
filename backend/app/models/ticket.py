@@ -67,6 +67,12 @@ class Ticket(UuidPkMixin, TimestampMixin, Base):
         ForeignKey("operators.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    # Main category (D-026); directory management is the admin panel (stage 9).
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ticket_categories.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     state_version: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=1, server_default=text("1")
     )

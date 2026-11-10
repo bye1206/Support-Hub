@@ -2,11 +2,11 @@
 
 import uuid
 
-from sqlalchemy import desc, select, update
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.exceptions import StateConflict
-from app.models import Conversation, Ticket, TicketStatus
+from app.models import Conversation, Tag, Ticket, TicketStatus, TicketTag
 
 
 class TicketRepository:
@@ -82,6 +82,8 @@ class TicketRepository:
         status: TicketStatus | None = None,
         assignee_id: uuid.UUID | None = None,
         unassigned_only: bool = False,
+        category_id: uuid.UUID | None = None,
+        tag_name: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[Ticket]:
@@ -99,6 +101,15 @@ class TicketRepository:
             stmt = stmt.where(Ticket.assignee_id == assignee_id)
         if unassigned_only:
             stmt = stmt.where(Ticket.assignee_id.is_(None))
+        if category_id is not None:
+            stmt = stmt.where(Ticket.category_id == category_id)
+        if tag_name is not None:
+            # PK (ticket_id, tag_id) prevents duplicate rows: no DISTINCT.
+            stmt = (
+                stmt.join(TicketTag, TicketTag.ticket_id == Ticket.id)
+                .join(Tag, Tag.id == TicketTag.tag_id)
+                .where(func.lower(Tag.name) == tag_name.lower())
+            )
         return list((await session.scalars(stmt)).all())
 
     async def set_assignee(
@@ -114,6 +125,22 @@ class TicketRepository:
             update(Ticket)
             .where(Ticket.id == ticket_id)
             .values(assignee_id=assignee_id)
+        )
+        if not result.rowcount:  # type: ignore[attr-defined]
+            raise StateConflict(f"Ticket {ticket_id} disappeared")
+
+    async def set_category(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        category_id: uuid.UUID | None,
+    ) -> None:
+        """Set the main category (D-026); plain write, no version bump."""
+        result = await session.execute(
+            update(Ticket)
+            .where(Ticket.id == ticket_id)
+            .values(category_id=category_id)
         )
         if not result.rowcount:  # type: ignore[attr-defined]
             raise StateConflict(f"Ticket {ticket_id} disappeared")

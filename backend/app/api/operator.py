@@ -15,16 +15,20 @@ from pydantic import BaseModel, Field
 
 from app.auth.operators import require_operator
 from app.errors import ApiError
-from app.models import Message, Operator, Ticket, TicketStatus
+from app.models import InternalNote, Message, Operator, Tag, Ticket, TicketStatus
 from app.repositories.messages import MessageRepository
+from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
 from app.services.messages import MessageService
+from app.services.notes import NoteService
 from app.services.tickets import TicketService
 
 router = APIRouter(prefix="/api/v1/operator", tags=["operator"])
 
 
-def _ticket_view(ticket: Ticket, *, user_email: str | None = None) -> dict[str, Any]:
+def _ticket_view(
+    ticket: Ticket, *, tags: list[Tag] | None = None
+) -> dict[str, Any]:
     return {
         "ticket_id": str(ticket.id),
         "conversation_id": str(ticket.conversation_id),
@@ -32,8 +36,20 @@ def _ticket_view(ticket: Ticket, *, user_email: str | None = None) -> dict[str, 
         "status": str(ticket.status),
         "priority": ticket.priority,
         "assignee_id": str(ticket.assignee_id) if ticket.assignee_id else None,
+        "category_id": str(ticket.category_id) if ticket.category_id else None,
+        "tags": [t.name for t in (tags or [])],
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
+    }
+
+
+def _note_view(note: InternalNote) -> dict[str, Any]:
+    return {
+        "note_id": str(note.id),
+        "conversation_id": str(note.conversation_id),
+        "author_id": str(note.author_id),
+        "body": note.body,
+        "created_at": note.created_at.isoformat(),
     }
 
 
@@ -60,6 +76,8 @@ async def list_tickets(
     operator: Annotated[Operator, Depends(require_operator)],
     status: TicketStatus | None = None,
     assignee: str | None = Query(default=None, description="operator id, 'me' or 'unassigned'"),
+    category: str | None = Query(default=None, description="category id"),
+    tag: str | None = Query(default=None, description="tag name, case-insensitive"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
@@ -77,6 +95,14 @@ async def list_tickets(
             raise ApiError(
                 code="VALIDATION_ERROR", message="Bad assignee filter", status_code=422
             ) from exc
+    category_id: uuid.UUID | None = None
+    if category is not None:
+        try:
+            category_id = uuid.UUID(category)
+        except ValueError as exc:
+            raise ApiError(
+                code="VALIDATION_ERROR", message="Bad category filter", status_code=422
+            ) from exc
 
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
@@ -85,10 +111,21 @@ async def list_tickets(
             status=status,
             assignee_id=assignee_id,
             unassigned_only=unassigned_only,
+            category_id=category_id,
+            tag_name=tag,
             limit=limit,
             offset=offset,
         )
-    return {"tickets": [_ticket_view(t) for t in tickets], "limit": limit, "offset": offset}
+        tag_map = await TagRepository().map_for_tickets(
+            session, [t.id for t in tickets]
+        )
+    return {
+        "tickets": [
+            _ticket_view(t, tags=tag_map.get(t.id, [])) for t in tickets
+        ],
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/tickets/{ticket_id}")
@@ -106,8 +143,9 @@ async def get_ticket(
         messages = await MessageRepository().list_for_conversation(
             session, ticket.conversation_id
         )
+        tags = await TicketService().list_tags(session, ticket_id)
     return {
-        **_ticket_view(ticket),
+        **_ticket_view(ticket, tags=tags),
         "messages": [_message_view(m) for m in messages],
     }
 
@@ -220,3 +258,118 @@ async def accept_handoff(
         except ValueError as exc:
             raise _map_value_error(exc) from exc
     return {"conversation_id": str(conversation_id), "mode": "HUMAN_ACTIVE"}
+
+
+class NoteIn(BaseModel):
+    body: str = Field(min_length=1, max_length=10000)
+
+
+@router.post("/conversations/{conversation_id}/notes", status_code=201)
+async def create_note(
+    conversation_id: uuid.UUID,
+    payload: NoteIn,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Internal note (D-025): not a message, no status change, no outbox."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            note = await NoteService().create(
+                session,
+                conversation_id=conversation_id,
+                author_id=operator.id,
+                body=payload.body,
+            )
+        except ValueError as exc:
+            raise _map_value_error(exc) from exc
+    return _note_view(note)
+
+
+@router.get("/conversations/{conversation_id}/notes")
+async def list_notes(
+    conversation_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            notes = await NoteService().list(session, conversation_id)
+        except ValueError as exc:
+            raise _map_value_error(exc) from exc
+    return {"notes": [_note_view(n) for n in notes]}
+
+
+class CategoryIn(BaseModel):
+    # null = clear the category.
+    category_id: uuid.UUID | None = None
+
+
+@router.patch("/tickets/{ticket_id}/category")
+async def set_ticket_category(
+    ticket_id: uuid.UUID,
+    payload: CategoryIn,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Set the main category (D-026); the directory itself is stage 9."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            ticket = await TicketService().set_category(
+                session,
+                ticket_id,
+                category_id=payload.category_id,
+                actor_id=operator.id,
+            )
+        except ValueError as exc:
+            raise _map_value_error(exc) from exc
+    return {
+        "ticket_id": str(ticket.id),
+        "category_id": str(ticket.category_id) if ticket.category_id else None,
+    }
+
+
+class TagIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+@router.post("/tickets/{ticket_id}/tags")
+async def add_ticket_tag(
+    ticket_id: uuid.UUID,
+    payload: TagIn,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Attach a tag by name (get_or_create, case-insensitive, P-23)."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            tag = await TicketService().add_tag(
+                session,
+                ticket_id,
+                tag_name=payload.name,
+                actor_id=operator.id,
+            )
+        except ValueError as exc:
+            raise _map_value_error(exc) from exc
+    return {"tag_id": str(tag.id), "name": tag.name}
+
+
+@router.delete("/tickets/{ticket_id}/tags/{tag_id}", status_code=204)
+async def remove_ticket_tag(
+    ticket_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> None:
+    """Detach a tag; the tag row itself survives (P-23)."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            await TicketService().remove_tag(
+                session, ticket_id, tag_id=tag_id, actor_id=operator.id
+            )
+        except ValueError as exc:
+            raise _map_value_error(exc) from exc
