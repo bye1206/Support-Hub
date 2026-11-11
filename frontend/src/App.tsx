@@ -28,6 +28,7 @@ type Ticket = {
   created_at: string;
   updated_at: string;
   messages?: Message[];
+  session?: { started_at: string; expires_at: string } | null;
 };
 type Message = {
   message_id: string;
@@ -124,6 +125,20 @@ const initials = (value: string) =>
     .map((x) => x[0].toUpperCase())
     .join("") || "SH";
 const shortId = (value: string) => value.slice(0, 8).toUpperCase();
+const fmtDuration = (ms: number) => {
+  const total = Math.floor(ms / 60000);
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return hours > 0 ? `${hours} ч ${minutes} мин` : `${minutes} мин`;
+};
+const sessionLabel = (
+  session: { started_at: string; expires_at: string },
+  now: number,
+) => {
+  const elapsed = Math.max(0, now - new Date(session.started_at).getTime());
+  const remaining = Math.max(0, new Date(session.expires_at).getTime() - now);
+  return `Сессия ${fmtDuration(elapsed)} · осталось ${fmtDuration(remaining)}`;
+};
 const ago = (value: string) => {
   const n = Math.max(
     0,
@@ -206,6 +221,11 @@ export default function App() {
     searchInput = useRef<HTMLInputElement>(null),
     selectedRef = useRef<string | null>(null);
   const ready = Boolean(auth.token);
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTs(Date.now()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem("support-hub-theme", theme);
@@ -723,9 +743,12 @@ export default function App() {
               <div className="header-actions">
                 <span
                   className={`connection-label ${connected ? "" : "offline"}`}
+                  title="Состояние соединения и длительность текущей 3-часовой сессии диалога"
                 >
                   <i />
-                  {connected ? "Live" : "Переподключение"}
+                  {current?.session
+                    ? sessionLabel(current.session, nowTs)
+                    : "Сессия не активна"}
                 </span>
                 <button
                   className="icon-button mobile-details"

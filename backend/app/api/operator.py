@@ -18,9 +18,11 @@ from app.auth.operators import require_operator
 from app.errors import ApiError
 from app.models import (
     AuditLog,
+    ConversationSession,
     InternalNote,
     Message,
     Operator,
+    SessionStatus,
     Tag,
     Ticket,
     TicketStatus,
@@ -167,9 +169,25 @@ async def get_ticket(
             session, ticket.conversation_id
         )
         tags = await TicketService().list_tags(session, ticket_id)
+        active_session = await session.scalar(
+            select(ConversationSession)
+            .where(
+                ConversationSession.conversation_id == ticket.conversation_id,
+                ConversationSession.status == SessionStatus.ACTIVE,
+            )
+            .limit(1)
+        )
     return {
         **_ticket_view(ticket, tags=tags),
         "messages": [_message_view(m) for m in messages],
+        "session": (
+            {
+                "started_at": active_session.started_at.isoformat(),
+                "expires_at": active_session.expires_at.isoformat(),
+            }
+            if active_session
+            else None
+        ),
     }
 
 

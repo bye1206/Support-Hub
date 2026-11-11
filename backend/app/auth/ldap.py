@@ -205,15 +205,16 @@ class LdapAuthenticator:
             if not user_dn:
                 raise LdapAuthFailed("user DN not found (check LDAP_BASE_DN / account)")
 
-            is_admin = self._member_of(conn, settings.ldap_group_admin_dn, user_dn)
-            is_supervisor = (
-                bool(settings.ldap_group_supervisor_dn)
-                and self._member_of(
+            is_admin = self._member_of_any(
+                conn, settings.ldap_group_admin_dn, user_dn
+            )
+            is_supervisor = bool(settings.ldap_group_supervisor_dn) and (
+                self._member_of_any(
                     conn, settings.ldap_group_supervisor_dn, user_dn
                 )
             )
             if settings.ldap_group_operator_dn:
-                is_operator = self._member_of(
+                is_operator = self._member_of_any(
                     conn, settings.ldap_group_operator_dn, user_dn
                 )
             else:
@@ -238,13 +239,22 @@ class LdapAuthenticator:
             source="ldap",
         )
 
-    def _member_of(self, conn: Any, group_dn: str, user_dn: str) -> bool:
-        """Group check from the GROUP side: (member=<userDN>), scope BASE."""
-        if not group_dn:
-            return False
-        escaped_dn = user_dn.replace("\\", "\\\\")
-        conn.search(group_dn, f"(member={escaped_dn})", attributes=["cn"], search_scope="BASE")
-        return len(conn.entries) > 0
+    def _member_of_any(self, conn: Any, group_dns: str, user_dn: str) -> bool:
+        """Group check from the GROUP side: (member=<userDN>), scope BASE.
+
+        ``group_dns`` may hold several DNs separated by ';' (a DN itself
+        contains commas, so ';' is the only safe separator).
+        """
+        for group_dn in (part.strip() for part in group_dns.split(";")):
+            if not group_dn:
+                continue
+            escaped_dn = user_dn.replace("\\", "\\\\")
+            conn.search(
+                group_dn, f"(member={escaped_dn})", attributes=["cn"], search_scope="BASE"
+            )
+            if len(conn.entries) > 0:
+                return True
+        return False
 
 
 class LdapAuthFailed(Exception):

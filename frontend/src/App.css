@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+/* Fonts are bundled locally via @fontsource/inter (no CDN in the corp net). */
 .app-shell {
   --ink: #202b3c;
   --muted: #8993a3;
@@ -148,7 +148,7 @@
   border: 0;
   outline: 0;
   color: #394456;
-  font-size: 12px;
+  font-size: 14px;
   background: transparent;
 }
 .queue-search input::placeholder {
@@ -267,14 +267,14 @@
 .ticket-subject {
   margin-top: 6px;
   color: #344052;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
 }
 .ticket-preview {
   overflow: hidden;
   margin-top: 4px;
   color: #8c95a4;
-  font-size: 11px;
+  font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -590,20 +590,20 @@
 }
 .message-heading strong {
   color: #455064;
-  font-size: 10px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 .message-heading time {
   color: #a4acb8;
-  font-size: 9px;
+  font-size: 11px;
 }
 .message-bubble {
-  padding: 10px 12px;
+  padding: 10px 13px;
   border: 1px solid #eceff3;
   border-radius: 3px 11px 11px 11px;
   background: #fff;
   color: #495466;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -693,7 +693,7 @@
   border-radius: 6px;
   background: transparent;
   color: #8c95a3;
-  font-size: 10px;
+  font-size: 12.5px;
 }
 .composer-tabs button.active {
   background: #fff;
@@ -719,8 +719,9 @@
   border: 0;
   outline: 0;
   color: #3d485a;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.5;
+  background: transparent;
 }
 .composer textarea::placeholder {
   color: #adb4bf;
@@ -1380,10 +1381,10 @@
   font-size: 9px;
 }
 
-<<<<<<< HEAD
 /* Final UI pass: quieter surfaces, clearer hierarchy, and consistent controls. */
 :root {
-  font-family: "DM Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -1637,7 +1638,6 @@ select:focus-visible {
 .app-shell[data-theme="dark"] .ticket-number,
 .app-shell[data-theme="dark"] .ticket-time,
 .app-shell[data-theme="dark"] .message-heading time,
-.app-shell[data-theme="dark"] .message-bubble,
 .app-shell[data-theme="dark"] .conversation-start p,
 .app-shell[data-theme="dark"] .profile-copy span { color: #a0a8b8; }
 .app-shell[data-theme="dark"] .message-bubble { background: #242b38; border-color: #343c4b; }
@@ -1645,7 +1645,16 @@ select:focus-visible {
 .app-shell[data-theme="dark"] .note-card { background: #322d22; border-color: #51452d; color: #e8d9b5; }
 .app-shell[data-theme="dark"] .note-card .message-heading strong { color: #f0dfb9; }
 .app-shell[data-theme="dark"] .composer { background: linear-gradient(transparent, #171b24 16px); }
+.app-shell[data-theme="dark"] .composer-tabs { background: #1b202b; border-color: #333a49; }
 .app-shell[data-theme="dark"] .composer-tabs button { color: #aeb6c4; }
+.app-shell[data-theme="dark"] .composer-tabs button.active {
+  background: #302d48;
+  box-shadow: none;
+}
+.app-shell[data-theme="dark"] .composer textarea { background: transparent; }
+.app-shell[data-theme="dark"] .message-bubble { color: #d9dee8; }
+.app-shell[data-theme="dark"] .message-avatar { background: #2a3140; color: #a8b1c2; }
+.app-shell[data-theme="dark"] .message-avatar.operator { background: #37325c; color: #cfc7ff; }
 .app-shell[data-theme="dark"] .section-label,
 .app-shell[data-theme="dark"] .detail-section,
 .app-shell[data-theme="dark"] .customer-card { border-color: #333a49; }

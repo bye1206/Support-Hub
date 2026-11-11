@@ -31,6 +31,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/operator", tags=["operator-auth"])
 
+_ROLE_RANK = {
+    OperatorRole.OPERATOR: 0,
+    OperatorRole.SUPERVISOR: 1,
+    OperatorRole.ADMIN: 2,
+}
+
+
+def _role_rank(role: OperatorRole) -> int:
+    return _ROLE_RANK[role]
+
 
 def _basic_credentials(authorization: str | None) -> tuple[str, str]:
     if not authorization or not authorization.lower().startswith("basic "):
@@ -121,10 +131,10 @@ async def create_session(
         )
     identity = await _resolve_identity(authenticator, login, password, settings)
 
-    # LDAP groups map to the role (D-047/D-048): admin group -> ADMIN,
-    # optional supervisor group -> SUPERVISOR, otherwise OPERATOR. Without a
-    # supervisor group DN configured, a manually assigned SUPERVISOR survives
-    # the login (the panel is the only way to grant/revoke it).
+    # LDAP groups can only PROMOTE (D-048): admin group -> ADMIN, supervisor
+    # group -> SUPERVISOR, otherwise no change below the current role. Roles
+    # granted in the admin panel survive every login; demotion happens only
+    # in the panel (multiple DNs per group are allowed, ';'-separated).
     role = (
         OperatorRole.ADMIN
         if identity.is_admin
@@ -139,15 +149,8 @@ async def create_session(
                 email=identity.email,
                 display_name=identity.display_name,
             )
-            if operator.role != role:
-                keep_manual_supervisor = (
-                    operator.role == OperatorRole.SUPERVISOR
-                    and not identity.is_admin
-                    and not identity.is_supervisor
-                    and not settings.ldap_group_supervisor_dn
-                )
-                if not keep_manual_supervisor:
-                    operator.role = role
+            if _role_rank(role) > _role_rank(operator.role):
+                operator.role = role
             if identity.display_name and operator.display_name != identity.display_name:
                 operator.display_name = identity.display_name
             await AuditService().log(

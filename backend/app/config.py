@@ -109,6 +109,8 @@ class Settings(BaseSettings):
     # session token (Redis, TTL) is used everywhere else (REST + WS).
     # Group semantics follow the proven module: EMPTY operator group DN =
     # any domain user gets OPERATOR; empty admin group DN = nobody via LDAP.
+    # Several DNs per group are allowed, ';'-separated (commas are part of a
+    # DN). Groups only PROMOTE (D-048); demotion is admin-panel-only.
     ldap_enabled: bool = False
     ldap_host: str = "adldap.corp.tander.ru"
     ldap_port: int = 636  # LDAPS; plain 389 is not used

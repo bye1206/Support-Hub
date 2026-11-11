@@ -213,15 +213,36 @@ async def test_supervisor_group_maps_to_supervisor_role(
     data = _sign_in(client, login="orlov")
     assert data["operator"]["role"] == "SUPERVISOR"
 
-    # Removed from the supervisor group -> back to OPERATOR on re-login.
+    # Removed from the supervisor group -> NO demotion at login (D-048):
+    # roles granted/promoted stay until changed in the admin panel.
     auth_deps.ldap.supervisors.discard("orlov")
     data = _sign_in(client, login="orlov")
-    assert data["operator"]["role"] == "OPERATOR"
+    assert data["operator"]["role"] == "SUPERVISOR"
 
-    # The admin group still wins over the supervisor group.
+    # The admin group still promotes over the supervisor group.
     auth_deps.ldap.users["orlov"] = ("o.orlov@corp.tander.ru", None, True)
     auth_deps.ldap.supervisors.add("orlov")
     data = _sign_in(client, login="orlov")
+    assert data["operator"]["role"] == "ADMIN"
+
+
+@pytest.mark.anyio
+async def test_ldap_never_demotes_panel_granted_admin(
+    client: TestClient, auth_deps, session_factory
+) -> None:
+    """An ADMIN granted in the panel survives logins without admin group (D-048)."""
+    auth_deps.ldap.users["volkov"] = ("v.volkov@corp.tander.ru", None, False)
+    async with session_factory() as session:
+        session.add(
+            Operator(
+                email="v.volkov@corp.tander.ru",
+                display_name="Волков В.В.",
+                role=OperatorRole.ADMIN,
+            )
+        )
+        await session.commit()
+
+    data = _sign_in(client, login="volkov")
     assert data["operator"]["role"] == "ADMIN"
 
 
