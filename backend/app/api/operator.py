@@ -259,6 +259,33 @@ class AssignIn(BaseModel):
     assignee_id: uuid.UUID | None = None
 
 
+class PriorityIn(BaseModel):
+    priority: str = Field(pattern="^(NORMAL|HIGH|URGENT)$")
+
+
+@router.patch("/tickets/{ticket_id}/priority")
+async def set_ticket_priority(
+    ticket_id: uuid.UUID,
+    payload: PriorityIn,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Change the priority (docs/03 #16); any operator may escalate."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            ticket = await TicketService().set_priority(
+                session,
+                ticket_id,
+                priority=payload.priority,
+                actor_id=operator.id,
+            )
+        except ValueError as exc:
+            raise _map_value_error(exc) from exc
+    return {"ticket_id": str(ticket.id), "priority": ticket.priority}
+
+
+
 @router.post("/tickets/{ticket_id}/assign")
 async def assign_ticket(
     ticket_id: uuid.UUID,

@@ -1769,6 +1769,102 @@ select:focus-visible {
 body:has(.app-shell[data-theme="dark"]) {
   background: #171b24;
 }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #2027358f;
+  backdrop-filter: blur(2px);
+}
+.modal {
+  display: grid;
+  gap: 8px;
+  width: min(420px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 50px #20273540;
+}
+.modal.wide {
+  width: min(640px, 94vw);
+}
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #344052;
+}
+.colleague-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+}
+.colleague-row:hover {
+  background: #f5f4ff;
+  border-color: #d8d3f5;
+}
+.colleague-name {
+  display: grid;
+  gap: 1px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #344052;
+}
+.colleague-name .muted {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.modal .past-ticket {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 10px 12px;
+}
+.modal .past-ticket span:first-child {
+  font-size: 13px;
+  font-weight: 600;
+}
+.modal .past-ticket time {
+  color: var(--muted);
+  font-size: 12px;
+}
+.history-meta {
+  font-size: 12.5px;
+}
+.history-messages {
+  display: grid;
+  gap: 14px;
+  padding: 6px 2px;
+}
+.app-shell[data-theme="dark"] .modal {
+  background: #1e2430;
+  border-color: #333a49;
+  box-shadow: 0 18px 50px #00000080;
+}
+.app-shell[data-theme="dark"] .modal-title {
+  color: #d9deea;
+}
+.app-shell[data-theme="dark"] .colleague-row {
+  background: #242b38;
+  border-color: #3a4251;
+}
+.app-shell[data-theme="dark"] .colleague-row:hover {
+  background: #302d48;
+  border-color: #454064;
+}
+.app-shell[data-theme="dark"] .colleague-name {
+  color: #d9deea;
+}
 .app-shell[data-theme="dark"] .session-pop {
   background: #1e2430;
   border-color: #333a49;

@@ -189,7 +189,9 @@ export default function App() {
     [signingIn, setSigningIn] = useState(false),
     [filter, setFilter] = useState<Filter>("all"),
     [colleagues, setColleagues] = useState<Colleague[]>([]),
-    [transferTo, setTransferTo] = useState(""),
+    [transferOpen, setTransferOpen] = useState(false),
+    [historyOpen, setHistoryOpen] = useState(false),
+    [historyDetail, setHistoryDetail] = useState<Ticket | null>(null),
     [sessionOpen, setSessionOpen] = useState(false),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [selectedId, setSelectedId] = useState<string | null>(null),
@@ -543,18 +545,39 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Действие не выполнено");
     }
   };
-  const transfer = async () => {
-    if (!current || !transferTo) return;
+  const transferToPerson = async (targetOperatorId: string) => {
+    if (!current) return;
     try {
       await api(`/tickets/${current.ticket_id}/assign`, auth, {
         method: "POST",
-        body: JSON.stringify({ assignee_id: transferTo }),
+        body: JSON.stringify({ assignee_id: targetOperatorId }),
       });
       setToast("Тикет передан сотруднику");
-      setTransferTo("");
+      setTransferOpen(false);
       await sync();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось передать тикет");
+    }
+  };
+  const setPriority = async (priority: string) => {
+    if (!current) return;
+    try {
+      await api(`/tickets/${current.ticket_id}/priority`, auth, {
+        method: "PATCH",
+        body: JSON.stringify({ priority }),
+      });
+      setToast("Приоритет изменён");
+      await sync();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось изменить приоритет");
+    }
+  };
+  const openHistoryDetail = async (ticketId: string) => {
+    try {
+      const card = await api<Ticket>(`/tickets/${ticketId}`, auth);
+      setHistoryDetail(card);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось открыть обращение");
     }
   };
   if (!ready)
@@ -808,12 +831,38 @@ export default function App() {
                           )}
                         </span>
                         <span className="muted">
-                          Сессия длится ровно 3 часа (D-007)
+                          Сессия диалога длится ровно 3 часа
                         </span>
                       </span>
                     )}
                   </span>
                 )}
+                <button
+                  className="icon-button"
+                  title="Передать сотруднику"
+                  aria-label="Передать сотруднику"
+                  onClick={() => setTransferOpen(true)}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="9" cy="8" r="3.2" />
+                    <path d="M3.5 19c.6-3.2 2.9-5 5.5-5 1 0 2 .3 2.8.8" />
+                    <path d="M15 13h6m0 0-2.5-2.5M21 13l-2.5 2.5" />
+                  </svg>
+                </button>
+                <button
+                  className="icon-button"
+                  title="Прошлые обращения пользователя"
+                  aria-label="Прошлые обращения пользователя"
+                  onClick={() => {
+                    setHistoryDetail(null);
+                    setHistoryOpen(true);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 19V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2Zm0 0a2 2 0 0 0 2 2h13" />
+                    <path d="M12 7.5a4.5 4.5 0 1 1-4.36 5.64M12 7.5H9.5M12 7.5V10" />
+                  </svg>
+                </button>
                 <button
                   className="icon-button mobile-details"
                   title="Открыть детали обращения"
@@ -1188,24 +1237,14 @@ export default function App() {
             <section className="detail-section action-section">
               <div className="transfer-row">
                 <select
-                  aria-label="Передать сотруднику"
-                  value={transferTo}
-                  onChange={(e) => setTransferTo(e.target.value)}
+                  aria-label="Приоритет обращения"
+                  value={current.priority}
+                  onChange={(e) => void setPriority(e.target.value)}
                 >
-                  <option value="">Передать сотруднику…</option>
-                  {colleagues.map((colleague) => (
-                    <option key={colleague.operator_id} value={colleague.operator_id}>
-                      {colleague.display_name || colleague.email}
-                    </option>
-                  ))}
+                  <option value="NORMAL">Приоритет: обычный</option>
+                  <option value="HIGH">Приоритет: высокий</option>
+                  <option value="URGENT">Приоритет: срочный</option>
                 </select>
-                <button
-                  className="quiet-action"
-                  onClick={() => void transfer()}
-                  disabled={!transferTo}
-                >
-                  Передать
-                </button>
               </div>
               <button
                 onClick={() => void action("resolve")}
@@ -1239,6 +1278,120 @@ export default function App() {
           }}
           onClose={() => setAdminOpen(false)}
         />
+      )}
+      {transferOpen && current && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setTransferOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-label="Передать обращение сотруднику"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">Передать обращение сотруднику</div>
+            {colleagues.length ? (
+              colleagues.map((colleague) => (
+                <button
+                  key={colleague.operator_id}
+                  className="colleague-row"
+                  onClick={() => void transferToPerson(colleague.operator_id)}
+                >
+                  <span className="profile-avatar small">
+                    {initials(colleague.display_name || colleague.email)}
+                  </span>
+                  <span className="colleague-name">
+                    {colleague.display_name || colleague.email}
+                    <span className="muted">{colleague.email}</span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="past-empty">Нет активных сотрудников.</div>
+            )}
+            <button className="quiet-action" onClick={() => setTransferOpen(false)}>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+      {historyOpen && current && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setHistoryOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="modal wide"
+            role="dialog"
+            aria-label="Прошлые обращения пользователя"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {historyDetail ? (
+              <>
+                <button
+                  className="quiet-action"
+                  onClick={() => setHistoryDetail(null)}
+                >
+                  ← К списку обращений
+                </button>
+                <div className="modal-title">
+                  #{shortId(historyDetail.ticket_id)} ·{" "}
+                  {statusName[historyDetail.status]}
+                </div>
+                <div className="muted history-meta">
+                  Открыто{" "}
+                  {new Date(historyDetail.created_at).toLocaleString("ru-RU")}
+                  {historyDetail.tags.length
+                    ? ` · ${historyDetail.tags.join(" · ")}`
+                    : ""}
+                  {historyDetail.assignee_id
+                    ? ` · Оператор #${shortId(historyDetail.assignee_id)}`
+                    : ""}
+                </div>
+                <div className="history-messages">
+                  {(historyDetail.messages ?? []).map((message) => (
+                    <div
+                      key={message.message_id}
+                      className={`message ${message.author_type === "OPERATOR" ? "from-operator" : ""}`}
+                    >
+                      <div className="message-content">
+                        <div className="message-bubble">{message.text}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="modal-title">
+                  Прошлые обращения этого пользователя
+                </div>
+                {previousTickets.length ? (
+                  previousTickets.map((ticket) => (
+                    <button
+                      key={ticket.ticket_id}
+                      className="past-ticket"
+                      onClick={() => void openHistoryDetail(ticket.ticket_id)}
+                    >
+                      <span>
+                        #{shortId(ticket.ticket_id)} · {statusName[ticket.status]}
+                      </span>
+                      <span className="muted">
+                        {ticket.tags.length ? ticket.tags.join(" · ") : "Без тегов"}
+                      </span>
+                      <time>{new Date(ticket.updated_at).toLocaleDateString("ru-RU")}</time>
+                    </button>
+                  ))
+                ) : (
+                  <div className="past-empty">Других обращений нет.</div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       )}
       {toast && (
         <div className="toast">

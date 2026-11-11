@@ -85,7 +85,9 @@ async def _seed_open_ticket_for(operator_id: uuid.UUID) -> None:
     try:
         async with factory() as session:
             channel = Channel(
-                channel_type="tag", external_channel_id="seed-chan", display_name="seed"
+                channel_type="tag",
+                external_channel_id=f"seed-chan-{uuid.uuid4().hex[:8]}",
+                display_name="seed",
             )
             session.add(channel)
             await session.flush()
@@ -117,11 +119,16 @@ async def _seed_open_ticket_for(operator_id: uuid.UUID) -> None:
         factory.kw["bind"].engine.dispose()  # type: ignore[attr-defined]
 
 
-async def _add_operator(email: str) -> uuid.UUID:
+async def _add_operator(email: str, max_active: int = 5) -> uuid.UUID:
     factory = _engine()
     try:
         async with factory() as session:
-            operator = Operator(email=email, display_name=email, is_active=True)
+            operator = Operator(
+                email=email,
+                display_name=email,
+                is_active=True,
+                max_active_tickets=max_active,
+            )
             session.add(operator)
             await session.commit()
             return operator.id
@@ -173,3 +180,19 @@ def test_no_operators_leaves_ticket_unassigned(client: TestClient) -> None:
     assignee, tags = asyncio.run(_ticket_state(uuid.UUID(body["ticket_id"])))
     assert assignee is None
     assert "support-dm" in tags
+
+
+def test_auto_assign_skips_operators_at_limit(client: TestClient) -> None:
+    """Both operators are at their max_active_tickets: the ticket stays unassigned."""
+    busy_a = asyncio.run(_add_operator("lim-a@corp.test", max_active=1))
+    busy_b = asyncio.run(_add_operator("lim-b@corp.test", max_active=1))
+    asyncio.run(_seed_open_ticket_for(busy_a))
+    asyncio.run(_seed_open_ticket_for(busy_b))
+
+    body = client.post(
+        "/api/v1/integrations/tag/messages",
+        json=payload(post_id="post-auto-2"),
+        headers=headers(),
+    ).json()
+    assignee, _ = asyncio.run(_ticket_state(uuid.UUID(body["ticket_id"])))
+    assert assignee is None

@@ -2,7 +2,7 @@
 
 import enum
 
-from sqlalchemy import Boolean, CheckConstraint, Enum, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Enum, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UuidPkMixin
@@ -36,3 +36,9 @@ class Operator(UuidPkMixin, TimestampMixin, Base):
         default=OperatorRole.OPERATOR,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Auto-assignment capacity (D-031 refinement): the auto-router skips an
+    # operator whose non-closed ticket count reached this limit. Manual
+    # assignment/transfer may still exceed it (overflow lands with priority).
+    max_active_tickets: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5, server_default=text("5")
+    )

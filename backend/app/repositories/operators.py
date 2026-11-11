@@ -58,7 +58,8 @@ class OperatorRepository:
 
     async def least_loaded_active(self, session: AsyncSession) -> Operator | None:
         """Active operator with the fewest non-closed assigned tickets
-        (D-031 auto-assignment); oldest profile wins ties (deterministic)."""
+        (D-031 auto-assignment); oldest profile wins ties (deterministic).
+        Operators who reached their max_active_tickets limit are skipped."""
         load = (
             select(Ticket.assignee_id.label("assignee_id"), func.count().label("load"))
             .where(
@@ -71,7 +72,10 @@ class OperatorRepository:
         stmt = (
             select(Operator)
             .outerjoin(load, load.c.assignee_id == Operator.id)
-            .where(Operator.is_active.is_(True))
+            .where(
+                Operator.is_active.is_(True),
+                func.coalesce(load.c.load, 0) < Operator.max_active_tickets,
+            )
             .order_by(func.coalesce(load.c.load, 0), Operator.created_at, Operator.id)
             .limit(1)
         )

@@ -304,6 +304,32 @@ class TicketService:
             )
             return ticket
 
+    async def set_priority(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        priority: str,
+        actor_id: uuid.UUID,
+    ) -> Ticket:
+        """Set the priority (NORMAL/HIGH/URGENT); operator action. Own tx."""
+        async with unit_of_work(session):
+            ticket = await self._tickets.get(session, ticket_id)
+            if ticket is None:
+                raise ValueError(f"Ticket {ticket_id} not found")
+            await self._tickets.set_priority(session, ticket_id, priority=priority)
+            await session.refresh(ticket)
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.OPERATOR,
+                action="ticket.priority_changed",
+                entity_type="ticket",
+                entity_id=ticket_id,
+                actor_id=actor_id,
+                details={"priority": priority},
+            )
+            return ticket
+
     async def set_category(
         self,
         session: AsyncSession,

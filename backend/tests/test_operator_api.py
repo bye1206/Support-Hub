@@ -150,6 +150,49 @@ async def test_admin_routes_enforce_confirmed_roles(
 
 
 @pytest.mark.anyio
+async def test_admin_sets_operator_limit(
+    client: TestClient, session_factory
+) -> None:
+    assert client.get("/api/v1/operator/me", headers=headers()).status_code == 200
+    target = client.get(
+        "/api/v1/operator/me", headers=headers(email="op2@corp.test")
+    ).json()["operator_id"]
+
+    async with session_factory() as session:
+        operator = (
+            await session.scalars(
+                select(Operator).where(Operator.email == "op1@corp.test")
+            )
+        ).first()
+        assert operator is not None
+        operator.role = OperatorRole.ADMIN
+        await session.commit()
+
+    denied = client.patch(
+        f"/api/v1/admin/operators/{target}/limit",
+        json={"max_active_tickets": 3},
+        headers=headers(email="op2@corp.test"),
+    )
+    assert denied.status_code == 403
+
+    updated = client.patch(
+        f"/api/v1/admin/operators/{target}/limit",
+        json={"max_active_tickets": 3},
+        headers=headers(),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["max_active_tickets"] == 3
+
+    listing = client.get("/api/v1/admin/operators", headers=headers())
+    row = next(
+        row
+        for row in listing.json()["operators"]
+        if row["operator_id"] == target
+    )
+    assert row["max_active_tickets"] == 3
+
+
+@pytest.mark.anyio
 async def test_admin_deactivation_disables_unassigned_operator(
     client: TestClient, session_factory
 ) -> None:
@@ -508,6 +551,30 @@ async def test_set_unknown_category_is_404(client: TestClient, seed) -> None:
         headers=headers(),
     )
     assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_set_priority_and_validate(client: TestClient, seed) -> None:
+    await seed()
+    ticket_id = _first_ticket_id(client)
+
+    changed = client.patch(
+        f"/api/v1/operator/tickets/{ticket_id}/priority",
+        json={"priority": "URGENT"},
+        headers=headers(),
+    )
+    assert changed.status_code == 200
+    assert changed.json()["priority"] == "URGENT"
+
+    card = client.get(f"/api/v1/operator/tickets/{ticket_id}", headers=headers())
+    assert card.json()["priority"] == "URGENT"
+
+    bad = client.patch(
+        f"/api/v1/operator/tickets/{ticket_id}/priority",
+        json={"priority": "CRITICAL"},
+        headers=headers(),
+    )
+    assert bad.status_code == 422
 
 
 @pytest.mark.anyio

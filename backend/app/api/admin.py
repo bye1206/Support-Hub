@@ -31,6 +31,10 @@ class OperatorDeactivation(BaseModel):
     reassign_to: uuid.UUID | None = None
 
 
+class OperatorLimit(BaseModel):
+    max_active_tickets: int = Field(ge=1, le=100)
+
+
 class CategoryWrite(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     parent_id: uuid.UUID | None = None
@@ -40,13 +44,14 @@ class TagWrite(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
 
-def _operator_view(operator: Operator) -> dict[str, str | bool | None]:
+def _operator_view(operator: Operator) -> dict[str, str | bool | int | None]:
     return {
         "operator_id": str(operator.id),
         "email": operator.email,
         "display_name": operator.display_name,
         "role": operator.role.value,
         "is_active": operator.is_active,
+        "max_active_tickets": operator.max_active_tickets,
         "created_at": operator.created_at.isoformat(),
     }
 
@@ -72,7 +77,7 @@ async def overview(
 async def list_operators(
     request: Request,
     _actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
-) -> dict[str, list[dict[str, str | bool | None]]]:
+) -> dict[str, list[dict[str, str | bool | int | None]]]:
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         operators = (
@@ -87,12 +92,12 @@ async def list_categories(
     _actor: Annotated[
         Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
     ],
-) -> dict[str, list[dict[str, str | bool | None]]]:
+) -> dict[str, list[dict[str, str | bool | int | None]]]:
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         rows = (
             await session.scalars(
-                select(TicketCategory).order_by(TicketCategory.name, TicketCategory.id)
+                select(Operator).order_by(Operator.created_at)
             )
         ).all()
     return {
@@ -419,7 +424,7 @@ async def update_operator_role(
     payload: RoleUpdate,
     request: Request,
     actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
-) -> dict[str, str | bool | None]:
+) -> dict[str, str | bool | int | None]:
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
         target = await session.scalar(
@@ -462,13 +467,47 @@ async def update_operator_role(
     return result
 
 
+@router.patch("/operators/{operator_id}/limit")
+async def update_operator_limit(
+    operator_id: uuid.UUID,
+    payload: OperatorLimit,
+    request: Request,
+    actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
+) -> dict[str, str | bool | int | None]:
+    """Set the per-operator auto-assignment capacity (D-031 refinement)."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        target = await session.scalar(
+            select(Operator).where(Operator.id == operator_id).with_for_update()
+        )
+        if target is None:
+            raise ApiError(
+                "OPERATOR_NOT_FOUND", "Operator was not found", status_code=404
+            )
+        previous = target.max_active_tickets
+        target.max_active_tickets = payload.max_active_tickets
+        session.add(
+            AuditLog(
+                actor_type=AuditActorType.OPERATOR,
+                actor_id=actor.id,
+                action="operator.limit_changed",
+                entity_type="operator",
+                entity_id=target.id,
+                details={"from": previous, "to": payload.max_active_tickets},
+            )
+        )
+        await session.flush()
+        result = _operator_view(target)
+    return result
+
+
 @router.post("/operators/{operator_id}/deactivate")
 async def deactivate_operator(
     operator_id: uuid.UUID,
     payload: OperatorDeactivation,
     request: Request,
     actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
-) -> dict[str, str | bool | None]:
+) -> dict[str, str | bool | int | None]:
     """Deactivate only after active assignments have a valid destination."""
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():

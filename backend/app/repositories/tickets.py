@@ -156,3 +156,19 @@ class TicketRepository:
         )
         if not result.rowcount:  # type: ignore[attr-defined]
             raise StateConflict(f"Ticket {ticket_id} disappeared")
+
+    async def set_priority(
+        self,
+        session: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        priority: str,
+    ) -> None:
+        """Set the priority (docs/03 #16); plain write, no version bump."""
+        result = await session.execute(
+            update(Ticket)
+            .where(Ticket.id == ticket_id)
+            .values(priority=priority)
+        )
+        if not result.rowcount:  # type: ignore[attr-defined]
+            raise StateConflict(f"Ticket {ticket_id} disappeared")
