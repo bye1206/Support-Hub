@@ -104,6 +104,37 @@ class Settings(BaseSettings):
         default="support-hub", validation_alias=AliasChoices("OIDC_CLIENT_ID", "KEYCLOAK_CLIENT_ID")
     )
 
+    # Stage 7 pass 2: direct LDAP/AD authentication (D-047, owner-proven
+    # module). HTTP Basic on POST /api/v1/operator/auth/session only; the
+    # session token (Redis, TTL) is used everywhere else (REST + WS).
+    # Group semantics follow the proven module: EMPTY operator group DN =
+    # any domain user gets OPERATOR; empty admin group DN = nobody via LDAP.
+    ldap_enabled: bool = False
+    ldap_host: str = "adldap.corp.tander.ru"
+    ldap_port: int = 636  # LDAPS; plain 389 is not used
+    ldap_domain: str = "corp.tander.ru"
+    ldap_base_dn: str = "DC=corp,DC=tander,DC=ru"
+    ldap_group_operator_dn: str = Field(
+        default="", validation_alias=AliasChoices("LDAP_GROUP_OPERATOR_DN", "LDAP_GROUP_DN")
+    )
+    ldap_group_admin_dn: str = ""
+    # ldap3 2.9 constraint: timeout MUST be int (float raises TypeError).
+    ldap_timeout_seconds: int = 10
+    # Corp proxy serves a certificate chain without the intermediate in the
+    # standard bundles: verification is off until the corp root CA is added
+    # (set ldap_ca_cert_file to enforce CERT_REQUIRED).
+    ldap_tls_verify: bool = False
+    ldap_ca_cert_file: str = ""
+    # Break-glass account for AD outages (stored in the vault, not in git).
+    auth_local_user: str = ""
+    auth_local_pass: str = ""
+    auth_session_ttl_seconds: int = 43200  # 12 h; fixed TTL, re-login after
+    auth_cache_ttl_seconds: int = 900  # successful logins, in-process
+    # Rate limiter key is the LOGIN (proxy-safe behind nginx without
+    # trusting X-Forwarded-For): N failed sign-ins for one account -> 403.
+    auth_rate_limit_max: int = 20
+    auth_rate_limit_window_seconds: int = 300
+
 
 @lru_cache
 def get_settings() -> Settings:

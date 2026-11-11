@@ -1379,3 +1379,12 @@
   text-align: left;
   font-size: 9px;
 }
+
+.auth-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+  font-size: 13px;
+}

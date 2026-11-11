@@ -14,6 +14,7 @@ dependencies = [
     "redis>=5",
     "minio>=7.2",
     "anyio>=4",
+    "ldap3>=2.9,<5",
 ]
 
 [project.optional-dependencies]
@@ -47,7 +48,7 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["minio", "minio.*", "arq", "arq.*"]
+module = ["minio", "minio.*", "arq", "arq.*", "ldap3", "ldap3.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

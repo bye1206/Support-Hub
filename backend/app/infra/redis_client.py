@@ -20,6 +20,15 @@ class RedisClient:
         """Fan out one realtime event to all connected workspace clients."""
         await self._client.publish(EVENTS_CHANNEL, payload)
 
+    async def set_string(self, key: str, value: str, ttl_seconds: int) -> None:
+        await self._client.set(key, value, ex=ttl_seconds)
+
+    async def get_string(self, key: str) -> str | None:
+        return await self._client.get(key)
+
+    async def delete_key(self, key: str) -> None:
+        await self._client.delete(key)
+
     def pubsub(self) -> Any:
         """Fresh pub/sub subscription for a WebSocket client (caller closes)."""
         return self._client.pubsub(ignore_subscribe_messages=True)
