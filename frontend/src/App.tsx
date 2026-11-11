@@ -44,6 +44,11 @@ type Note = {
   body: string;
   created_at: string;
 };
+type Colleague = {
+  operator_id: string;
+  display_name: string | null;
+  email: string;
+};
 type Credentials = { token: string };
 type Category = { category_id: string; name: string; parent_id: string | null };
 type AssignmentEvent = {
@@ -131,14 +136,6 @@ const fmtDuration = (ms: number) => {
   const minutes = total % 60;
   return hours > 0 ? `${hours} ч ${minutes} мин` : `${minutes} мин`;
 };
-const sessionLabel = (
-  session: { started_at: string; expires_at: string },
-  now: number,
-) => {
-  const elapsed = Math.max(0, now - new Date(session.started_at).getTime());
-  const remaining = Math.max(0, new Date(session.expires_at).getTime() - now);
-  return `Сессия ${fmtDuration(elapsed)} · осталось ${fmtDuration(remaining)}`;
-};
 const ago = (value: string) => {
   const n = Math.max(
     0,
@@ -191,6 +188,9 @@ export default function App() {
     [draftPassword, setDraftPassword] = useState(""),
     [signingIn, setSigningIn] = useState(false),
     [filter, setFilter] = useState<Filter>("all"),
+    [colleagues, setColleagues] = useState<Colleague[]>([]),
+    [transferTo, setTransferTo] = useState(""),
+    [sessionOpen, setSessionOpen] = useState(false),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [selectedId, setSelectedId] = useState<string | null>(null),
     [current, setCurrent] = useState<Ticket | null>(null),
@@ -226,6 +226,12 @@ export default function App() {
     const id = window.setInterval(() => setNowTs(Date.now()), 30000);
     return () => window.clearInterval(id);
   }, []);
+  useEffect(() => {
+    if (!ready) return;
+    void api<{ colleagues: Colleague[] }>("/colleagues", auth)
+      .then((data) => setColleagues(data.colleagues ?? []))
+      .catch(() => setColleagues([]));
+  }, [auth, ready]);
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem("support-hub-theme", theme);
@@ -537,6 +543,20 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Действие не выполнено");
     }
   };
+  const transfer = async () => {
+    if (!current || !transferTo) return;
+    try {
+      await api(`/tickets/${current.ticket_id}/assign`, auth, {
+        method: "POST",
+        body: JSON.stringify({ assignee_id: transferTo }),
+      });
+      setToast("Тикет передан сотруднику");
+      setTransferTo("");
+      await sync();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось передать тикет");
+    }
+  };
   if (!ready)
     return (
       <main className="auth-screen">
@@ -590,15 +610,24 @@ export default function App() {
         <div className="brand-mark small">
           s<span>•</span>
         </div>
-        <button className="rail-button active" title="Рабочее место">
-          ▦
+        <button className="rail-button active" title="Очередь обращений" aria-label="Очередь обращений">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 13h4l2 3h6l2-3h4" />
+            <path d="M5 5h14l2 8v6H3v-6l2-8Z" />
+          </svg>
         </button>
-        <button className="rail-button" disabled title="База знаний">
-          ▧
+        <button className="rail-button" disabled title="База знаний (скоро)" aria-label="База знаний">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 19V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2Zm0 0a2 2 0 0 0 2 2h13" />
+            <path d="M9 8h6M9 11h6" />
+          </svg>
         </button>
         {operatorRole !== "OPERATOR" && (
           <button className={`rail-button ${adminOpen ? "active" : ""}`} title="Панель управления" aria-label="Открыть панель управления" onClick={() => setAdminOpen((value) => !value)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 14 5l3-.2.8 2.8 2.5 1.7-1 2.8 1 2.8-2.5 1.7L17 20.2 14 20l-2 2-2-2-3 .2-.8-2.8-2.5-1.7 1-2.8-1-2.8 2.5-1.7L7 4.8 10 5l2-2Z" /><circle cx="12" cy="13" r="3" /></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-2.6-1.5L14 2.6h-4L9.5 5a7.6 7.6 0 0 0-2.6 1.5l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 2.6 1.5l.5 2.7h4l.5-2.7a7.6 7.6 0 0 0 2.6-1.5l2.3 1 2-3.4-2-1.5Z" />
+            </svg>
           </button>
         )}
         <div className="rail-spacer" />
@@ -685,6 +714,13 @@ export default function App() {
                 <span className="priority-mark">
                   {t.priority === "HIGH" || t.priority === "URGENT" ? "↑" : ""}
                 </span>
+                {t.assignee_id && (
+                  <span
+                    className={`mine-pill ${t.assignee_id === operatorId ? "mine" : "taken"}`}
+                  >
+                    {t.assignee_id === operatorId ? "Моё" : "В работе"}
+                  </span>
+                )}
               </div>
             </button>
           ))}
@@ -741,15 +777,43 @@ export default function App() {
                 </span>
               </div>
               <div className="header-actions">
-                <span
-                  className={`connection-label ${connected ? "" : "offline"}`}
-                  title="Состояние соединения и длительность текущей 3-часовой сессии диалога"
-                >
-                  <i />
-                  {current?.session
-                    ? sessionLabel(current.session, nowTs)
-                    : "Сессия не активна"}
-                </span>
+                {current?.session && (
+                  <span className="session-wrap">
+                    <button
+                      className={`icon-button ${sessionOpen ? "open" : ""}`}
+                      title="Длительность сессии диалога"
+                      aria-label="Длительность сессии диалога"
+                      onClick={() => setSessionOpen((value) => !value)}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3.5 2" />
+                      </svg>
+                    </button>
+                    {sessionOpen && (
+                      <span className="session-pop">
+                        <strong>Сессия диалога</strong>
+                        <span>
+                          Идёт{" "}
+                          {fmtDuration(
+                            nowTs -
+                              new Date(current.session.started_at).getTime(),
+                          )}
+                        </span>
+                        <span>
+                          Осталось{" "}
+                          {fmtDuration(
+                            new Date(current.session.expires_at).getTime() -
+                              nowTs,
+                          )}
+                        </span>
+                        <span className="muted">
+                          Сессия длится ровно 3 часа (D-007)
+                        </span>
+                      </span>
+                    )}
+                  </span>
+                )}
                 <button
                   className="icon-button mobile-details"
                   title="Открыть детали обращения"
@@ -1122,6 +1186,27 @@ export default function App() {
               )}
             </section>
             <section className="detail-section action-section">
+              <div className="transfer-row">
+                <select
+                  aria-label="Передать сотруднику"
+                  value={transferTo}
+                  onChange={(e) => setTransferTo(e.target.value)}
+                >
+                  <option value="">Передать сотруднику…</option>
+                  {colleagues.map((colleague) => (
+                    <option key={colleague.operator_id} value={colleague.operator_id}>
+                      {colleague.display_name || colleague.email}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="quiet-action"
+                  onClick={() => void transfer()}
+                  disabled={!transferTo}
+                >
+                  Передать
+                </button>
+              </div>
               <button
                 onClick={() => void action("resolve")}
                 disabled={

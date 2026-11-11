@@ -1,5 +1,7 @@
 """Channel registry (Tag today): get-or-create by (channel_type, external id)."""
 
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +10,9 @@ from app.models import Channel
 
 
 class ChannelRepository:
+    async def get(self, session: AsyncSession, channel_id: uuid.UUID) -> Channel | None:
+        return await session.get(Channel, channel_id)
+
     async def get_by_external_id(
         self, session: AsyncSession, *, channel_type: str, external_channel_id: str
     ) -> Channel | None:

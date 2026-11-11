@@ -2,11 +2,11 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Operator, OperatorRole
+from app.models import Operator, OperatorRole, Ticket, TicketStatus
 
 
 class OperatorRepository:
@@ -55,3 +55,24 @@ class OperatorRepository:
     async def list_active(self, session: AsyncSession) -> list[Operator]:
         stmt = select(Operator).where(Operator.is_active.is_(True))
         return list((await session.scalars(stmt)).all())
+
+    async def least_loaded_active(self, session: AsyncSession) -> Operator | None:
+        """Active operator with the fewest non-closed assigned tickets
+        (D-031 auto-assignment); oldest profile wins ties (deterministic)."""
+        load = (
+            select(Ticket.assignee_id.label("assignee_id"), func.count().label("load"))
+            .where(
+                Ticket.assignee_id.is_not(None),
+                Ticket.status.not_in((TicketStatus.RESOLVED, TicketStatus.CLOSED)),
+            )
+            .group_by(Ticket.assignee_id)
+            .subquery()
+        )
+        stmt = (
+            select(Operator)
+            .outerjoin(load, load.c.assignee_id == Operator.id)
+            .where(Operator.is_active.is_(True))
+            .order_by(func.coalesce(load.c.load, 0), Operator.created_at, Operator.id)
+            .limit(1)
+        )
+        return (await session.scalars(stmt)).first()

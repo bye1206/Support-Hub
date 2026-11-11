@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.repositories.categories import TicketCategoryRepository
 from app.repositories.messages import MessageRepository
+from app.repositories.operators import OperatorRepository
 from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
 from app.services.messages import MessageService
@@ -358,6 +359,27 @@ async def list_categories(
                 "parent_id": str(category.parent_id) if category.parent_id else None,
             }
             for category in categories
+        ]
+    }
+
+
+@router.get("/colleagues")
+async def list_colleagues(
+    operator: Annotated[Operator, Depends(require_operator)], request: Request
+) -> dict[str, Any]:
+    """Active staff for ticket transfer selection (docs/06 §6)."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        colleagues = await OperatorRepository().list_active(session)
+    return {
+        "colleagues": [
+            {
+                "operator_id": str(colleague.id),
+                "display_name": colleague.display_name,
+                "email": colleague.email,
+            }
+            for colleague in colleagues
+            if colleague.id != operator.id
         ]
     }
 

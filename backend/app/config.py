@@ -69,6 +69,16 @@ class Settings(BaseSettings):
             "SUPPORT_HUB_TO_BOT_TOKEN", "SUPPORT_HUB_TO_BOT_TOKEN_LOCAL"
         ),
     )
+    # D-031 auto-assignment: a new ticket goes to the active operator with the
+    # fewest non-closed tickets (least-loaded). Off by default; enabled in dev.
+    auto_assign_enabled: bool = Field(
+        default=False, validation_alias=AliasChoices("AUTO_ASSIGN_ENABLED")
+    )
+    # P-28 (PROPOSED): tag each new ticket with the source Tag channel /
+    # service name (the bot already passes channel_name). Off by default.
+    auto_tag_from_channel: bool = Field(
+        default=False, validation_alias=AliasChoices("AUTO_TAG_FROM_CHANNEL")
+    )
 
     # Stage 6: RAG Assistant Gateway (real contract D-043, owner-provided
     # 2026-11-10): synchronous HTTP, X-API-Key + X-User-Id headers, no

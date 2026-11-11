@@ -1684,6 +1684,80 @@ select:focus-visible {
     animation-iteration-count: 1 !important;
   }
 }
+.rail-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.session-wrap {
+  position: relative;
+  display: inline-grid;
+}
+.session-wrap .icon-button.open {
+  color: #6558d3;
+}
+.session-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 3px;
+  min-width: 210px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 30px #2027351f;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.session-pop strong {
+  font-size: 12.5px;
+  color: #455064;
+}
+.session-pop .muted {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.mine-pill {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.mine-pill.mine {
+  background: #efedff;
+  color: #5b4fc0;
+}
+.mine-pill.taken {
+  background: #eef2f6;
+  color: #6b7686;
+}
+.transfer-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.transfer-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: #3d485a;
+  font: inherit;
+  font-size: 13px;
+}
+.transfer-row .quiet-action {
+  padding: 8px 12px;
+}
 .auth-error {
   margin: 0;
   padding: 10px 14px;
@@ -1691,4 +1765,28 @@ select:focus-visible {
   background: rgba(220, 38, 38, 0.12);
   color: #b91c1c;
   font-size: 13px;
+}
+body:has(.app-shell[data-theme="dark"]) {
+  background: #171b24;
+}
+.app-shell[data-theme="dark"] .session-pop {
+  background: #1e2430;
+  border-color: #333a49;
+  box-shadow: 0 10px 30px #00000059;
+}
+.app-shell[data-theme="dark"] .session-pop strong {
+  color: #d9deea;
+}
+.app-shell[data-theme="dark"] .mine-pill.mine {
+  background: #302d48;
+  color: #d5d0ff;
+}
+.app-shell[data-theme="dark"] .mine-pill.taken {
+  background: #2a3140;
+  color: #a8b1c2;
+}
+.app-shell[data-theme="dark"] .transfer-row select {
+  background: #242b38;
+  border-color: #3a4251;
+  color: #e4e7ee;
 }

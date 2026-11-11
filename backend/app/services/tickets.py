@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.repositories.ai_runs import AiHandoffRepository
 from app.repositories.categories import TicketCategoryRepository
+from app.repositories.channels import ChannelRepository
 from app.repositories.conversations import ConversationRepository
 from app.repositories.operators import OperatorRepository
 from app.repositories.tags import TagRepository
@@ -50,6 +51,7 @@ class TicketService:
         handoffs: AiHandoffRepository | None = None,
         categories: TicketCategoryRepository | None = None,
         tags: TagRepository | None = None,
+        channels: ChannelRepository | None = None,
     ) -> None:
         self._tickets = tickets or TicketRepository()
         self._conversations = conversations or ConversationRepository()
@@ -59,6 +61,7 @@ class TicketService:
         self._handoffs = handoffs or AiHandoffRepository()
         self._categories = categories or TicketCategoryRepository()
         self._tags = tags or TagRepository()
+        self._channels = channels or ChannelRepository()
 
     async def route_incoming(
         self,
@@ -87,6 +90,8 @@ class TicketService:
                 entity_id=ticket.id,
                 details={"conversation_id": str(conversation.id)},
             )
+            await self._auto_assign(session, ticket)
+            await self._auto_tag_from_channel(session, ticket, channel_id)
             return RoutingResult(
                 conversation=conversation,
                 ticket=ticket,
@@ -129,6 +134,57 @@ class TicketService:
             ticket=last,
             conversation_created=False,
             ticket_reopened=False,
+        )
+
+    async def _auto_assign(self, session: AsyncSession, ticket: Ticket) -> None:
+        """D-031 auto-assignment (least-loaded active operator), flag-gated.
+        Caller's transaction; no candidates -> the ticket stays unassigned."""
+        from app.config import get_settings
+
+        if not get_settings().auto_assign_enabled:
+            return
+        assignee = await self._operators.least_loaded_active(session)
+        if assignee is None:
+            return
+        await self._tickets.set_assignee(
+            session, ticket.id, assignee_id=assignee.id
+        )
+        await session.refresh(ticket)
+        await self._audit.log(
+            session,
+            actor_type=AuditActorType.SYSTEM,
+            action="ticket.assigned",
+            entity_type="ticket",
+            entity_id=ticket.id,
+            details={"assignee_id": str(assignee.id), "auto": True},
+        )
+
+    async def _auto_tag_from_channel(
+        self, session: AsyncSession, ticket: Ticket, channel_id: uuid.UUID | None
+    ) -> None:
+        """Tag the new ticket with the source channel/service name (P-28),
+        flag-gated. Caller's transaction; idempotent for a new ticket."""
+        from app.config import get_settings
+
+        if channel_id is None or not get_settings().auto_tag_from_channel:
+            return
+        channel = await self._channels.get(session, channel_id)
+        if channel is None or not channel.display_name:
+            return
+        tag = await self._tags.get_or_create_by_name(
+            session, name=channel.display_name
+        )
+        linked = await self._tags.list_for_ticket(session, ticket.id)
+        if any(t.id == tag.id for t in linked):
+            return
+        await self._tags.link(session, ticket_id=ticket.id, tag=tag)
+        await self._audit.log(
+            session,
+            actor_type=AuditActorType.SYSTEM,
+            action="ticket.tag_added",
+            entity_type="ticket",
+            entity_id=ticket.id,
+            details={"tag_id": str(tag.id), "tag_name": tag.name, "auto": True},
         )
 
     async def resolve(
