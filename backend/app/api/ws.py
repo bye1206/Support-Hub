@@ -1,20 +1,23 @@
 """Workspace WebSocket: realtime events for operator clients (docs/06 §7).
 
-Auth (P-22, PROPOSED): dev bearer token via `?token=` (the browser WebSocket
-API cannot set headers). Transport: Redis pub/sub channel `support_hub:events`
-- events are published by the outbox dispatcher AFTER commit (at-least-once),
-clients reconcile missed updates over REST on reconnect (docs/06 §7).
+Auth (D-047): LDAP session token via `?token=` (the browser WebSocket API
+cannot set headers); dev bearer token still works in local mode. Transport:
+Redis pub/sub channel `support_hub:events` - events are published by the
+outbox dispatcher AFTER commit (at-least-once), clients reconcile missed
+updates over REST on reconnect (docs/06 §7).
 
-Pass 2 (Keycloak): replace the token check with the OIDC flow - the
-connection handler stays the same.
+Keycloak OIDC (Q-09) remains a future option: replace the token check only.
 """
 
 import asyncio
+import hmac
 import json
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
+from app.auth.sessions import OperatorSessions
 from app.config import get_settings
 from app.infra.redis_client import EVENTS_CHANNEL
 
@@ -25,19 +28,25 @@ router = APIRouter(tags=["ws"])
 KEEPALIVE_SECONDS = 20.0
 
 
-def _authorized(token: str | None) -> bool:
-    """Dev-token check; Keycloak replaces this in pass 2 (P-22)."""
-    import hmac
-
+async def _authorized(token: str | None, deps: Any) -> bool:
+    """Session token (D-047) or dev token in local mode; fail-closed."""
     settings = get_settings()
-    if settings.keycloak_issuer_url or token is None:
-        return False  # fail-closed: real OIDC is not wired yet
-    return hmac.compare_digest(token, settings.operator_dev_token)
+    if token is None or settings.keycloak_issuer_url:
+        return False
+    sessions = OperatorSessions(deps.redis, settings.auth_session_ttl_seconds)
+    try:
+        if await sessions.resolve(token) is not None:
+            return True
+    except Exception:  # noqa: BLE001 - redis trouble: dev path decides below
+        logger.warning("WS session lookup failed (redis unavailable?)")
+    return not settings.ldap_enabled and hmac.compare_digest(
+        token, settings.operator_dev_token
+    )
 
 
 @router.websocket("/ws")
 async def workspace_ws(websocket: WebSocket, token: str | None = Query(default=None)) -> None:
-    if not _authorized(token):
+    if not await _authorized(token, websocket.app.state.deps):
         # 1008: policy violation (unauthorized) per RFC 6455.
         await websocket.close(code=1008)
         return

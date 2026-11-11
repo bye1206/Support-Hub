@@ -132,7 +132,11 @@ async def create_category(
             )
         )
         if duplicate:
-            raise ApiError("CATEGORY_EXISTS", "A category with this name already exists at this level", status_code=409)
+            raise ApiError(
+                "CATEGORY_EXISTS",
+                "A category with this name already exists at this level",
+                status_code=409,
+            )
         category = TicketCategory(name=name, parent_id=payload.parent_id)
         session.add(category)
         await session.flush()
@@ -178,7 +182,11 @@ async def update_category(
             cursor = parent.id
             while cursor is not None:
                 if cursor == category.id:
-                    raise ApiError("CATEGORY_CYCLE", "Moving this category would create a cycle", status_code=409)
+                    raise ApiError(
+                        "CATEGORY_CYCLE",
+                        "Moving this category would create a cycle",
+                        status_code=409,
+                    )
                 cursor = parents.get(cursor)
         duplicate = await session.scalar(
             select(TicketCategory.id).where(
@@ -188,8 +196,15 @@ async def update_category(
             )
         )
         if duplicate:
-            raise ApiError("CATEGORY_EXISTS", "A category with this name already exists at this level", status_code=409)
-        previous = {"name": category.name, "parent_id": str(category.parent_id) if category.parent_id else None}
+            raise ApiError(
+                "CATEGORY_EXISTS",
+                "A category with this name already exists at this level",
+                status_code=409,
+            )
+        previous = {
+            "name": category.name,
+            "parent_id": str(category.parent_id) if category.parent_id else None,
+        }
         category.name, category.parent_id = name, payload.parent_id
         session.add(AuditLog(
             actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
@@ -224,7 +239,11 @@ async def deactivate_category(
             )
         )
         if children:
-            raise ApiError("CATEGORY_HAS_CHILDREN", "Deactivate child categories first", status_code=409)
+            raise ApiError(
+                "CATEGORY_HAS_CHILDREN",
+                "Deactivate child categories first",
+                status_code=409,
+            )
         category.is_active = False
         session.add(AuditLog(
             actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
@@ -251,7 +270,11 @@ async def activate_category(
         if category.parent_id is not None:
             parent = await session.get(TicketCategory, category.parent_id)
             if parent is None or not parent.is_active:
-                raise ApiError("INVALID_PARENT", "Activate the parent category first", status_code=409)
+                raise ApiError(
+                    "INVALID_PARENT",
+                    "Activate the parent category first",
+                    status_code=409,
+                )
         category.is_active = True
         session.add(AuditLog(
             actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
@@ -270,7 +293,12 @@ async def list_tags(
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         tags = (await session.scalars(select(Tag).order_by(func.lower(Tag.name)))).all()
-    return {"tags": [{"tag_id": str(tag.id), "name": tag.name, "is_active": tag.is_active} for tag in tags]}
+    return {
+        "tags": [
+            {"tag_id": str(tag.id), "name": tag.name, "is_active": tag.is_active}
+            for tag in tags
+        ]
+    }
 
 
 @router.post("/tags", status_code=201)
@@ -286,7 +314,9 @@ async def create_tag(
         raise ApiError("INVALID_TAG", "Tag name cannot be blank", status_code=422)
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
-        existing = await session.scalar(select(Tag).where(func.lower(Tag.name) == name.lower()).with_for_update())
+        existing = await session.scalar(
+            select(Tag).where(func.lower(Tag.name) == name.lower()).with_for_update()
+        )
         if existing:
             if existing.is_active:
                 raise ApiError("TAG_EXISTS", "A tag with this name already exists", status_code=409)
@@ -462,7 +492,9 @@ async def deactivate_operator(
             )
             if admins == 1:
                 raise ApiError(
-                    "LAST_ADMIN", "The last active administrator cannot be deactivated", status_code=409
+                    "LAST_ADMIN",
+                    "The last active administrator cannot be deactivated",
+                    status_code=409,
                 )
         active_tickets = (
             await session.scalars(

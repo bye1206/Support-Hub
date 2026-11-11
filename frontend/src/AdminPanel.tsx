@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import "./AdminPanel.css";
 
 type Role = "OPERATOR" | "SUPERVISOR" | "ADMIN";
-type Auth = { token: string; email: string };
+type Auth = { token: string };
 type Operator = {
   operator_id: string;
   email: string;
@@ -30,7 +30,6 @@ async function adminApi<T>(path: string, auth: Auth, init?: RequestInit): Promis
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       Authorization: `Bearer ${auth.token}`,
-      "X-Operator-Email": auth.email,
     },
   });
   if (!response.ok) {
@@ -48,6 +47,7 @@ const roleLabels: Record<Role, string> = {
 
 export function AdminPanel({
   auth,
+  selfId,
   role,
   theme,
   onToggleTheme,
@@ -55,6 +55,7 @@ export function AdminPanel({
   onClose,
 }: {
   auth: Auth;
+  selfId: string;
   role: Role;
   theme: Theme;
   onToggleTheme: () => void;
@@ -101,7 +102,7 @@ export function AdminPanel({
         body: JSON.stringify({ role: nextRole }),
       });
       setOperators((items) => items.map((item) => item.operator_id === updated.operator_id ? updated : item));
-      if (updated.email.toLowerCase() === auth.email.toLowerCase())
+      if (updated.operator_id === selfId)
         onRoleChange(updated.role);
       setError("");
     } catch (cause) {
@@ -213,7 +214,7 @@ export function AdminPanel({
             {section === "operators" && role === "ADMIN" && <>
               <p className="admin-intro">Профили и роли операторов</p>
               <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Действие</th></tr></thead><tbody>
-                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`admin-state ${operator.is_active ? "active" : "inactive"}`}>{operator.is_active ? "Активен" : "Отключён"}</span></td><td>{operator.is_active && operator.email.toLowerCase() !== auth.email.toLowerCase() && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
+                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`admin-state ${operator.is_active ? "active" : "inactive"}`}>{operator.is_active ? "Активен" : "Отключён"}</span></td><td>{operator.is_active && operator.operator_id !== selfId && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
               </tbody></table></div>
             </>}
             {section === "categories" && <>

@@ -43,7 +43,7 @@ type Note = {
   body: string;
   created_at: string;
 };
-type Credentials = { token: string; email: string; name: string };
+type Credentials = { token: string };
 type Category = { category_id: string; name: string; parent_id: string | null };
 type AssignmentEvent = {
   actor_id: string | null;
@@ -110,15 +110,10 @@ const statusName: Record<Status, string> = {
 };
 const readCredentials = (): Credentials => {
   try {
-    return (
-      JSON.parse(sessionStorage.getItem("support-hub-operator") || "null") || {
-        token: "",
-        email: "",
-        name: "",
-      }
-    );
+    const parsed = JSON.parse(sessionStorage.getItem("support-hub-operator") || "null");
+    return typeof parsed?.token === "string" ? { token: parsed.token } : { token: "" };
   } catch {
-    return { token: "", email: "", name: "" };
+    return { token: "" };
   }
 };
 const initials = (value: string) =>
@@ -155,7 +150,6 @@ async function api<T>(
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       Authorization: `Bearer ${auth.token}`,
-      "X-Operator-Email": auth.email,
       ...init?.headers,
     },
   });
@@ -174,10 +168,13 @@ async function api<T>(
 }
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() =>
+    typeof localStorage !== "undefined" &&
     localStorage.getItem("support-hub-theme") === "dark" ? "dark" : "light",
   ),
     [auth, setAuth] = useState<Credentials>(readCredentials),
-    [draftAuth, setDraftAuth] = useState<Credentials>(readCredentials),
+    [draftLogin, setDraftLogin] = useState(""),
+    [draftPassword, setDraftPassword] = useState(""),
+    [signingIn, setSigningIn] = useState(false),
     [filter, setFilter] = useState<Filter>("all"),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [selectedId, setSelectedId] = useState<string | null>(null),
@@ -185,6 +182,7 @@ export default function App() {
     [operatorId, setOperatorId] = useState(""),
     [operatorRole, setOperatorRole] = useState<"OPERATOR" | "SUPERVISOR" | "ADMIN">("OPERATOR"),
     [adminOpen, setAdminOpen] = useState(false),
+    [profile, setProfile] = useState<OperatorProfile | null>(null),
     [categories, setCategories] = useState<Category[]>([]),
     [assignmentHistory, setAssignmentHistory] = useState<AssignmentEvent[]>([]),
     [previousTickets, setPreviousTickets] = useState<Ticket[]>([]),
@@ -207,8 +205,9 @@ export default function App() {
     history = useRef<HTMLDivElement>(null),
     searchInput = useRef<HTMLInputElement>(null),
     selectedRef = useRef<string | null>(null);
-  const ready = Boolean(auth.token && auth.email);
+  const ready = Boolean(auth.token);
   useEffect(() => {
+    if (typeof localStorage === "undefined") return;
     localStorage.setItem("support-hub-theme", theme);
   }, [theme]);
   useEffect(() => {
@@ -305,10 +304,11 @@ export default function App() {
   useEffect(() => {
     if (ready)
       void api<OperatorProfile>("/me", auth)
-        .then((profile) => {
-          setOperatorId(profile.operator_id);
-          if (["OPERATOR", "SUPERVISOR", "ADMIN"].includes(profile.role))
-            setOperatorRole(profile.role as "OPERATOR" | "SUPERVISOR" | "ADMIN");
+        .then((data) => {
+          setProfile(data);
+          setOperatorId(data.operator_id);
+          if (["OPERATOR", "SUPERVISOR", "ADMIN"].includes(data.role))
+            setOperatorRole(data.role as "OPERATOR" | "SUPERVISOR" | "ADMIN");
         })
         .catch((e) =>
           setError(
@@ -397,10 +397,33 @@ export default function App() {
     ),
     [current?.messages, notes],
   );
-  const saveAuth = (e: FormEvent) => {
+  const signIn = async (e: FormEvent) => {
     e.preventDefault();
-    sessionStorage.setItem("support-hub-operator", JSON.stringify(draftAuth));
-    setAuth(draftAuth);
+    if (!draftLogin.trim() || !draftPassword || signingIn) return;
+    setSigningIn(true);
+    try {
+      // UTF-8 Basic: domain logins/passwords may contain non-Latin letters.
+      const bytes = new TextEncoder().encode(
+        `${draftLogin.trim()}:${draftPassword}`,
+      );
+      let binary = "";
+      bytes.forEach((b) => {
+        binary += String.fromCharCode(b);
+      });
+      const data = await api<{ session_token: string }>("/auth/session", { token: "" }, {
+        method: "POST",
+        headers: { Authorization: `Basic ${btoa(binary)}` },
+      });
+      const next = { token: data.session_token };
+      sessionStorage.setItem("support-hub-operator", JSON.stringify(next));
+      setAuth(next);
+      setDraftPassword("");
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Вход не выполнен");
+    } finally {
+      setSigningIn(false);
+    }
   };
   const send = async (e: FormEvent) => {
     e.preventDefault();
@@ -504,51 +527,39 @@ export default function App() {
           <p className="eyebrow">SUPPORT HUB · OPERATOR</p>
           <h1>Рабочее место оператора</h1>
           <p className="auth-copy">
-            Войдите в dev-среду API оператора. Данные доступны только в текущей
-            сессии браузера.
+            Войдите доменным логином и паролем. Данные доступны только в
+            текущей сессии браузера.
           </p>
-          <form className="auth-form" onSubmit={saveAuth}>
+          <form className="auth-form" onSubmit={signIn}>
             <label>
-              Email оператора
+              Доменный логин
               <input
-                type="email"
+                autoComplete="username"
                 required
-                placeholder="operator@company.ru"
-                value={draftAuth.email}
-                onChange={(e) =>
-                  setDraftAuth({ ...draftAuth, email: e.target.value })
-                }
+                placeholder="ivanov"
+                value={draftLogin}
+                onChange={(e) => setDraftLogin(e.target.value)}
               />
             </label>
             <label>
-              Имя
-              <input
-                placeholder="Анна Иванова"
-                value={draftAuth.name}
-                onChange={(e) =>
-                  setDraftAuth({ ...draftAuth, name: e.target.value })
-                }
-              />
-            </label>
-            <label>
-              Dev bearer token
+              Пароль
               <input
                 type="password"
                 required
                 autoComplete="current-password"
-                placeholder="Значение OPERATOR_DEV_TOKEN"
-                value={draftAuth.token}
-                onChange={(e) =>
-                  setDraftAuth({ ...draftAuth, token: e.target.value })
-                }
+                placeholder="Пароль доменной учётной записи"
+                value={draftPassword}
+                onChange={(e) => setDraftPassword(e.target.value)}
               />
             </label>
-            <button className="primary-button">
-              Открыть очередь <span>→</span>
+            {error && <p className="auth-error">{error}</p>}
+            <button className="primary-button" disabled={signingIn}>
+              {signingIn ? "Проверяем…" : "Открыть очередь"} <span>→</span>
             </button>
           </form>
           <p className="auth-footnote">
-            Keycloak OIDC пока не подключён в backend (P-22).
+            Авторизация через LDAP/AD (D-047); сессия закрывается по истечении
+            срока.
           </p>
         </section>
       </main>
@@ -572,7 +583,7 @@ export default function App() {
         )}
         <div className="rail-spacer" />
         <button className="avatar rail-avatar">
-          {initials(auth.name || auth.email)}
+          {initials(profile?.display_name || profile?.email || "SH")}
         </button>
       </aside>
       <aside
@@ -667,18 +678,19 @@ export default function App() {
         </div>
         <footer className="queue-footer">
           <div className="profile-avatar">
-            {initials(auth.name || auth.email)}
+            {initials(profile?.display_name || profile?.email || "SH")}
           </div>
           <div className="profile-copy">
-            <strong>{auth.name || "Оператор"}</strong>
-            <span>{auth.email}</span>
+            <strong>{profile?.display_name || "Оператор"}</strong>
+            <span>{profile?.email}</span>
           </div>
           <button
             className="icon-button"
             title="Выйти"
             onClick={() => {
               sessionStorage.removeItem("support-hub-operator");
-              setAuth({ token: "", email: "", name: "" });
+              setAuth({ token: "" });
+              setProfile(null);
             }}
           >
             ↪
@@ -814,7 +826,7 @@ export default function App() {
                                 ? "Пользователь " + shortId(current.user_id)
                                 : m.author_type.toUpperCase() === "AI"
                                   ? "AI-помощник"
-                                  : auth.name || "Оператор"}
+                                  : profile?.display_name || "Оператор"}
                             </strong>
                             <time>
                               {new Intl.DateTimeFormat("ru-RU", {
@@ -1109,6 +1121,7 @@ export default function App() {
       {adminOpen && operatorRole !== "OPERATOR" && (
         <AdminPanel
           auth={auth}
+          selfId={operatorId}
           role={operatorRole}
           theme={theme}
           onToggleTheme={() => setTheme((value) => value === "dark" ? "light" : "dark")}

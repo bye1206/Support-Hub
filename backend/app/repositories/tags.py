@@ -31,12 +31,12 @@ class TagRepository:
             async with session.begin_nested():
                 session.add(tag)
                 await session.flush()
-        except IntegrityError:
+        except IntegrityError as err:
             existing = await self.get_by_name(session, name)
             if existing is None:
                 raise
             if not existing.is_active:
-                raise ValueError(f"Tag {name} is inactive")
+                raise ValueError(f"Tag {name} is inactive") from err
             return existing
         return tag
 

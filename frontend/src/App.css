@@ -1380,6 +1380,7 @@
   font-size: 9px;
 }
 
+<<<<<<< HEAD
 /* Final UI pass: quieter surfaces, clearer hierarchy, and consistent controls. */
 :root {
   font-family: "DM Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1673,4 +1674,12 @@ select:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+.auth-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+  font-size: 13px;
 }

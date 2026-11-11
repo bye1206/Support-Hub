@@ -7,6 +7,7 @@ corporate network provides its own storage (see deploy/docker-compose.yml).
 
 from dataclasses import dataclass
 
+from app.auth.ldap import LdapAuthenticator
 from app.config import Settings
 from app.infra.db import DatabaseClient
 from app.infra.redis_client import RedisClient
@@ -16,6 +17,8 @@ from app.infra.redis_client import RedisClient
 class Dependencies:
     db: DatabaseClient
     redis: RedisClient
+    # LDAP authenticator (D-047); tests inject a fake via this field.
+    ldap: LdapAuthenticator | None = None
 
     async def close(self) -> None:
         await self.db.close()
@@ -26,4 +29,5 @@ def build_dependencies(settings: Settings) -> Dependencies:
     return Dependencies(
         db=DatabaseClient(settings.database_url),
         redis=RedisClient(settings.redis_url),
+        ldap=LdapAuthenticator(settings),
     )

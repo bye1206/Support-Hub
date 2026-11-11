@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.models import AuditActorType, AuditLog, Operator, OperatorRole
 
 
-async def bootstrap(email: str, keycloak_sub: str) -> None:
+async def bootstrap(email: str, keycloak_sub: str | None = None) -> None:
     engine = create_async_engine(get_settings().database_url)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     try:
@@ -36,13 +36,16 @@ async def bootstrap(email: str, keycloak_sub: str) -> None:
                 select(Operator)
                 .where(
                     func.lower(Operator.email) == email.lower(),
-                    Operator.keycloak_sub == keycloak_sub,
                     Operator.is_active.is_(True),
+                    *( [Operator.keycloak_sub == keycloak_sub] if keycloak_sub else [] ),
                 )
                 .with_for_update()
             )
             if operator is None:
-                raise SystemExit("No active profile matches both email and Keycloak subject.")
+                raise SystemExit(
+                    "No active profile matches the email"
+                    + (" and Keycloak subject." if keycloak_sub else ".")
+                )
             operator.role = OperatorRole.ADMIN
             session.add(
                 AuditLog(
@@ -62,9 +65,13 @@ async def bootstrap(email: str, keycloak_sub: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--email", required=True, help="Existing operator email")
-    parser.add_argument("--keycloak-sub", required=True, help="Verified Keycloak subject")
+    parser.add_argument(
+        "--keycloak-sub",
+        default=None,
+        help="Verified Keycloak subject (omit for LDAP-based profiles)",
+    )
     args = parser.parse_args()
-    asyncio.run(bootstrap(args.email.strip(), args.keycloak_sub.strip()))
+    asyncio.run(bootstrap(args.email.strip(), (args.keycloak_sub or "").strip() or None))
 
 
 if __name__ == "__main__":
