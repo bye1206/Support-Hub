@@ -25,11 +25,14 @@ from app.integrations.tag.dispatch import RoutingOutboxHandler
 from app.main import create_app
 from app.models import (
     AiHandoff,
+    AuditLog,
     Conversation,
     DialogMode,
     Operator,
+    OperatorRole,
     OutboxEvent,
     OutboxStatus,
+    Ticket,
     TicketCategory,
 )
 from app.services.outbox import LoggingOutboxHandler, OutboxService
@@ -94,6 +97,129 @@ def test_missing_token_is_unauthorized(client: TestClient) -> None:
     response = client.get("/api/v1/operator/tickets")
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "OPERATOR_UNAUTHORIZED"
+
+
+def test_admin_routes_enforce_confirmed_roles(client: TestClient, session_factory) -> None:
+    denied = client.get("/api/v1/admin/overview", headers=headers())
+    assert denied.status_code == 403
+
+    # The test operator was auto-provisioned as OPERATOR. Promote it directly
+    # here to isolate the route authorization contract from the UI workflow.
+    async def promote() -> None:
+        async with session_factory() as session:
+            operator = (
+                await session.scalars(
+                    select(Operator).where(Operator.email == "op1@corp.test")
+                )
+            ).first()
+            assert operator is not None
+            operator.role = OperatorRole.SUPERVISOR
+            await session.commit()
+
+    asyncio.run(promote())
+    overview = client.get("/api/v1/admin/overview", headers=headers())
+    assert overview.status_code == 200
+    assert "tickets" in overview.json()
+    assert client.get("/api/v1/admin/operators", headers=headers()).status_code == 403
+    assert client.get("/api/v1/admin/audit", headers=headers()).status_code == 200
+    parent = client.post(
+        "/api/v1/admin/categories", headers=headers(), json={"name": "Доступы"}
+    )
+    assert parent.status_code == 201
+    child = client.post(
+        "/api/v1/admin/categories",
+        headers=headers(),
+        json={"name": "VPN", "parent_id": parent.json()["category_id"]},
+    )
+    assert child.status_code == 201
+    cycle = client.put(
+        f"/api/v1/admin/categories/{parent.json()['category_id']}",
+        headers=headers(),
+        json={"name": "Доступы", "parent_id": child.json()["category_id"]},
+    )
+    assert cycle.status_code == 409
+    assert client.post(
+        f"/api/v1/admin/categories/{child.json()['category_id']}/deactivate",
+        headers=headers(),
+    ).status_code == 200
+    assert all(
+        row["category_id"] != child.json()["category_id"]
+        for row in client.get("/api/v1/operator/categories", headers=headers()).json()["categories"]
+    )
+
+
+def test_admin_deactivation_disables_unassigned_operator(
+    client: TestClient, session_factory
+) -> None:
+    assert client.get("/api/v1/operator/me", headers=headers()).status_code == 200
+    target = client.get(
+        "/api/v1/operator/me", headers=headers(email="op2@corp.test")
+    ).json()["operator_id"]
+
+    async def promote() -> str:
+        async with session_factory() as session:
+            operator = (
+                await session.scalars(
+                    select(Operator).where(Operator.email == "op1@corp.test")
+                )
+            ).first()
+            assert operator is not None
+            operator.role = OperatorRole.ADMIN
+            await session.commit()
+            return str(operator.id)
+
+    target_url = asyncio.run(promote())
+    response = client.post(
+        f"/api/v1/admin/operators/{target}/deactivate",
+        headers=headers(),
+        json={},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_active"] is False
+    assert target_url != target  # Distinct staff identities were provisioned.
+    assert client.get(
+        "/api/v1/operator/me", headers=headers(email="op2@corp.test")
+    ).status_code == 403
+
+
+@pytest.mark.anyio
+async def test_deactivation_requires_and_records_ticket_reassignment(
+    client: TestClient, session_factory, seed
+) -> None:
+    await seed()
+    ticket_id = uuid.UUID(_first_ticket_id(client))
+    admin_id = uuid.UUID(client.get("/api/v1/operator/me", headers=headers()).json()["operator_id"])
+    target_id = uuid.UUID(client.get("/api/v1/operator/me", headers=headers(email="op2@corp.test")).json()["operator_id"])
+    replacement_id = uuid.UUID(client.get("/api/v1/operator/me", headers=headers(email="op3@corp.test")).json()["operator_id"])
+
+    async with session_factory() as session:
+        admin = await session.get(Operator, admin_id)
+        ticket = await session.get(Ticket, ticket_id)
+        assert admin is not None and ticket is not None
+        admin.role = OperatorRole.ADMIN
+        ticket.assignee_id = target_id
+        await session.commit()
+
+    missing_replacement = client.post(
+        f"/api/v1/admin/operators/{target_id}/deactivate", headers=headers(), json={}
+    )
+    assert missing_replacement.status_code == 409
+
+    result = client.post(
+        f"/api/v1/admin/operators/{target_id}/deactivate",
+        headers=headers(),
+        json={"reassign_to": str(replacement_id)},
+    )
+    assert result.status_code == 200
+    async with session_factory() as session:
+        ticket = await session.get(Ticket, ticket_id)
+        assert ticket is not None and ticket.assignee_id == replacement_id
+        assert await session.scalar(
+            select(AuditLog.id).where(
+                AuditLog.action == "ticket.reassigned",
+                AuditLog.entity_id == ticket_id,
+            )
+        ) is not None
 
 
 def test_wrong_token_is_unauthorized(client: TestClient) -> None:

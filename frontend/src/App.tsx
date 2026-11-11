@@ -5,8 +5,10 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import "./App.css";
+import { AdminPanel } from "./AdminPanel";
 type Status =
   | "NEW"
   | "OPEN"
@@ -63,6 +65,14 @@ type Filter =
   | "working"
   | "waiting"
   | "resolved";
+type Theme = "light" | "dark";
+function ThemeIcon({ theme }: { theme: Theme }) {
+  return theme === "dark" ? (
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.3A8.4 8.4 0 0 1 8.7 3.8 8.5 8.5 0 1 0 20.2 15.3Z" /><path d="M16.5 3.5v4M14.5 5.5h4" /></svg>
+  ) : (
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg>
+  );
+}
 const filters: { key: Filter; label: string; icon: string }[] = [
   { key: "all", label: "Все обращения", icon: "▤" },
   { key: "mine", label: "Мои", icon: "◉" },
@@ -72,6 +82,18 @@ const filters: { key: Filter; label: string; icon: string }[] = [
   { key: "waiting", label: "Ожидают пользователя", icon: "◌" },
   { key: "resolved", label: "Решённые", icon: "✓" },
 ];
+function QueueIcon({ name }: { name: Filter }) {
+  const shapes: Record<Filter, ReactNode> = {
+    all: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 9h8M8 13h8M8 17h5" /></>,
+    mine: <><circle cx="12" cy="8" r="3" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></>,
+    unassigned: <><circle cx="9" cy="8" r="3" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0M17 8h4m-2-2v4" /></>,
+    new: <path d="m12 3 1.5 6.5L20 12l-6.5 1.5L12 20l-1.5-6.5L4 12l6.5-2.5L12 3Z" />,
+    working: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    waiting: <><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z" /></>,
+    resolved: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 9" /></>,
+  };
+  return <svg viewBox="0 0 24 24" aria-hidden="true">{shapes[name]}</svg>;
+}
 const priorityName: Record<string, string> = {
   LOW: "Низкий",
   NORMAL: "Обычный",
@@ -151,13 +173,18 @@ async function api<T>(
   return response.json() as Promise<T>;
 }
 export default function App() {
-  const [auth, setAuth] = useState<Credentials>(readCredentials),
+  const [theme, setTheme] = useState<Theme>(() =>
+    localStorage.getItem("support-hub-theme") === "dark" ? "dark" : "light",
+  ),
+    [auth, setAuth] = useState<Credentials>(readCredentials),
     [draftAuth, setDraftAuth] = useState<Credentials>(readCredentials),
     [filter, setFilter] = useState<Filter>("all"),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [selectedId, setSelectedId] = useState<string | null>(null),
     [current, setCurrent] = useState<Ticket | null>(null),
     [operatorId, setOperatorId] = useState(""),
+    [operatorRole, setOperatorRole] = useState<"OPERATOR" | "SUPERVISOR" | "ADMIN">("OPERATOR"),
+    [adminOpen, setAdminOpen] = useState(false),
     [categories, setCategories] = useState<Category[]>([]),
     [assignmentHistory, setAssignmentHistory] = useState<AssignmentEvent[]>([]),
     [previousTickets, setPreviousTickets] = useState<Ticket[]>([]),
@@ -178,11 +205,27 @@ export default function App() {
   const socket = useRef<WebSocket | null>(null),
     retry = useRef<number>(),
     history = useRef<HTMLDivElement>(null),
+    searchInput = useRef<HTMLInputElement>(null),
     selectedRef = useRef<string | null>(null);
   const ready = Boolean(auth.token && auth.email);
   useEffect(() => {
+    localStorage.setItem("support-hub-theme", theme);
+  }, [theme]);
+  useEffect(() => {
     selectedRef.current = selectedId;
   }, [selectedId]);
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInput.current?.focus();
+      }
+      if (event.key === "Escape" && document.activeElement === searchInput.current)
+        searchInput.current?.blur();
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
   const loadQueue = useCallback(async () => {
     if (!ready) return;
     const q = new URLSearchParams({ limit: "100" });
@@ -262,7 +305,11 @@ export default function App() {
   useEffect(() => {
     if (ready)
       void api<OperatorProfile>("/me", auth)
-        .then((profile) => setOperatorId(profile.operator_id))
+        .then((profile) => {
+          setOperatorId(profile.operator_id);
+          if (["OPERATOR", "SUPERVISOR", "ADMIN"].includes(profile.role))
+            setOperatorRole(profile.role as "OPERATOR" | "SUPERVISOR" | "ADMIN");
+        })
         .catch((e) =>
           setError(
             e instanceof Error ? e.message : "Не удалось определить оператора",
@@ -332,6 +379,24 @@ export default function App() {
           .includes(q),
     );
   }, [search, tickets]);
+  const timeline = useMemo(
+    () => [
+      ...(current?.messages ?? []).map((item) => ({
+        kind: "message" as const,
+        createdAt: item.created_at,
+        item,
+      })),
+      ...notes.map((item) => ({
+        kind: "note" as const,
+        createdAt: item.created_at,
+        item,
+      })),
+    ].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    ),
+    [current?.messages, notes],
+  );
   const saveAuth = (e: FormEvent) => {
     e.preventDefault();
     sessionStorage.setItem("support-hub-operator", JSON.stringify(draftAuth));
@@ -489,7 +554,7 @@ export default function App() {
       </main>
     );
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${details ? "" : "details-collapsed"}`} data-theme={theme}>
       <aside className="rail">
         <div className="brand-mark small">
           s<span>•</span>
@@ -500,6 +565,11 @@ export default function App() {
         <button className="rail-button" disabled title="База знаний">
           ▧
         </button>
+        {operatorRole !== "OPERATOR" && (
+          <button className={`rail-button ${adminOpen ? "active" : ""}`} title="Панель управления" aria-label="Открыть панель управления" onClick={() => setAdminOpen((value) => !value)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 14 5l3-.2.8 2.8 2.5 1.7-1 2.8 1 2.8-2.5 1.7L17 20.2 14 20l-2 2-2-2-3 .2-.8-2.8-2.5-1.7 1-2.8-1-2.8 2.5-1.7L7 4.8 10 5l2-2Z" /><circle cx="12" cy="13" r="3" /></svg>
+          </button>
+        )}
         <div className="rail-spacer" />
         <button className="avatar rail-avatar">
           {initials(auth.name || auth.email)}
@@ -526,6 +596,7 @@ export default function App() {
         <div className="queue-search">
           <span>⌕</span>
           <input
+            ref={searchInput}
             aria-label="Поиск обращений"
             placeholder="Поиск по обращениям"
             value={search}
@@ -540,7 +611,7 @@ export default function App() {
               className={`nav-item ${filter === item.key ? "selected" : ""}`}
               onClick={() => setFilter(item.key)}
             >
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-icon"><QueueIcon name={item.key} /></span>
               <span>{item.label}</span>
               {item.key === "all" && (
                 <span className="nav-count">{tickets.length}</span>
@@ -646,17 +717,22 @@ export default function App() {
                 </span>
                 <button
                   className="icon-button mobile-details"
-                  onClick={() => setMobile("details")}
+                  title="Открыть детали обращения"
+                  aria-label="Открыть детали обращения"
+                  onClick={() => { setDetails(true); setMobile("details"); }}
                 >
-                  ⓘ
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" /></svg>
                 </button>
-                <button
-                  className="icon-button"
-                  title="Свернуть детали"
-                  onClick={() => setDetails((v) => !v)}
-                >
-                  •••
-                </button>
+                <button className="icon-button theme-toggle" title={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"} aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"} onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}><ThemeIcon theme={theme} /></button>
+                {details ? (
+                  <button className="icon-button desktop-details-toggle" title="Свернуть детали" aria-label="Свернуть детали" onClick={() => setDetails(false)}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+                  </button>
+                ) : (
+                  <button className="icon-button desktop-details-toggle" title="Открыть детали" aria-label="Открыть детали" onClick={() => setDetails(true)}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                  </button>
+                )}
               </div>
             </header>
             {error && (
@@ -689,10 +765,29 @@ export default function App() {
                 <div className="loading-state">Загружаем переписку…</div>
               ) : (
                 <div className="message-list">
-                  {current.messages
-                    ?.slice()
-                    .sort((a, b) => a.sequence_no - b.sequence_no)
-                    .map((m) => (
+                  {timeline.map((entry) => {
+                    if (entry.kind === "note")
+                      return (
+                        <article className="note-card" key={entry.item.note_id}>
+                          <div className="note-icon">✎</div>
+                          <div>
+                            <div className="message-heading">
+                              <strong>Внутренняя заметка</strong>
+                              <time>
+                                {new Intl.DateTimeFormat("ru-RU", {
+                                  day: "numeric",
+                                  month: "short",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }).format(new Date(entry.item.created_at))}
+                              </time>
+                            </div>
+                            <p>{entry.item.body}</p>
+                          </div>
+                        </article>
+                      );
+                    const m = entry.item;
+                    return (
                       <article
                         key={m.message_id}
                         className={
@@ -731,26 +826,8 @@ export default function App() {
                           <div className="message-bubble">{m.text}</div>
                         </div>
                       </article>
-                    ))}
-                  {notes.map((n) => (
-                    <article className="note-card" key={n.note_id}>
-                      <div className="note-icon">✎</div>
-                      <div>
-                        <div className="message-heading">
-                          <strong>Внутренняя заметка</strong>
-                          <time>
-                            {new Intl.DateTimeFormat("ru-RU", {
-                              day: "numeric",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }).format(new Date(n.created_at))}
-                          </time>
-                        </div>
-                        <p>{n.body}</p>
-                      </div>
-                    </article>
-                  ))}
+                    );
+                  })}
                   {!current.messages?.length && !notes.length && (
                     <div className="empty-history">Сообщений пока нет</div>
                   )}
@@ -1028,6 +1105,19 @@ export default function App() {
             </section>
           </div>
         </aside>
+      )}
+      {adminOpen && operatorRole !== "OPERATOR" && (
+        <AdminPanel
+          auth={auth}
+          role={operatorRole}
+          theme={theme}
+          onToggleTheme={() => setTheme((value) => value === "dark" ? "light" : "dark")}
+          onRoleChange={(role) => {
+            setOperatorRole(role);
+            if (role === "OPERATOR") setAdminOpen(false);
+          }}
+          onClose={() => setAdminOpen(false)}
+        />
       )}
       {toast && (
         <div className="toast">

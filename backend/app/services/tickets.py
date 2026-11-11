@@ -264,7 +264,7 @@ class TicketService:
             if category_id is not None:
                 category = await self._categories.get(session, category_id)
                 if category is None:
-                    raise ValueError(f"Category {category_id} not found")
+                    raise ValueError(f"Category {category_id} not found or inactive")
             await self._tickets.set_category(
                 session, ticket_id, category_id=category_id
             )

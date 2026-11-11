@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app import __version__
+from app.api.admin import router as admin_router
 from app.api.health import router as health_router
 from app.api.operator import router as operator_router
 from app.api.tag_ingress import router as tag_ingress_router
@@ -51,6 +52,7 @@ def create_app(deps: Dependencies | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(tag_ingress_router)
     app.include_router(operator_router)
+    app.include_router(admin_router)
     app.include_router(ws_router)
     return app
 

@@ -6,7 +6,7 @@ this stage only needs the table plus `tickets.category_id` filtering.
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,3 +28,4 @@ class TicketCategory(UuidPkMixin, TimestampMixin, Base):
         nullable=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

@@ -1,9 +1,4 @@
-"""Operator profile: corporate staff using the workspace (docs/03 #15).
-
-Identity source is Keycloak (`keycloak_sub` = token `sub` claim, docs/08 §1);
-the local row owns role and activity: a deactivated operator is rejected even
-with a valid token. RBAC matrix itself is G-08 (PROPOSED until confirmed).
-"""
+"""Operator profile and locally managed RBAC roles (docs/03 #15, D-047)."""
 
 import enum
 
@@ -15,7 +10,7 @@ from app.models.base import Base, TimestampMixin, UuidPkMixin
 
 class OperatorRole(enum.StrEnum):
     OPERATOR = "OPERATOR"
-    # Reserved for the admin panel (stage 8, docs/07); no extra rights yet.
+    SUPERVISOR = "SUPERVISOR"
     ADMIN = "ADMIN"
 
 
@@ -25,7 +20,7 @@ class Operator(UuidPkMixin, TimestampMixin, Base):
         UniqueConstraint("email", name="uq_operator_email"),
         UniqueConstraint("keycloak_sub", name="uq_operator_keycloak_sub"),
         CheckConstraint(
-            "role IN ('OPERATOR', 'ADMIN')",
+            "role IN ('OPERATOR', 'SUPERVISOR', 'ADMIN')",
             name="ck_operator_role",
         ),
     )

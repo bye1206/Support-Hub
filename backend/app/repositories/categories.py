@@ -12,8 +12,13 @@ class TicketCategoryRepository:
     async def get(
         self, session: AsyncSession, category_id: uuid.UUID
     ) -> TicketCategory | None:
-        return await session.get(TicketCategory, category_id)
+        category = await session.get(TicketCategory, category_id)
+        return category if category is not None and category.is_active else None
 
     async def list(self, session: AsyncSession) -> list[TicketCategory]:
-        stmt = select(TicketCategory).order_by(TicketCategory.name)
+        stmt = (
+            select(TicketCategory)
+            .where(TicketCategory.is_active.is_(True))
+            .order_by(TicketCategory.name)
+        )
         return list((await session.scalars(stmt)).all())

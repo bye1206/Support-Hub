@@ -23,6 +23,8 @@ class TagRepository:
         """'VPN' and 'vpn' are the same tag (P-23); race-safe."""
         existing = await self.get_by_name(session, name)
         if existing is not None:
+            if not existing.is_active:
+                raise ValueError(f"Tag {name} is inactive")
             return existing
         tag = Tag(name=name)
         try:
@@ -33,6 +35,8 @@ class TagRepository:
             existing = await self.get_by_name(session, name)
             if existing is None:
                 raise
+            if not existing.is_active:
+                raise ValueError(f"Tag {name} is inactive")
             return existing
         return tag
 
