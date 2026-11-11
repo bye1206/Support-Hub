@@ -1,8 +1,18 @@
 """Operator profile and locally managed RBAC roles (docs/03 #15, D-047)."""
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Enum, Integer, String, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UuidPkMixin
@@ -12,6 +22,15 @@ class OperatorRole(enum.StrEnum):
     OPERATOR = "OPERATOR"
     SUPERVISOR = "SUPERVISOR"
     ADMIN = "ADMIN"
+
+
+class PresenceStatus(enum.StrEnum):
+    """Operator availability for new dialogs (owner request 2026-11-11)."""
+
+    ACTIVE = "ACTIVE"
+    LUNCH = "LUNCH"
+    BREAK = "BREAK"
+    OFFLINE = "OFFLINE"
 
 
 class Operator(UuidPkMixin, TimestampMixin, Base):
@@ -41,4 +60,15 @@ class Operator(UuidPkMixin, TimestampMixin, Base):
     # assignment/transfer may still exceed it (overflow lands with priority).
     max_active_tickets: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default=text("5")
+    )
+    # Presence: only ACTIVE operators receive auto-assigned dialogs; the
+    # timer displayed to the team is computed from presence_since.
+    presence_status: Mapped[PresenceStatus] = mapped_column(
+        Enum(PresenceStatus, native_enum=False, length=20),
+        nullable=False,
+        default=PresenceStatus.ACTIVE,
+        server_default="ACTIVE",
+    )
+    presence_since: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

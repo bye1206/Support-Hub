@@ -11,7 +11,9 @@ import hmac
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Depends, Header, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 
 from app.auth.ldap import (
     LdapAuthenticator,
@@ -19,10 +21,17 @@ from app.auth.ldap import (
     LdapIdentity,
     LdapUnavailableError,
 )
+from app.auth.operators import require_operator
 from app.auth.sessions import OperatorSessions
 from app.config import get_settings
 from app.errors import ApiError
-from app.models import AuditActorType, OperatorRole
+from app.models import (
+    AuditActorType,
+    Operator,
+    OperatorRole,
+    PresenceStatus,
+    Ticket,
+)
 from app.repositories.operators import OperatorRepository
 from app.services._tx import unit_of_work
 from app.services.audit import AuditService
@@ -40,6 +49,10 @@ _ROLE_RANK = {
 
 def _role_rank(role: OperatorRole) -> int:
     return _ROLE_RANK[role]
+
+
+class PresenceIn(BaseModel):
+    status: str = Field(pattern="^(ACTIVE|LUNCH|BREAK|OFFLINE)$")
 
 
 def _basic_credentials(authorization: str | None) -> tuple[str, str]:
@@ -153,6 +166,9 @@ async def create_session(
                 operator.role = role
             if identity.display_name and operator.display_name != identity.display_name:
                 operator.display_name = identity.display_name
+            await OperatorRepository().set_presence(
+                session, operator.id, status=PresenceStatus.ACTIVE
+            )
             await AuditService().log(
                 session,
                 actor_type=AuditActorType.OPERATOR,
@@ -160,7 +176,7 @@ async def create_session(
                 entity_type="operator",
                 entity_id=operator.id,
                 actor_id=operator.id,
-                details={"source": identity.source, "role": str(role)},
+                details={"source": identity.source, "role": str(operator.role)},
             )
 
     sessions = OperatorSessions(deps.redis, settings.auth_session_ttl_seconds)
@@ -174,4 +190,106 @@ async def create_session(
             "role": str(operator.role),
         },
         "expires_in": settings.auth_session_ttl_seconds,
+    }
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, bool]:
+    """Revoke the session token and set presence OFFLINE (owner request)."""
+    deps = request.app.state.deps
+    settings = get_settings()
+    token = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    if not token:
+        raise ApiError(
+            code="OPERATOR_UNAUTHORIZED",
+            message="Session token is required",
+            status_code=401,
+        )
+    operator_sessions = OperatorSessions(deps.redis, settings.auth_session_ttl_seconds)
+    record = await operator_sessions.resolve(token)
+    if record is None:
+        raise ApiError(
+            code="OPERATOR_UNAUTHORIZED",
+            message="Invalid or expired session",
+            status_code=401,
+        )
+    await operator_sessions.revoke(token)
+    async with deps.db.session_factory() as session:
+        async with unit_of_work(session):
+            await OperatorRepository().set_presence(
+                session, record.operator_id, status=PresenceStatus.OFFLINE
+            )
+            await AuditService().log(
+                session,
+                actor_type=AuditActorType.OPERATOR,
+                action="operator.signed_out",
+                entity_type="operator",
+                entity_id=record.operator_id,
+                actor_id=record.operator_id,
+            )
+    return {"ok": True}
+
+
+@router.post("/presence")
+async def update_presence(
+    payload: PresenceIn,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, str]:
+    """Switch the operator's own status (ACTIVE/LUNCH/BREAK/OFFLINE)."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        async with unit_of_work(session):
+            await OperatorRepository().set_presence(
+                session, operator.id, status=PresenceStatus(payload.status)
+            )
+            await AuditService().log(
+                session,
+                actor_type=AuditActorType.OPERATOR,
+                action="operator.presence_changed",
+                entity_type="operator",
+                entity_id=operator.id,
+                actor_id=operator.id,
+                details={"to": payload.status},
+            )
+    return {"status": payload.status}
+
+
+@router.get("/team")
+async def team_overview(
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Presence + active ticket counts of every active operator (team panel)."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        operators = await OperatorRepository().team_overview(session)
+        load = (
+            select(Ticket.assignee_id.label("assignee_id"), func.count().label("load"))
+            .where(
+                Ticket.assignee_id.is_not(None),
+                Ticket.status.not_in(("RESOLVED", "CLOSED")),
+            )
+            .group_by(Ticket.assignee_id)
+            .subquery()
+        )
+        counts = dict(
+            (await session.execute(select(load.c.assignee_id, load.c.load))).all()
+        )
+    return {
+        "team": [
+            {
+                "operator_id": str(member.id),
+                "display_name": member.display_name,
+                "email": member.email,
+                "presence_status": str(member.presence_status),
+                "presence_since": member.presence_since.isoformat(),
+                "open_tickets": int(counts.get(member.id, 0)),
+                "max_active_tickets": member.max_active_tickets,
+            }
+            for member in operators
+        ]
     }

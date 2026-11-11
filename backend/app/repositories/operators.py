@@ -2,11 +2,11 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Operator, OperatorRole, Ticket, TicketStatus
+from app.models import Operator, OperatorRole, PresenceStatus, Ticket, TicketStatus
 
 
 class OperatorRepository:
@@ -74,9 +74,33 @@ class OperatorRepository:
             .outerjoin(load, load.c.assignee_id == Operator.id)
             .where(
                 Operator.is_active.is_(True),
+                Operator.presence_status == PresenceStatus.ACTIVE,
                 func.coalesce(load.c.load, 0) < Operator.max_active_tickets,
             )
             .order_by(func.coalesce(load.c.load, 0), Operator.created_at, Operator.id)
             .limit(1)
         )
         return (await session.scalars(stmt)).first()
+
+    async def set_presence(
+        self,
+        session: AsyncSession,
+        operator_id: uuid.UUID,
+        *,
+        status: PresenceStatus,
+    ) -> None:
+        """Update the presence status and reset its timer; plain writes."""
+        await session.execute(
+            update(Operator)
+            .where(Operator.id == operator_id)
+            .values(presence_status=status, presence_since=text("now()"))
+        )
+
+    async def team_overview(self, session: AsyncSession) -> list[Operator]:
+        """All active operators (any presence) for the team panel."""
+        stmt = (
+            select(Operator)
+            .where(Operator.is_active.is_(True))
+            .order_by(Operator.created_at, Operator.id)
+        )
+        return list((await session.scalars(stmt)).all())

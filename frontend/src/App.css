@@ -1417,7 +1417,9 @@ select:focus-visible {
   --muted: #7e8796;
   --line: #e8ebf0;
   --purple: #6154c8;
-  background: #f5f6f8;
+  /* Rail colour on purpose: any subpixel seam around the dark rail
+     must never flash white in the light theme. */
+  background: #202939;
 }
 .rail {
   background: #202735;
@@ -1864,6 +1866,150 @@ body:has(.app-shell[data-theme="dark"]) {
 }
 .app-shell[data-theme="dark"] .colleague-name {
   color: #d9deea;
+}
+.profile-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+.profile-button:hover {
+  background: #f1f3f6;
+}
+.profile-button .profile-avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+}
+.profile-button .profile-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.profile-button .profile-copy span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.presence-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #93a0b1;
+}
+.presence-dot.active {
+  background: #2ea36b;
+}
+.presence-dot.lunch {
+  background: #e0a33c;
+}
+.presence-dot.break {
+  background: #5a8fd6;
+}
+.presence-dot.offline {
+  background: #9aa3b1;
+}
+.profile-menu {
+  position: absolute;
+  left: 12px;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  width: calc(100% - 24px);
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 36px #20273526;
+}
+.profile-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #3d485a;
+  font-size: 13.5px;
+  text-align: left;
+}
+.profile-menu button:hover {
+  background: #f3f4f7;
+}
+.profile-menu button.active {
+  background: #f0effa;
+  color: #4d43a4;
+  font-weight: 600;
+}
+.profile-menu button.logout {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  color: #a84d42;
+}
+.team-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.team-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #4b5566;
+  white-space: nowrap;
+}
+.team-presence .muted {
+  font-size: 11.5px;
+}
+.count-pill.full {
+  background: #fdeeee;
+  color: #a84d42;
+}
+.queue-footer {
+  position: relative;
+}
+.app-shell[data-theme="dark"] .profile-button:hover {
+  background: #282f3d;
+}
+.app-shell[data-theme="dark"] .profile-menu {
+  background: #1e2430;
+  border-color: #333a49;
+  box-shadow: 0 14px 36px #00000066;
+}
+.app-shell[data-theme="dark"] .profile-menu button {
+  color: #c9d0dc;
+}
+.app-shell[data-theme="dark"] .profile-menu button.active {
+  background: #302d48;
+  color: #d5d0ff;
+}
+.app-shell[data-theme="dark"] .team-row {
+  background: #242b38;
+  border-color: #3a4251;
+}
+.app-shell[data-theme="dark"] .team-presence {
+  color: #c1c7d2;
+}
+.app-shell[data-theme="dark"] .count-pill.full {
+  background: #4a2f30;
+  color: #f0b9b3;
 }
 .app-shell[data-theme="dark"] .session-pop {
   background: #1e2430;

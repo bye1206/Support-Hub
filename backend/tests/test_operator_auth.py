@@ -29,6 +29,7 @@ from app.infra.db import DatabaseClient
 from app.infra.redis_client import RedisClient
 from app.main import create_app
 from app.models import Operator, OperatorRole
+from app.models import PresenceStatus as OperatorPresence
 from tests.conftest import TEST_DB_URL
 
 DEV_TOKEN = "test-operator-token"
@@ -300,6 +301,57 @@ async def test_malformed_basic_is_401(client: TestClient) -> None:
         headers={"Authorization": "Basic !!!not-base64!!!"},
     )
     assert bad_b64.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_presence_team_and_logout(
+    client: TestClient, auth_deps, session_factory
+) -> None:
+    """Sign-in sets ACTIVE; presence switch and team listing; logout revokes."""
+    auth_deps.ldap.users["ivanov"] = ("i.ivanov@corp.tander.ru", None, False)
+    data = _sign_in(client)
+    headers = {"Authorization": f"Bearer {data['session_token']}"}
+
+    team = client.get("/api/v1/operator/team", headers=headers)
+    assert team.status_code == 200
+    me = next(
+        member
+        for member in team.json()["team"]
+        if member["email"] == "i.ivanov@corp.tander.ru"
+    )
+    assert me["presence_status"] == "ACTIVE"
+
+    lunch = client.post(
+        "/api/v1/operator/presence", json={"status": "LUNCH"}, headers=headers
+    )
+    assert lunch.status_code == 200
+
+    bad = client.post(
+        "/api/v1/operator/presence", json={"status": "SLEEP"}, headers=headers
+    )
+    assert bad.status_code == 422
+
+    team = client.get("/api/v1/operator/team", headers=headers)
+    me = next(
+        member
+        for member in team.json()["team"]
+        if member["email"] == "i.ivanov@corp.tander.ru"
+    )
+    assert me["presence_status"] == "LUNCH"
+
+    out = client.post("/api/v1/operator/logout", headers=headers)
+    assert out.status_code == 200
+    assert (
+        client.get("/api/v1/operator/tickets", headers=headers).status_code == 401
+    )
+
+    async with session_factory() as session:
+        operator = (
+            await session.scalars(
+                select(Operator).where(Operator.email == "i.ivanov@corp.tander.ru")
+            )
+        ).one()
+        assert operator.presence_status == OperatorPresence.OFFLINE
 
 
 @pytest.mark.anyio

@@ -49,6 +49,22 @@ type Colleague = {
   display_name: string | null;
   email: string;
 };
+type TeamMember = {
+  operator_id: string;
+  display_name: string | null;
+  email: string;
+  presence_status: "ACTIVE" | "LUNCH" | "BREAK" | "OFFLINE";
+  presence_since: string;
+  open_tickets: number;
+  max_active_tickets: number;
+};
+const presenceLabels = {
+  ACTIVE: "Активен",
+  LUNCH: "Обед",
+  BREAK: "Перерыв",
+  OFFLINE: "Офлайн",
+} as const;
+type Presence = keyof typeof presenceLabels;
 type Credentials = { token: string };
 type Category = { category_id: string; name: string; parent_id: string | null };
 type AssignmentEvent = {
@@ -189,6 +205,9 @@ export default function App() {
     [signingIn, setSigningIn] = useState(false),
     [filter, setFilter] = useState<Filter>("all"),
     [colleagues, setColleagues] = useState<Colleague[]>([]),
+    [team, setTeam] = useState<TeamMember[]>([]),
+    [teamOpen, setTeamOpen] = useState(false),
+    [profileMenuOpen, setProfileMenuOpen] = useState(false),
     [transferOpen, setTransferOpen] = useState(false),
     [historyOpen, setHistoryOpen] = useState(false),
     [historyDetail, setHistoryDetail] = useState<Ticket | null>(null),
@@ -223,6 +242,9 @@ export default function App() {
     searchInput = useRef<HTMLInputElement>(null),
     selectedRef = useRef<string | null>(null);
   const ready = Boolean(auth.token);
+  const meEntry = team.find((member) => member.operator_id === operatorId);
+  const presence: Presence = meEntry?.presence_status ?? "ACTIVE";
+  const presenceSince = meEntry?.presence_since ?? null;
   const [nowTs, setNowTs] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNowTs(Date.now()), 30000);
@@ -233,6 +255,16 @@ export default function App() {
     void api<{ colleagues: Colleague[] }>("/colleagues", auth)
       .then((data) => setColleagues(data.colleagues ?? []))
       .catch(() => setColleagues([]));
+  }, [auth, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    const loadTeam = () =>
+      void api<{ team: TeamMember[] }>("/team", auth)
+        .then((data) => setTeam(data.team ?? []))
+        .catch(() => {});
+    loadTeam();
+    const id = window.setInterval(loadTeam, 30000);
+    return () => window.clearInterval(id);
   }, [auth, ready]);
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
@@ -559,19 +591,6 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Не удалось передать тикет");
     }
   };
-  const setPriority = async (priority: string) => {
-    if (!current) return;
-    try {
-      await api(`/tickets/${current.ticket_id}/priority`, auth, {
-        method: "PATCH",
-        body: JSON.stringify({ priority }),
-      });
-      setToast("Приоритет изменён");
-      await sync();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось изменить приоритет");
-    }
-  };
   const openHistoryDetail = async (ticketId: string) => {
     try {
       const card = await api<Ticket>(`/tickets/${ticketId}`, auth);
@@ -579,6 +598,30 @@ export default function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось открыть обращение");
     }
+  };
+  const changePresence = async (status: Presence) => {
+    try {
+      await api("/presence", auth, {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      });
+      const fresh = await api<{ team: TeamMember[] }>("/team", auth);
+      setTeam(fresh.team ?? []);
+      setToast(`Статус: ${presenceLabels[status]}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось изменить статус");
+    }
+  };
+  const signOut = async () => {
+    try {
+      await api("/logout", auth, { method: "POST" });
+    } catch {
+      /* the session is being discarded regardless */
+    }
+    sessionStorage.removeItem("support-hub-operator");
+    setAuth({ token: "" });
+    setProfile(null);
+    setProfileMenuOpen(false);
   };
   if (!ready)
     return (
@@ -654,9 +697,6 @@ export default function App() {
           </button>
         )}
         <div className="rail-spacer" />
-        <button className="avatar rail-avatar">
-          {initials(profile?.display_name || profile?.email || "SH")}
-        </button>
       </aside>
       <aside
         className={`queue-panel ${mobile === "queue" ? "mobile-visible" : "mobile-hidden"}`}
@@ -674,6 +714,19 @@ export default function App() {
             onClick={() => void sync()}
           >
             ↻
+          </button>
+          <button
+            className="icon-button"
+            title="Команда: статусы и нагрузка"
+            aria-label="Команда: статусы и нагрузка"
+            onClick={() => setTeamOpen(true)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="8.5" cy="8" r="3" />
+              <circle cx="16.5" cy="9.5" r="2.4" />
+              <path d="M3 19c.5-3 2.7-4.8 5.5-4.8S13.5 16 14 19" />
+              <path d="M15.5 14.6c2.4.2 4.3 1.7 5 4.4" />
+            </svg>
           </button>
         </header>
         <div className="queue-search">
@@ -756,24 +809,57 @@ export default function App() {
           )}
         </div>
         <footer className="queue-footer">
-          <div className="profile-avatar">
-            {initials(profile?.display_name || profile?.email || "SH")}
-          </div>
-          <div className="profile-copy">
-            <strong>{profile?.display_name || "Оператор"}</strong>
-            <span>{profile?.email}</span>
-          </div>
           <button
-            className="icon-button"
-            title="Выйти"
-            onClick={() => {
-              sessionStorage.removeItem("support-hub-operator");
-              setAuth({ token: "" });
-              setProfile(null);
-            }}
+            className="profile-button"
+            title="Статус и выход"
+            onClick={() => setProfileMenuOpen((value) => !value)}
           >
-            ↪
+            <span className="profile-avatar">
+              {initials(profile?.display_name || profile?.email || "SH")}
+            </span>
+            <span className="profile-copy">
+              <strong>{profile?.display_name || "Оператор"}</strong>
+              <span>
+                <i className={`presence-dot ${presence.toLowerCase()}`} />{" "}
+                {presenceLabels[presence]}
+                {presenceSince
+                  ? ` · ${fmtDuration(nowTs - new Date(presenceSince).getTime())}`
+                  : ""}
+              </span>
+            </span>
           </button>
+          {profileMenuOpen && profile && (
+            <div className="profile-menu" role="menu">
+              {(Object.keys(presenceLabels) as Array<keyof typeof presenceLabels>).map(
+                (status) => (
+                  <button
+                    key={status}
+                    className={status === presence ? "active" : ""}
+                    onClick={() => void changePresence(status)}
+                  >
+                    <i className={`presence-dot ${status.toLowerCase()}`} />
+                    {presenceLabels[status]}
+                    {status === presence && presenceSince && (
+                      <span> · {fmtDuration(nowTs - new Date(presenceSince).getTime())}</span>
+                    )}
+                  </button>
+                ),
+              )}
+              <button
+                className="logout"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Точно хотите выйти? Активные обращения останутся в очереди.",
+                    )
+                  )
+                    void signOut();
+                }}
+              >
+                Выйти
+              </button>
+            </div>
+          )}
         </footer>
       </aside>
       <main
@@ -1235,17 +1321,6 @@ export default function App() {
               )}
             </section>
             <section className="detail-section action-section">
-              <div className="transfer-row">
-                <select
-                  aria-label="Приоритет обращения"
-                  value={current.priority}
-                  onChange={(e) => void setPriority(e.target.value)}
-                >
-                  <option value="NORMAL">Приоритет: обычный</option>
-                  <option value="HIGH">Приоритет: высокий</option>
-                  <option value="URGENT">Приоритет: срочный</option>
-                </select>
-              </div>
               <button
                 onClick={() => void action("resolve")}
                 disabled={
@@ -1390,6 +1465,51 @@ export default function App() {
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+      {teamOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setTeamOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-label="Команда"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">Команда · статусы и нагрузка</div>
+            {team.map((member) => (
+              <div key={member.operator_id} className="team-row">
+                <span className="profile-avatar small">
+                  {initials(member.display_name || member.email)}
+                </span>
+                <span className="colleague-name">
+                  {member.display_name || member.email}
+                  <span className="muted">{member.email}</span>
+                </span>
+                <span className="team-presence">
+                  <i
+                    className={`presence-dot ${member.presence_status.toLowerCase()}`}
+                  />
+                  {presenceLabels[member.presence_status]}
+                  <span className="muted">
+                    {fmtDuration(nowTs - new Date(member.presence_since).getTime())}
+                  </span>
+                </span>
+                <span
+                  className={`count-pill ${member.open_tickets >= member.max_active_tickets ? "full" : ""}`}
+                  title="Активных обращений из лимита"
+                >
+                  {member.open_tickets}/{member.max_active_tickets}
+                </span>
+              </div>
+            ))}
+            <button className="quiet-action" onClick={() => setTeamOpen(false)}>
+              Закрыть
+            </button>
           </div>
         </div>
       )}
