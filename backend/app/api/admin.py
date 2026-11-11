@@ -92,12 +92,12 @@ async def list_categories(
     _actor: Annotated[
         Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
     ],
-) -> dict[str, list[dict[str, str | bool | int | None]]]:
+) -> dict[str, list[dict[str, str | bool | None]]]:
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         rows = (
             await session.scalars(
-                select(Operator).order_by(Operator.created_at)
+                select(TicketCategory).order_by(TicketCategory.name, TicketCategory.id)
             )
         ).all()
     return {

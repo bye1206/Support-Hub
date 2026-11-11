@@ -9,6 +9,7 @@ type Operator = {
   display_name: string | null;
   role: Role;
   is_active: boolean;
+  max_active_tickets: number;
   created_at: string;
 };
 type AuditEntry = {
@@ -110,6 +111,21 @@ export function AdminPanel({
     }
   };
 
+  const changeLimit = async (operator: Operator, limit: number) => {
+    if (!Number.isFinite(limit) || limit < 1 || limit > 100 || limit === operator.max_active_tickets)
+      return;
+    try {
+      const updated = await adminApi<Operator>(`/operators/${operator.operator_id}/limit`, auth, {
+        method: "PATCH",
+        body: JSON.stringify({ max_active_tickets: limit }),
+      });
+      setOperators((items) => items.map((item) => item.operator_id === updated.operator_id ? updated : item));
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Лимит не обновлён");
+    }
+  };
+
   const deactivate = async (operator: Operator) => {
     if (!window.confirm(`Отключить профиль ${operator.email}? Активные обращения будут переназначены выбранному сотруднику.`))
       return;
@@ -188,7 +204,7 @@ export function AdminPanel({
   return (
     <section className="admin-panel" aria-label="Административная панель">
       <header className="admin-header">
-        <div><p className="eyebrow">SUPPORT HUB</p><h1>Настройки и управление</h1></div>
+        <div><p className="eyebrow">SUPPORT HUB</p><h1>Панель управления</h1></div>
         <div className="admin-header-actions">
           <button className="icon-button theme-toggle" onClick={onToggleTheme} aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"} title={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}><svg viewBox="0 0 24 24" aria-hidden="true">{theme === "dark" ? <><path d="M20.2 15.3A8.4 8.4 0 0 1 8.7 3.8 8.5 8.5 0 1 0 20.2 15.3Z" /><path d="M16.5 3.5v4M14.5 5.5h4" /></> : <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></>}</svg></button>
           <button className="icon-button" onClick={onClose} aria-label="Закрыть панель" title="Вернуться к обращениям"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
@@ -212,9 +228,9 @@ export function AdminPanel({
               <div className="admin-note"><strong>Доступы</strong><span>Ваша роль: {roleLabels[role]}. Действия проверяются сервером.</span></div>
             </>}
             {section === "operators" && role === "ADMIN" && <>
-              <p className="admin-intro">Профили и роли операторов</p>
-              <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Действие</th></tr></thead><tbody>
-                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`admin-state ${operator.is_active ? "active" : "inactive"}`}>{operator.is_active ? "Активен" : "Отключён"}</span></td><td>{operator.is_active && operator.operator_id !== selfId && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
+              <p className="admin-intro">Профили, роли и лимиты нагрузки. Лимит — сколько активных обращений авто-распределение может назначить сотруднику одновременно (прямая передача не ограничена).</p>
+              <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Лимит</th><th>Статус</th><th>Действие</th></tr></thead><tbody>
+                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><input className="limit-input" type="number" min={1} max={100} defaultValue={operator.max_active_tickets} aria-label={`Лимит обращений ${operator.email}`} disabled={!operator.is_active} onBlur={(event) => void changeLimit(operator, Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") (event.target as HTMLInputElement).blur(); }} /></td><td><span className={`admin-state ${operator.is_active ? "active" : "inactive"}`}>{operator.is_active ? "Активен" : "Отключён"}</span></td><td>{operator.is_active && operator.operator_id !== selfId && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} title="Куда передать активные обращения этого сотрудника при отключении" value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button title="Отключить профиль: сотрудник больше не сможет входить; активные обращения уйдут выбранному сотруднику или в общую очередь" onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
               </tbody></table></div>
             </>}
             {section === "categories" && <>
