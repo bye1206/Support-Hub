@@ -118,6 +118,9 @@ class Settings(BaseSettings):
         default="", validation_alias=AliasChoices("LDAP_GROUP_OPERATOR_DN", "LDAP_GROUP_DN")
     )
     ldap_group_admin_dn: str = ""
+    # Optional SUPERVISOR group (D-048): empty DN = SUPERVISOR is assigned
+    # manually via the admin panel and is never demoted by LDAP login.
+    ldap_group_supervisor_dn: str = ""
     # ldap3 2.9 constraint: timeout MUST be int (float raises TypeError).
     ldap_timeout_seconds: int = 10
     # Corp proxy serves a certificate chain without the intermediate in the

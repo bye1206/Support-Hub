@@ -77,6 +77,7 @@ async def _resolve_identity(
             display_name=login,
             is_operator=True,
             is_admin=True,
+            is_supervisor=True,
             source="dev",
         )
     try:
@@ -120,9 +121,17 @@ async def create_session(
         )
     identity = await _resolve_identity(authenticator, login, password, settings)
 
-    # LDAP admin group promotes to ADMIN; otherwise LDAP maps to OPERATOR,
-    # except a manually assigned SUPERVISOR role (D-048), which is never demoted.
-    role = OperatorRole.ADMIN if identity.is_admin else OperatorRole.OPERATOR
+    # LDAP groups map to the role (D-047/D-048): admin group -> ADMIN,
+    # optional supervisor group -> SUPERVISOR, otherwise OPERATOR. Without a
+    # supervisor group DN configured, a manually assigned SUPERVISOR survives
+    # the login (the panel is the only way to grant/revoke it).
+    role = (
+        OperatorRole.ADMIN
+        if identity.is_admin
+        else OperatorRole.SUPERVISOR
+        if identity.is_supervisor
+        else OperatorRole.OPERATOR
+    )
     async with deps.db.session_factory() as session:
         async with unit_of_work(session):
             operator = await OperatorRepository().get_or_create_by_email(
@@ -131,7 +140,13 @@ async def create_session(
                 display_name=identity.display_name,
             )
             if operator.role != role:
-                if identity.is_admin or operator.role != OperatorRole.SUPERVISOR:
+                keep_manual_supervisor = (
+                    operator.role == OperatorRole.SUPERVISOR
+                    and not identity.is_admin
+                    and not identity.is_supervisor
+                    and not settings.ldap_group_supervisor_dn
+                )
+                if not keep_manual_supervisor:
                     operator.role = role
             if identity.display_name and operator.display_name != identity.display_name:
                 operator.display_name = identity.display_name

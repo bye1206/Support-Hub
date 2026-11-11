@@ -54,6 +54,8 @@ class LdapIdentity:
     is_operator: bool
     # True = member of the admin group (break-glass local user is admin too).
     is_admin: bool
+    # True = member of the optional supervisor group (D-048).
+    is_supervisor: bool
     # "local" = emergency account, "cache" = cached success, "ldap" = live AD.
     source: str
 
@@ -119,6 +121,7 @@ class LdapAuthenticator:
                     display_name=login,
                     is_operator=True,
                     is_admin=True,
+                    is_supervisor=True,
                     source="local",
                 )
         # 2. Without ldap3 there is no LDAP path at all (fail-closed).
@@ -203,6 +206,12 @@ class LdapAuthenticator:
                 raise LdapAuthFailed("user DN not found (check LDAP_BASE_DN / account)")
 
             is_admin = self._member_of(conn, settings.ldap_group_admin_dn, user_dn)
+            is_supervisor = (
+                bool(settings.ldap_group_supervisor_dn)
+                and self._member_of(
+                    conn, settings.ldap_group_supervisor_dn, user_dn
+                )
+            )
             if settings.ldap_group_operator_dn:
                 is_operator = self._member_of(
                     conn, settings.ldap_group_operator_dn, user_dn
@@ -225,6 +234,7 @@ class LdapAuthenticator:
             display_name=display_name or None,
             is_operator=True,
             is_admin=is_admin,
+            is_supervisor=is_supervisor,
             source="ldap",
         )
 

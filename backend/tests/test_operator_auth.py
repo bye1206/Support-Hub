@@ -40,6 +40,8 @@ class FakeLdap:
     def __init__(self) -> None:
         # login -> (email, display_name, is_admin); missing login = reject.
         self.users: dict[str, tuple[str, str | None, bool]] = {}
+        # Logins with the (optional) supervisor group membership (D-048).
+        self.supervisors: set[str] = set()
         self.unavailable = False
         self.rate_limiter = AuthRateLimiter(max_failures=3, window_seconds=300)
         self.calls: list[str] = []
@@ -57,6 +59,7 @@ class FakeLdap:
             display_name=display_name,
             is_operator=True,
             is_admin=is_admin,
+            is_supervisor=login in self.supervisors,
             source="ldap",
         )
 
@@ -169,7 +172,7 @@ async def test_role_upgrades_on_next_login(
 async def test_manual_supervisor_role_survives_ldap_login(
     client: TestClient, auth_deps, session_factory
 ) -> None:
-    """LDAP maps only OPERATOR/ADMIN; a manually assigned SUPERVISOR (D-048) is kept."""
+    """Without a supervisor group DN, a manually assigned SUPERVISOR (D-048) is kept."""
     auth_deps.ldap.users["smirnov"] = ("s.smirnov@corp.tander.ru", None, False)
     async with session_factory() as session:
         session.add(
@@ -191,6 +194,35 @@ async def test_manual_supervisor_role_survives_ldap_login(
             )
         ).one()
         assert operator.role == OperatorRole.SUPERVISOR
+
+
+@pytest.fixture
+def supervisor_group_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LDAP_GROUP_SUPERVISOR_DN", "CN=support_hub_supervisor,OU=Groups")
+    yield
+
+
+@pytest.mark.anyio
+async def test_supervisor_group_maps_to_supervisor_role(
+    supervisor_group_env, client: TestClient, auth_deps, session_factory
+) -> None:
+    """With the supervisor group configured (D-048), the group wins."""
+    auth_deps.ldap.users["orlov"] = ("o.orlov@corp.tander.ru", None, False)
+    auth_deps.ldap.supervisors.add("orlov")
+
+    data = _sign_in(client, login="orlov")
+    assert data["operator"]["role"] == "SUPERVISOR"
+
+    # Removed from the supervisor group -> back to OPERATOR on re-login.
+    auth_deps.ldap.supervisors.discard("orlov")
+    data = _sign_in(client, login="orlov")
+    assert data["operator"]["role"] == "OPERATOR"
+
+    # The admin group still wins over the supervisor group.
+    auth_deps.ldap.users["orlov"] = ("o.orlov@corp.tander.ru", None, True)
+    auth_deps.ldap.supervisors.add("orlov")
+    data = _sign_in(client, login="orlov")
+    assert data["operator"]["role"] == "ADMIN"
 
 
 @pytest.mark.anyio
