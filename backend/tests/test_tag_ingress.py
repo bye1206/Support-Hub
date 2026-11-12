@@ -153,3 +153,14 @@ def test_empty_text_rejected(client: TestClient) -> None:
         "/api/v1/integrations/tag/messages", json=payload(text=""), headers=headers()
     )
     assert response.status_code == 422
+
+
+def test_file_ids_as_comma_separated_string(client: TestClient) -> None:
+    """The Tag bot sends a string ("f1,f2"), not a JSON array (owner docs)."""
+    response = client.post(
+        "/api/v1/integrations/tag/messages",
+        json=payload(post_id="post-files", file_ids="f1,f2"),
+        headers=headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["message_id"]

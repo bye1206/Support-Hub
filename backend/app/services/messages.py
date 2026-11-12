@@ -5,9 +5,12 @@ Rules implemented here (services, not route handlers):
 - P-04 (PROPOSED): routing to the user's latest ticket;
 - D-005: one ticket per conversation, messages never split it;
 - D-007/D-008: 3-hour sessions, new session on the next message;
-- D-010/D-011: reopen of a resolved ticket, operator reply -> PENDING_USER;
+- D-011: operator reply -> PENDING_USER;
+- D-010 revised: a resolved ticket is terminal, the user's next message
+  starts a new ticket (no reopen);
 - D-039 (owner): "Обработка ИИ" — a user message in the AI dialog moves the
-  ticket to AI_PROCESSING, the AI answer completes it (details PROPOSED);
+  ticket to AI_PROCESSING, the AI answer completes it; in a human dialog
+  the message targets OPEN instead;
 - G-10: sequence_no allocated atomically in the transaction;
 - transactional outbox: the message and its event commit together.
 """
@@ -289,18 +292,23 @@ class MessageService:
     async def _apply_ticket_transition(
         self, session: AsyncSession, routing: RoutingResult
     ) -> None:
-        """Ticket status after a user message (D-010, D-039: AI_PROCESSING)."""
+        """Ticket status after a user message (D-039: AI_PROCESSING only in
+        the AI dialog; in a human dialog the message targets OPEN)."""
         ticket = routing.ticket
-        if ticket.status == TicketStatus.RESOLVED:
-            # D-010: the message reopens the resolved ticket.
-            routing.ticket_reopened = True
-        await self._transition_ticket(session, ticket, TicketTrigger.USER_MESSAGE)
+        await self._transition_ticket(
+            session,
+            ticket,
+            TicketTrigger.USER_MESSAGE,
+            dialog_mode=str(routing.conversation.mode),
+        )
 
     async def _transition_ticket(
         self,
         session: AsyncSession,
         ticket: Ticket,
         trigger: TicketTrigger,
+        *,
+        dialog_mode: str | None = None,
     ) -> None:
         """Apply the FSM transition with a bounded retry on version conflict.
 
@@ -311,7 +319,9 @@ class MessageService:
         """
         retries = 3
         for attempt in range(retries):
-            target = TicketStatus(next_ticket_status(str(ticket.status), trigger))
+            target = TicketStatus(
+                next_ticket_status(str(ticket.status), trigger, dialog_mode)
+            )
             if target == ticket.status:
                 return  # nothing to write (e.g. already AI_PROCESSING)
             try:

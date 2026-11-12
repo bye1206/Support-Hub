@@ -10,7 +10,7 @@ services (actor=OPERATOR). No business logic here (AGENTS.md §6).
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
@@ -32,6 +32,7 @@ from app.repositories.messages import MessageRepository
 from app.repositories.operators import OperatorRepository
 from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
+from app.services.ad_info import AdInfoService
 from app.services.messages import MessageService
 from app.services.notes import NoteService
 from app.services.tickets import TicketService
@@ -430,6 +431,43 @@ async def list_user_tickets(
             _ticket_view(ticket, tags=tag_map.get(ticket.id, [])) for ticket in tickets
         ]
     }
+
+
+@router.get("/users/{user_id}/ad-info")
+async def user_ad_info(
+    user_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Employee card from AD (P-29): org data, groups, password dates.
+
+    Degrades to ``{"available": false}`` when AD is unreachable or no service
+    account is configured; never blocks the ticket view."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            return await AdInfoService().get_for_user(session, user_id)
+        except LookupError as exc:
+            raise ApiError(code="NOT_FOUND", message=str(exc), status_code=404) from exc
+
+
+@router.get("/users/{user_id}/ad-photo")
+async def user_ad_photo(
+    user_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> Response:
+    """Cached AD photo bytes (thumbnailPhoto); 404 when none is known."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            photo = await AdInfoService().get_photo(session, user_id)
+        except LookupError as exc:
+            raise ApiError(code="NOT_FOUND", message=str(exc), status_code=404) from exc
+    if not photo:
+        raise ApiError(code="NOT_FOUND", message="No AD photo", status_code=404)
+    media_type = "image/png" if photo.startswith(b"\x89PNG") else "image/jpeg"
+    return Response(content=photo, media_type=media_type)
 
 
 @router.get("/tickets/{ticket_id}/assignment-history")

@@ -1,4 +1,4 @@
-"""Ticket lifecycle: P-04 routing, reopen (D-010), resolve/close, dialog mode."""
+"""Ticket lifecycle: P-04 routing, resolve/close (D-010 revised: terminal), dialog mode."""
 
 import uuid
 from dataclasses import dataclass
@@ -70,12 +70,15 @@ class TicketService:
         user_id: uuid.UUID,
         channel_id: uuid.UUID | None = None,
     ) -> RoutingResult:
-        """P-04 (PROPOSED): attach the incoming message to the user's latest
-        ticket; RESOLVED reopens it (D-010); CLOSED or none -> new ticket in a
-        new dialog (D-005). Caller's transaction."""
+        """P-04: attach the incoming message to the user's latest OPEN ticket;
+        RESOLVED or CLOSED (D-010 revised, owner: no reopen) or none -> a new
+        ticket in a new dialog (D-005). Caller's transaction."""
         last = await self._tickets.get_last_for_user(session, user_id)
 
-        if last is None or last.status == TicketStatus.CLOSED:
+        if (
+            last is None
+            or last.status in (TicketStatus.CLOSED, TicketStatus.RESOLVED)
+        ):
             conversation = await self._conversations.create(
                 session, user_id=user_id, channel_id=channel_id
             )
@@ -104,30 +107,6 @@ class TicketService:
         )
         if existing_conversation is None:  # pragma: no cover - FK guarantees existence
             raise StateConflict(f"Conversation {last.conversation_id} missing")
-
-        if last.status == TicketStatus.RESOLVED:
-            # D-010: continuation of the same problem reopens the ticket.
-            await self._tickets.change_status(
-                session,
-                last.id,
-                to_status=TicketStatus.OPEN,
-                expected_state_version=last.state_version,
-            )
-            await session.refresh(last)
-            await self._audit.log(
-                session,
-                actor_type=AuditActorType.SYSTEM,
-                action="ticket.reopened",
-                entity_type="ticket",
-                entity_id=last.id,
-                details={"conversation_id": str(existing_conversation.id)},
-            )
-            return RoutingResult(
-                conversation=existing_conversation,
-                ticket=last,
-                conversation_created=False,
-                ticket_reopened=True,
-            )
 
         return RoutingResult(
             conversation=existing_conversation,
@@ -283,6 +262,12 @@ class TicketService:
             ticket = await self._tickets.get(session, ticket_id)
             if ticket is None:
                 raise ValueError(f"Ticket {ticket_id} not found")
+            if ticket.status in (TicketStatus.RESOLVED, TicketStatus.CLOSED):
+                # D-010 revised: a completed ticket is terminal — assignment
+                # would silently reopen it. The user starts a new ticket.
+                raise ValueError(
+                    f"Ticket {ticket_id} is {ticket.status.value} and cannot be assigned"
+                )
             if assignee_id is not None:
                 assignee = await self._operators.get(session, assignee_id)
                 if assignee is None:

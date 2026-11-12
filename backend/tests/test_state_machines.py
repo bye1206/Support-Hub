@@ -23,19 +23,22 @@ ALLOWED_TICKET = [
     ("NEW", TicketTrigger.USER_MESSAGE, "AI_PROCESSING"),
     ("AI_PROCESSING", TicketTrigger.USER_MESSAGE, "AI_PROCESSING"),  # no-op
     ("OPEN", TicketTrigger.USER_MESSAGE, "AI_PROCESSING"),
-    ("RESOLVED", TicketTrigger.USER_MESSAGE, "AI_PROCESSING"),
-    # ...except in human mode: the user answers the operator (docs/01 §3).
+    # ...except in human mode: the AI is out of the loop, the message
+    # targets OPEN ("В работе") from any status (stage 9 round 4).
+    ("NEW", TicketTrigger.USER_MESSAGE, "OPEN", "HUMAN_ACTIVE"),
+    ("AI_PROCESSING", TicketTrigger.USER_MESSAGE, "OPEN", "HUMAN_ACTIVE"),
+    ("OPEN", TicketTrigger.USER_MESSAGE, "OPEN", "HUMAN_ACTIVE"),
     ("PENDING_USER", TicketTrigger.USER_MESSAGE, "OPEN"),
+    ("OPEN", TicketTrigger.USER_MESSAGE, "OPEN", "HUMAN_PENDING"),
     # AI reply (D-039: completes processing) and no-op on open.
     ("AI_PROCESSING", TicketTrigger.AI_REPLY, "OPEN"),
     ("OPEN", TicketTrigger.AI_REPLY, "OPEN"),
-    # Operator reply -> PENDING_USER (D-011), from any non-CLOSED status;
+    # Operator reply -> PENDING_USER (D-011), from any non-terminal status;
     # the operator may also preempt the AI while it is processing.
     ("NEW", TicketTrigger.OPERATOR_REPLY, "PENDING_USER"),
     ("AI_PROCESSING", TicketTrigger.OPERATOR_REPLY, "PENDING_USER"),
     ("OPEN", TicketTrigger.OPERATOR_REPLY, "PENDING_USER"),
     ("PENDING_USER", TicketTrigger.OPERATOR_REPLY, "PENDING_USER"),
-    ("RESOLVED", TicketTrigger.OPERATOR_REPLY, "PENDING_USER"),
     # Operator resolve (docs/01 §3) — including an AI-processing ticket.
     ("NEW", TicketTrigger.OPERATOR_RESOLVED, "RESOLVED"),
     ("AI_PROCESSING", TicketTrigger.OPERATOR_RESOLVED, "RESOLVED"),
@@ -54,9 +57,11 @@ ALLOWED_TICKET = [
 ]
 
 FORBIDDEN_TICKET = [
-    # D-039: no direct user message target for CLOSED (new ticket instead,
-    # routing P-04) and AI cannot answer fresh tickets (nobody asked yet).
+    # D-039: no direct user message target for CLOSED and RESOLVED (D-010
+    # revised: both start a new ticket via routing P-04) and AI cannot
+    # answer fresh tickets (nobody asked yet).
     ("CLOSED", TicketTrigger.USER_MESSAGE),
+    ("RESOLVED", TicketTrigger.USER_MESSAGE),
     ("NEW", TicketTrigger.AI_REPLY),
     # AI never answers human-mode, resolved or closed tickets.
     ("PENDING_USER", TicketTrigger.AI_REPLY),
@@ -74,8 +79,11 @@ FORBIDDEN_TICKET = [
     ("PENDING_USER", TicketTrigger.AI_REQUESTED_HANDOFF),
     ("RESOLVED", TicketTrigger.AI_REQUESTED_HANDOFF),
     ("CLOSED", TicketTrigger.AI_REQUESTED_HANDOFF),
-    # Resolve is not repeatable; close/resolve/replies impossible after CLOSED.
+    # Resolve is not repeatable; a resolved ticket is terminal (D-010
+    # revised): no replies after RESOLVED, close/resolve/replies impossible
+    # after CLOSED.
     ("RESOLVED", TicketTrigger.OPERATOR_RESOLVED),
+    ("RESOLVED", TicketTrigger.OPERATOR_REPLY),
     ("CLOSED", TicketTrigger.OPERATOR_RESOLVED),
     ("CLOSED", TicketTrigger.OPERATOR_REPLY),
     ("CLOSED", TicketTrigger.OPERATOR_CLOSED),
@@ -113,9 +121,17 @@ FORBIDDEN_SESSION = [
 ]
 
 
-@pytest.mark.parametrize(("current", "trigger", "expected"), ALLOWED_TICKET)
-def test_ticket_allowed(current: str, trigger: TicketTrigger, expected: str) -> None:
-    assert next_ticket_status(current, trigger) == expected
+@pytest.mark.parametrize(
+    ("current", "trigger", "expected", "dialog_mode"),
+    [(case[0], case[1], case[2], case[3] if len(case) > 3 else None) for case in ALLOWED_TICKET],
+)
+def test_ticket_allowed(
+    current: str,
+    trigger: TicketTrigger,
+    expected: str,
+    dialog_mode: str | None,
+) -> None:
+    assert next_ticket_status(current, trigger, dialog_mode) == expected
 
 
 @pytest.mark.parametrize(("current", "trigger"), FORBIDDEN_TICKET)

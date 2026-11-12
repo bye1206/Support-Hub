@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import "./index.css";
+
 // Local font files (bundled, no CDN): regular/medium/semibold/bold.
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";

@@ -64,7 +64,17 @@ class TagMessageIn(BaseModel):
     user_name: str | None = None
     post_id: str | None = None
     text: str = Field(min_length=1)
-    file_ids: list[str] = Field(default_factory=list)
+    # The Tag bot sends a comma-separated string ("file1,file2"), not a JSON
+    # array (official OutgoingWebhook payload, owner 2026-11-11). Both forms
+    # are normalized to a list.
+    file_ids: list[str] | str = Field(default_factory=list)
+
+    @field_validator("file_ids", mode="before")
+    @classmethod
+    def split_file_ids(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [part for part in value.split(",") if part.strip()]
+        return value
 
     @field_validator("timestamp")
     @classmethod

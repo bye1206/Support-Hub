@@ -142,13 +142,15 @@ async def test_operator_reply_pends_user_and_takes_over_dialog(session_factory) 
 
 
 @pytest.mark.anyio
-async def test_resolve_then_user_message_reopens_same_ticket(session_factory) -> None:
+async def test_resolve_then_user_message_starts_new_ticket(session_factory) -> None:
+    """D-010 revised: a resolved ticket is terminal — the user's next message
+    creates a NEW ticket in a NEW dialog; no reopen exists."""
     service = MessageService()
     async with session_factory() as session:
         first = await service.handle_incoming_user_message(
             session, **ingress_kwargs(text="Проблема")
         )
-        ticket_id = first.ticket.id
+        ticket_id, old_conversation_id = first.ticket.id, first.conversation.id
 
     async with session_factory() as session:
         await TicketService().resolve(session, ticket_id)
@@ -158,18 +160,10 @@ async def test_resolve_then_user_message_reopens_same_ticket(session_factory) ->
             session, **ingress_kwargs(text="Опять сломалось")
         )
 
-    assert again.ticket_reopened is True
-    assert again.ticket.id == ticket_id  # D-010: the SAME ticket, not a new one
-    assert again.ticket.status == TicketStatus.AI_PROCESSING  # D-039: → ИИ again
-    assert again.conversation_created is False
-    # The audit query runs inside the open session: a select on a closed
-    # session would leave an idle-in-transaction connection behind.
-    reopened = (
-        await session.scalars(
-            select(AuditLog.action).where(AuditLog.action == "ticket.reopened")
-        )
-    ).all()
-    assert len(reopened) == 1
+    assert again.ticket_reopened is False
+    assert again.ticket.id != ticket_id
+    assert again.conversation.id != old_conversation_id
+    assert again.conversation_created is True
 
 
 @pytest.mark.anyio

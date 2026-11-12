@@ -69,11 +69,6 @@
   color: #493b9c;
   font-weight: 700;
 }
-.rail-avatar {
-  width: 34px;
-  height: 34px;
-  font-size: 12px;
-}
 .queue-panel {
   min-width: 0;
   background: #fff;
@@ -512,6 +507,10 @@
   border-radius: 17px;
   font-size: 14px;
 }
+.user-photo.large {
+  width: 47px;
+  height: 47px;
+}
 .conversation-start h3 {
   margin: 10px 0 4px;
   color: #354155;
@@ -896,6 +895,44 @@
 .customer-card .text-action {
   margin-top: 10px;
 }
+.user-photo {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.ad-rows {
+  display: grid;
+  gap: 3px;
+  margin-top: 9px;
+  align-self: stretch;
+}
+.ad-rows div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  color: #4b5566;
+}
+.ad-rows div span {
+  color: #a0a8b5;
+  text-align: right;
+  flex-shrink: 0;
+}
+.customer-card .tag-list {
+  margin-top: 9px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.ad-warning {
+  margin-top: 9px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #fdeeee;
+  color: #a84d42;
+  font-size: 10px;
+  font-weight: 600;
+}
 .detail-section {
   padding: 16px;
   border-bottom: 1px solid #f0f2f5;
@@ -1003,16 +1040,6 @@
   border-radius: 5px;
   background: #f1efff;
   color: #7063cd;
-  font-size: 9px;
-}
-.history-count {
-  display: grid;
-  place-items: center;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 10px;
-  background: #f0f2f5;
-  color: #8992a1;
   font-size: 9px;
 }
 .past-empty {
@@ -1417,9 +1444,11 @@ select:focus-visible {
   --muted: #7e8796;
   --line: #e8ebf0;
   --purple: #6154c8;
-  /* Rail colour on purpose: any subpixel seam around the dark rail
-     must never flash white in the light theme. */
-  background: #202939;
+  background: #f5f6f8;
+}
+/* No ticket selected: three columns, the conversation area spans the rest. */
+.app-shell.no-ticket {
+  grid-template-columns: 68px 300px minmax(420px, 1fr);
 }
 .rail {
   background: #202735;
@@ -1568,7 +1597,13 @@ select:focus-visible {
   height: 16px;
 }
 .theme-toggle {
-  color: #7064c8;
+  color: #8f97ff;
+}
+.rail-button.theme-toggle {
+  color: #8f97ff;
+}
+.rail-button.theme-toggle:hover {
+  color: #c3c8ff;
 }
 .theme-toggle svg {
   width: 19px;
@@ -1661,6 +1696,9 @@ select:focus-visible {
 .app-shell[data-theme="dark"] .detail-section,
 .app-shell[data-theme="dark"] .customer-card { border-color: #333a49; }
 .app-shell[data-theme="dark"] .sla-card { background: #242b38; color: #d9deea; }
+.app-shell[data-theme="dark"] .ad-rows div { color: #c1c7d2; }
+.app-shell[data-theme="dark"] .ad-rows div span { color: #8b93a3; }
+.app-shell[data-theme="dark"] .ad-warning { background: #4a2f30; color: #f0b9b3; }
 .app-shell[data-theme="dark"] .past-ticket { border-color: #333a49; color: #c1c7d2; }
 .app-shell[data-theme="dark"] .icon-button { color: #b3bbca; }
 .app-shell[data-theme="dark"] .theme-toggle { color: #f2ce78; }
@@ -1967,6 +2005,30 @@ body:has(.app-shell[data-theme="dark"]) {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
+button.team-row.clickable {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+button.team-row.clickable:hover {
+  background: #f5f4ff;
+  border-color: #d8d3f5;
+}
+.modal-title.small {
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: #7e8796;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.team-member-load {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
 .team-presence {
   display: inline-flex;
   align-items: center;
@@ -2003,6 +2065,17 @@ body:has(.app-shell[data-theme="dark"]) {
 .app-shell[data-theme="dark"] .team-row {
   background: #242b38;
   border-color: #3a4251;
+}
+.app-shell[data-theme="dark"] button.team-row.clickable {
+  background: #242b38;
+}
+.app-shell[data-theme="dark"] button.team-row.clickable:hover {
+  background: #302d48;
+  border-color: #454064;
+}
+.app-shell[data-theme="dark"] .modal-title.small,
+.app-shell[data-theme="dark"] .team-member-load .muted {
+  color: #99a1b0;
 }
 .app-shell[data-theme="dark"] .team-presence {
   color: #c1c7d2;

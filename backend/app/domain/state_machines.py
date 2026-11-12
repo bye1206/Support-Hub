@@ -11,6 +11,11 @@ Sources:
   message in the AI dialog puts the ticket into AI_PROCESSING, the AI
   answer completes processing. Per-transition details PROPOSED until the
   stage-4 report is confirmed by the owner.
+- D-010 revised (owner, stage 9 round 4): a RESOLVED ticket is terminal —
+  the user's next message starts a NEW ticket; no reopen exists.
+- Owner (stage 9 round 4): after the human handoff the AI no longer
+  processes user messages — in a human dialog (HUMAN_ACTIVE/HUMAN_PENDING)
+  any user message targets OPEN ("В работе").
 """
 
 from enum import StrEnum
@@ -42,18 +47,25 @@ _TICKET_TARGET: dict[TicketTrigger, str] = {
     TicketTrigger.AI_REQUESTED_HANDOFF: "OPEN",
 }
 
-# The user's message target depends on the current status (D-039):
-# - an AI-mode ticket (NEW/OPEN, or already AI_PROCESSING) goes to
-#   AI_PROCESSING — the message awaits the AI answer;
-# - in human mode (PENDING_USER) the user answers the operator -> OPEN;
-# - a message on a RESOLVED ticket reopens it into AI_PROCESSING, the
-#   answer goes to AI again.
+# The user's message target depends on the current status and the dialog
+# mode (D-039, stage 9 round 4):
+# - AI dialog (AI_ACTIVE): the message awaits the AI answer ->
+#   AI_PROCESSING ("Обработка ИИ"), the answer completes processing;
+# - human dialog (HUMAN_ACTIVE / HUMAN_PENDING): the AI is out of the loop,
+#   any user message targets OPEN ("В работе");
+# - a message on a RESOLVED ticket never reaches the FSM: routing starts a
+#   new ticket (D-010 revised).
 _TICKET_USER_MESSAGE_TARGET: dict[str, str] = {
     "NEW": "AI_PROCESSING",
     "AI_PROCESSING": "AI_PROCESSING",
     "OPEN": "AI_PROCESSING",
     "PENDING_USER": "OPEN",
-    "RESOLVED": "AI_PROCESSING",
+}
+_TICKET_USER_MESSAGE_TARGET_HUMAN: dict[str, str] = {
+    "NEW": "OPEN",
+    "AI_PROCESSING": "OPEN",
+    "OPEN": "OPEN",
+    "PENDING_USER": "OPEN",
 }
 
 # From which ticket statuses each trigger is accepted. CLOSED is terminal for
@@ -65,10 +77,10 @@ _TICKET_ALLOWED_SOURCES: dict[TicketTrigger, frozenset[str]] = {
     # answers NEW (nobody asked yet) / human-mode / resolved tickets.
     TicketTrigger.AI_REPLY: frozenset({"AI_PROCESSING", "OPEN"}),
     # Operator reply straight to PENDING_USER (D-011); the operator may also
-    # preempt the AI while it is processing. Answering a RESOLVED ticket
-    # means work continues — same target.
+    # preempt the AI while it is processing. RESOLVED is terminal (D-010
+    # revised): no further replies, the user starts a new ticket instead.
     TicketTrigger.OPERATOR_REPLY: frozenset(
-        {"NEW", "AI_PROCESSING", "OPEN", "PENDING_USER", "RESOLVED"}
+        {"NEW", "AI_PROCESSING", "OPEN", "PENDING_USER"}
     ),
     TicketTrigger.OPERATOR_RESOLVED: frozenset(
         {"NEW", "AI_PROCESSING", "OPEN", "PENDING_USER"}
@@ -83,10 +95,23 @@ _TICKET_ALLOWED_SOURCES: dict[TicketTrigger, frozenset[str]] = {
 }
 
 
-def next_ticket_status(current: str, trigger: TicketTrigger) -> str:
-    """Return the ticket status after the trigger; raises when forbidden."""
+def next_ticket_status(
+    current: str,
+    trigger: TicketTrigger,
+    dialog_mode: str | None = None,
+) -> str:
+    """Return the ticket status after the trigger; raises when forbidden.
+
+    For USER_MESSAGE the dialog mode selects the target map: in a human
+    dialog (HUMAN_ACTIVE / HUMAN_PENDING) user messages always go to OPEN.
+    """
     if trigger is TicketTrigger.USER_MESSAGE:
-        target = _TICKET_USER_MESSAGE_TARGET.get(current)
+        targets = (
+            _TICKET_USER_MESSAGE_TARGET_HUMAN
+            if dialog_mode in {"HUMAN_ACTIVE", "HUMAN_PENDING"}
+            else _TICKET_USER_MESSAGE_TARGET
+        )
+        target = targets.get(current)
         if target is None:
             raise TransitionNotAllowed("ticket", current, trigger.value)
         return target

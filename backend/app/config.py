@@ -135,6 +135,18 @@ class Settings(BaseSettings):
     ldap_group_supervisor_dn: str = ""
     # ldap3 2.9 constraint: timeout MUST be int (float raises TypeError).
     ldap_timeout_seconds: int = 10
+    # Service account for AD READS (employee card: groups, password date,
+    # photo — P-29). The auth path binds under the user's own credentials and
+    # cannot read arbitrary users; without a service account the AD card is
+    # unavailable (the UI hides the block). Stored outside git (D-046).
+    ldap_service_user_dn: str = ""
+    ldap_service_password: str = ""
+    # AD card cache TTL: a fresh copy serves reads without touching AD; the
+    # photo of a user who changed it in AD refreshes within this window.
+    ad_info_ttl_seconds: int = 86400
+    # Dev preview only: serve a synthetic employee card + photo when the AD
+    # service account is not configured, so the UI can be demoed without AD.
+    ad_demo: bool = False
     # Corp proxy serves a certificate chain without the intermediate in the
     # standard bundles: verification is off until the corp root CA is added
     # (set ldap_ca_cert_file to enforce CERT_REQUIRED).

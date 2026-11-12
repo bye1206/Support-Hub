@@ -3,8 +3,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, LargeBinary, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UuidPkMixin
@@ -15,6 +15,14 @@ class User(UuidPkMixin, TimestampMixin, Base):
 
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Cached AD employee card (P-29): JSON snapshot + photo bytes. Refreshed
+    # lazily when older than ad_info_ttl_seconds; photo updates in AD reach
+    # the UI within the same TTL.
+    ad_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ad_photo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    ad_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class UserIdentity(UuidPkMixin, TimestampMixin, Base):

@@ -298,8 +298,8 @@ class AiRunService:
         """Trigger `resolved`: the user confirmed the problem is solved.
 
         No message is published (the code is not user-facing); the ticket
-        goes to RESOLVED, the dialog stays AI_ACTIVE (the next user message
-        reopens it into the AI flow, D-010 via the user-message matrix)."""
+        goes to RESOLVED, the dialog stays AI_ACTIVE (the user's next message
+        starts a NEW ticket — D-010 revised, no reopen)."""
         ticket = await self._require_ticket(session, conversation.id)
         await self._message_service.apply_ticket_trigger(
             session, ticket, TicketTrigger.AI_RESOLVED

@@ -62,3 +62,9 @@ class UserRepository:
 
     async def get(self, session: AsyncSession, user_id: uuid.UUID) -> User | None:
         return await session.get(User, user_id)
+
+    async def list_identities(
+        self, session: AsyncSession, user_id: uuid.UUID
+    ) -> list[UserIdentity]:
+        stmt = select(UserIdentity).where(UserIdentity.user_id == user_id)
+        return list((await session.scalars(stmt)).all())
