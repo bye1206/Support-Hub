@@ -65,9 +65,21 @@ async def _seed_user_message(
     session_factory, *, external_user_id: str = USER_ID, text: str = "Не работает VPN"
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """One user message through the real ingress flow; returns (message_id,
-    conversation_id). The same user keeps the same dialog (P-04 routing)."""
+    conversation_id). The same user keeps the same dialog (P-04 routing).
+
+    Owner flow (2026-11-13): the first message of a fresh dialog only gets
+    the greeting (no AI run), so we seed the greeting stage first and then
+    the actual question that goes to the AI."""
     service = MessageService()
     async with session_factory() as session:
+        await service.handle_incoming_user_message(
+            session,
+            channel_type="tag",
+            external_user_id=external_user_id,
+            external_user_name="Тестовый Пользователь",
+            text="здравствуйте",
+            external_post_id=f"post-hello-{uuid.uuid4().hex[:8]}",
+        )
         result = await service.handle_incoming_user_message(
             session,
             channel_type="tag",
@@ -126,7 +138,8 @@ async def test_happy_path_publishes_ai_answer_and_opens_ticket(session_factory) 
                 )
             ).all()
         )
-        assert len(messages) == 2  # user + AI
+        assert len(messages) == 4  # greeting msg + greeting + question + AI answer
+        assert sum(1 for m in messages if m.author_type == MessageAuthorType.AI) == 1
         ai_message = [m for m in messages if m.author_type == MessageAuthorType.AI][0]
         assert ai_message.id == run.response_message_id
         assert ai_message.text == "Проверьте подключение и перезагрузите роутер"
@@ -145,7 +158,7 @@ async def test_happy_path_publishes_ai_answer_and_opens_ticket(session_factory) 
                 )
             ).all()
         )
-        assert len(outbound) == 1
+        assert len(outbound) == 2  # greeting note + AI answer
 
 
 @pytest.mark.anyio
@@ -227,7 +240,8 @@ async def test_resolved_trigger_resolves_ticket_without_message(session_factory)
                 )
             ).all()
         )
-        assert len(messages) == 1  # the user message only
+        assert len(messages) == 4  # question + greeting + farewell note; no AI answer
+        assert not any(m.author_type == MessageAuthorType.AI for m in messages)
 
 
 @pytest.mark.anyio
@@ -256,7 +270,8 @@ async def test_gateway_503_fails_run_ticket_stays_ai_processing(session_factory)
                 )
             ).all()
         )
-        assert len(messages) == 1  # nothing published
+        assert len(messages) == 3  # greeting stage: hello + greeting + question
+        assert not any(m.author_type == MessageAuthorType.AI for m in messages)
 
 
 @pytest.mark.anyio

@@ -62,6 +62,10 @@ class AdInfoService:
 
         info = dict(user.ad_info or {}) if user is not None else {}
         info["available"] = bool(info)
+        if info and not self._directory.configured and settings.ad_demo:
+            # Canned "Иван Петров" preview (AD_DEMO=true, no service account):
+            # mark it so the UI can tell demo data from real AD data.
+            info["demo"] = True
         info["photo_url"] = f"/api/v1/operator/users/{user_id}/ad-photo" if info else ""
         info["synced_at"] = (
             user.ad_synced_at.isoformat() if user is not None and user.ad_synced_at else None
@@ -74,6 +78,57 @@ class AdInfoService:
         if user is None:
             raise LookupError(f"User {user_id} not found")
         return user.ad_photo or None
+
+    async def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        """People search for the AD lookup dialog (owner request 2026-11-12).
+
+        Without a service account (and with AD_DEMO) returns a small demo
+        roster filtered by the query, so the dialog works in dev."""
+        query = query.strip()
+        if not query:
+            return []
+        if not self._directory.configured:
+            if not get_settings().ad_demo:
+                return []
+            roster = [demo_card(login) for login in ("i.petrov", "m.ivanova", "a.smirnova")]
+            lowered = query.lower()
+            return [
+                {
+                    **{k: v for k, v in card.items() if not k.startswith("_")},
+                    "demo": True,
+                }
+                for card in roster
+                if lowered in card["login"].lower()
+                or lowered in card["full_name"].lower()
+                or lowered in card["email"].lower()
+            ][:limit]
+        return await self._directory.search(query, limit=limit)
+    async def user_by_login(self, login: str) -> dict[str, Any] | None:
+        """Full card for an arbitrary AD login (the search dialog detail view)."""
+        login = login.strip()
+        if not login:
+            return None
+        if not self._directory.configured:
+            if not get_settings().ad_demo:
+                return None
+            card = demo_card(login)
+            return {**{k: v for k, v in card.items() if not k.startswith("_")}, "demo": True}
+        return await self._directory.get_user(login)
+
+    async def photo_for_login(self, login: str) -> bytes | None:
+        """AD photo bytes for an arbitrary login (operator self avatar)."""
+        login = login.strip()
+        if not login:
+            return None
+        if not self._directory.configured:
+            if not get_settings().ad_demo:
+                return None
+            return demo_card(login).get("_photo")
+        try:
+            card = await self._directory.get_user(login)
+        except AdUnavailableError:
+            return None
+        return (card or {}).get("_photo")
 
     async def _refresh(self, session: AsyncSession, user_id: uuid.UUID) -> None:
         """Fetch from AD and store; failures leave the stale copy in place."""

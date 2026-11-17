@@ -267,5 +267,5 @@ async def test_message_and_outbox_roll_back_together(session_factory) -> None:
     async with session_factory() as check:
         outbox_count = await check.scalar(select(func.count()).select_from(OutboxEvent))
         message_count = await check.scalar(select(func.count()).select_from(Message))
-    assert outbox_count == 1  # only the seeded event
-    assert message_count == 1  # only the seeded message
+    assert outbox_count == 1  # greeting outbound from the seeded ingress
+    assert message_count == 2  # user hello + the greeting note

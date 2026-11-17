@@ -46,8 +46,15 @@ def build_default_outbox_handler() -> RoutingOutboxHandler:
     """Production wiring: real bot client + LoggingOutboxHandler as fallback."""
     settings = get_settings()
     # LoggingOutboxHandler covers stage-6 events (AI trigger) until stage 6.
-    bot = TagBotClient(
-        base_url=settings.bot_internal_base_url,
-        service_token=(settings.support_hub_to_bot_token or None),
-    )
+    if settings.tag_direct_mode:
+        # Owner request 2026-11-13: direct Mattermost delivery. The sender
+        # resolves message text / external channel from the DB itself.
+        from app.integrations.tag.direct import TagDirectSender
+
+        bot: _BotSender = TagDirectSender(settings)
+    else:
+        bot = TagBotClient(
+            base_url=settings.bot_internal_base_url,
+            service_token=(settings.support_hub_to_bot_token or None),
+        )
     return RoutingOutboxHandler(bot=bot, fallback=LoggingOutboxHandler())

@@ -69,6 +69,23 @@ class Settings(BaseSettings):
             "SUPPORT_HUB_TO_BOT_TOKEN", "SUPPORT_HUB_TO_BOT_TOKEN_LOCAL"
         ),
     )
+    # Stage 9 (owner request 2026-11-13): direct Mattermost/Tag integration.
+    # When tag_direct_mode is on, Support Hub talks to the Mattermost API
+    # itself: inbound via the WebSocket event stream, outbound via
+    # POST /api/v4/posts. The webhook path (above) stays available.
+    # The token is a secret: lives in .env (outside git), never logged.
+    tag_direct_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("TAG_DIRECT_MODE"),
+    )
+    mattermost_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("MATTERMOST_BASE_URL"),
+    )
+    mattermost_bot_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("MATTERMOST_BOT_TOKEN"),
+    )
     # D-031 auto-assignment: a new ticket goes to the active operator with the
     # fewest non-closed tickets (least-loaded). Off by default; enabled in dev.
     auto_assign_enabled: bool = Field(
@@ -135,6 +152,9 @@ class Settings(BaseSettings):
     ldap_group_supervisor_dn: str = ""
     # ldap3 2.9 constraint: timeout MUST be int (float raises TypeError).
     ldap_timeout_seconds: int = 10
+    # Wildcard search over the whole domain tree is slower than a single-user
+    # read (owner's live AD timed out at 10 s); searches get their own budget.
+    ldap_search_timeout_seconds: int = 30
     # Service account for AD READS (employee card: groups, password date,
     # photo — P-29). The auth path binds under the user's own credentials and
     # cannot read arbitrary users; without a service account the AD card is

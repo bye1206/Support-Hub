@@ -87,6 +87,22 @@ def _cn_of(dn: str) -> str:
     return dn
 
 
+def _attr_value(entry: Any, attr: str) -> Any:
+    """First value of an entry attribute, or None when absent/empty.
+
+    ldap3 keeps attributes present-but-empty as an empty list; indexing
+    such a value raises IndexError (owner 2026-11-13, kvasha_sn)."""
+    if attr not in entry:
+        return None
+    values = entry[attr].values
+    return values[0] if values else None
+
+
+def _attr_str(entry: Any, attr: str) -> str:
+    value = _attr_value(entry, attr)
+    return "" if value is None else str(value)
+
+
 def demo_card(login: str) -> dict[str, Any]:
     """Synthetic employee card for the UI preview (AD_DEMO=true, dev only).
 
@@ -145,6 +161,70 @@ class AdDirectory:
 
         return await anyio.to_thread.run_sync(self.get_user_sync, login)
 
+    async def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        """People search (GetGroupBoxMember FastSearch analogue): login, name
+        or e-mail substring. Worker thread; light cards (no photo)."""
+        import anyio.to_thread
+
+        return await anyio.to_thread.run_sync(
+            lambda: self.search_sync(query, limit, self._settings.ldap_search_timeout_seconds)
+        )
+
+    def search_sync(
+        self, query: str, limit: int = 20, timeout_seconds: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Blocking search; [] when nothing matches."""
+        if not self.configured:
+            raise AdUnavailableError("AD directory is not configured")
+        conn = self._connect(timeout_seconds=timeout_seconds)
+        try:
+            escaped = ldap3.utils.conv.escape_filter_chars(query.strip())
+            wildcard = f"*{escaped}*"
+            conn.search(
+                self._settings.ldap_base_dn,
+                "(&(objectClass=user)(objectCategory=user)"
+                f"(|(sAMAccountName={wildcard})(displayName={wildcard})"
+                f"(mail={wildcard})(sn={wildcard})))",
+                attributes=[
+                    "sAMAccountName",
+                    "displayName",
+                    "mail",
+                    "title",
+                    "department",
+                    "company",
+                    "telephoneNumber",
+                    "userAccountControl",
+                ],
+                search_scope="SUBTREE",
+                size_limit=limit,
+            )
+            results: list[dict[str, Any]] = []
+            for entry in conn.entries:
+                uac = int(_attr_value(entry, "userAccountControl") or 0)
+                results.append(
+                    {
+                        "login": _attr_str(entry, "sAMAccountName"),
+                        "full_name": _attr_str(entry, "displayName"),
+                        "email": _attr_str(entry, "mail"),
+                        "title": _attr_str(entry, "title"),
+                        "department": _attr_str(entry, "department"),
+                        "company": _attr_str(entry, "company"),
+                        "phone": _attr_str(entry, "telephoneNumber"),
+                        "disabled": bool(uac & _UAC_DISABLED),
+                    }
+                )
+            return results
+        except AdUnavailableError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - ldap3/network layer
+            logger.warning("AD search failed: %s", exc)
+            raise AdUnavailableError(f"AD search failed: {exc}") from exc
+        finally:
+            try:
+                conn.unbind()
+            except Exception:  # noqa: BLE001 - best effort cleanup
+                pass
+
     def get_user_sync(self, login: str) -> dict[str, Any] | None:
         """Blocking lookup; returns None when the user is not in AD."""
         if not self.configured:
@@ -170,30 +250,29 @@ class AdDirectory:
 
             groups = self._read_groups(conn, user_dn)
             manager = self._read_manager(conn, entry)
-            photo = bytes(entry.thumbnailPhoto[0]) if "thumbnailPhoto" in entry else b""
+            photo_raw = _attr_value(entry, "thumbnailPhoto")
+            photo = bytes(photo_raw) if photo_raw else b""
 
-            uac = int(str(entry.userAccountControl)) if "userAccountControl" in entry else 0
-            computed = int(
-                str(entry["msDS-User-Account-Control-Computed"])
-            ) if "msDS-User-Account-Control-Computed" in entry else 0
+            uac = int(_attr_value(entry, "userAccountControl") or 0)
+            computed = int(_attr_value(entry, "msDS-User-Account-Control-Computed") or 0)
             return {
-                "login": str(entry.sAMAccountName),
-                "full_name": str(entry.displayName) if "displayName" in entry else "",
-                "email": str(entry.mail) if "mail" in entry else "",
-                "title": str(entry.title) if "title" in entry else "",
-                "department": str(entry.department) if "department" in entry else "",
-                "company": str(entry.company) if "company" in entry else "",
-                "phone": str(entry.telephoneNumber) if "telephoneNumber" in entry else "",
-                "mobile": str(entry.mobilepers) if "mobilepers" in entry else "",
+                "login": _attr_str(entry, "sAMAccountName"),
+                "full_name": _attr_str(entry, "displayName"),
+                "email": _attr_str(entry, "mail"),
+                "title": _attr_str(entry, "title"),
+                "department": _attr_str(entry, "department"),
+                "company": _attr_str(entry, "company"),
+                "phone": _attr_str(entry, "telephoneNumber"),
+                "mobile": _attr_str(entry, "mobilepers"),
                 "manager": manager,
                 "disabled": bool(uac & _UAC_DISABLED),
                 "locked": bool(computed & _UAC_LOCKED),
                 "password_changed_at": filetime_to_datetime(
-                    entry.pwdLastSet[0] if "pwdLastSet" in entry else None
+                    _attr_value(entry, "pwdLastSet")
                 ),
                 "password_expires_at": filetime_to_datetime(
-                    entry["msDS-UserPasswordExpiryTimeComputed"][0]
-                ) if "msDS-UserPasswordExpiryTimeComputed" in entry else None,
+                    _attr_value(entry, "msDS-UserPasswordExpiryTimeComputed")
+                ),
                 "groups": groups,
                 "has_photo": bool(photo),
                 # The photo itself is cached separately (bytes are not JSON).
@@ -210,7 +289,7 @@ class AdDirectory:
             except Exception:  # noqa: BLE001 - best effort cleanup
                 pass
 
-    def _connect(self) -> Any:
+    def _connect(self, timeout_seconds: int | None = None) -> Any:
         settings = self._settings
         if settings.ldap_tls_verify and settings.ldap_ca_cert_file:
             tls = ldap3.Tls(
@@ -232,7 +311,7 @@ class AdDirectory:
             user=settings.ldap_service_user_dn,
             password=settings.ldap_service_password,
             auto_bind=False,
-            receive_timeout=settings.ldap_timeout_seconds,
+            receive_timeout=timeout_seconds or settings.ldap_timeout_seconds,
         )
         if not conn.bind():
             raise AdUnavailableError("AD service bind failed")

@@ -7,15 +7,18 @@ only. Every endpoint resolves the active Operator and audits actions via the
 services (actor=OPERATOR). No business logic here (AGENTS.md §6).
 """
 
+import json
 import uuid
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, or_, select
 
 from app.auth.operators import require_operator
 from app.errors import ApiError
+from app.integrations.ad_directory import AdUnavailableError
 from app.models import (
     AuditLog,
     ConversationSession,
@@ -53,6 +56,21 @@ async def get_current_operator(
     }
 
 
+@router.get("/me/photo")
+async def get_current_operator_photo(
+    operator: Annotated[Operator, Depends(require_operator)],
+) -> Response:
+    """The operator's own AD photo (avatar in the session footer)."""
+    service = AdInfoService()
+    photo = await service.photo_for_login(operator.email)
+    if photo is None and "@" in operator.email:
+        photo = await service.photo_for_login(operator.email.split("@", 1)[0])
+    if photo is None:
+        raise ApiError(code="NOT_FOUND", message="Фото не найдено", status_code=404)
+    media = "image/png" if photo[:4] == b"\x89PN" else "image/jpeg"
+    return Response(content=photo, media_type=media)
+
+
 def _ticket_view(
     ticket: Ticket, *, tags: list[Tag] | None = None
 ) -> dict[str, Any]:
@@ -63,6 +81,9 @@ def _ticket_view(
         "status": str(ticket.status),
         "priority": ticket.priority,
         "assignee_id": str(ticket.assignee_id) if ticket.assignee_id else None,
+        "pending_assignee_id": (
+            str(ticket.pending_assignee_id) if ticket.pending_assignee_id else None
+        ),
         "category_id": str(ticket.category_id) if ticket.category_id else None,
         "tags": [t.name for t in (tags or [])],
         "created_at": ticket.created_at.isoformat(),
@@ -97,6 +118,16 @@ def _map_value_error(exc: ValueError) -> ApiError:
     return ApiError(code="STATE_CONFLICT", message=text, status_code=409)
 
 
+async def _notify_workspace(request: Request) -> None:
+    """Nudge open workspaces to resync (best effort; never fails a request)."""
+    try:
+        await request.app.state.deps.redis.publish_event(
+            json.dumps({"type": "tickets.changed"})
+        )
+    except Exception:  # noqa: BLE001 - redis trouble must not break the API
+        pass
+
+
 @router.get("/tickets")
 async def list_tickets(
     request: Request,
@@ -105,6 +136,17 @@ async def list_tickets(
     assignee: str | None = Query(default=None, description="operator id, 'me' or 'unassigned'"),
     category: str | None = Query(default=None, description="category id"),
     tag: str | None = Query(default=None, description="tag name, case-insensitive"),
+    created_from: Annotated[datetime | None, Query(description="ISO date/time from")] = None,
+    created_to: Annotated[datetime | None, Query(description="ISO date/time to")] = None,
+    user: Annotated[
+        str | None, Query(description="user UUID, login or name fragment")
+    ] = None,
+    q: Annotated[
+        str | None, Query(description="ticket UUID or short-id prefix")
+    ] = None,
+    text: Annotated[
+        str | None, Query(description="substring of any message in the chat")
+    ] = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
@@ -140,6 +182,11 @@ async def list_tickets(
             unassigned_only=unassigned_only,
             category_id=category_id,
             tag_name=tag,
+            created_from=created_from,
+            created_to=created_to,
+            user_query=user,
+            ticket_query=q,
+            text_query=text,
             limit=limit,
             offset=offset,
         )
@@ -237,6 +284,7 @@ async def resolve_ticket(
             )
         except ValueError as exc:
             raise _map_value_error(exc) from exc
+    await _notify_workspace(request)
     return {"ticket_id": str(ticket.id), "status": str(ticket.status)}
 
 
@@ -252,6 +300,7 @@ async def close_ticket(
             ticket = await TicketService().close(session, ticket_id, actor_id=operator.id)
         except ValueError as exc:
             raise _map_value_error(exc) from exc
+    await _notify_workspace(request)
     return {"ticket_id": str(ticket.id), "status": str(ticket.status)}
 
 
@@ -294,11 +343,13 @@ async def assign_ticket(
     operator: Annotated[Operator, Depends(require_operator)],
     request: Request,
 ) -> dict[str, Any]:
-    """Manual assignment (docs/06 §6); auto-assignment stays behind a flag."""
+    """Manual assignment (docs/06 §6); auto-assignment stays behind a flag.
+    Capacity-full target: the ticket is queued and lands on the operator when
+    a slot frees up (deferred=true)."""
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         try:
-            ticket = await TicketService().assign(
+            ticket, deferred = await TicketService().assign(
                 session,
                 ticket_id,
                 assignee_id=payload.assignee_id,
@@ -306,9 +357,14 @@ async def assign_ticket(
             )
         except ValueError as exc:
             raise _map_value_error(exc) from exc
+    await _notify_workspace(request)
     return {
         "ticket_id": str(ticket.id),
         "assignee_id": str(ticket.assignee_id) if ticket.assignee_id else None,
+        "pending_assignee_id": (
+            str(ticket.pending_assignee_id) if ticket.pending_assignee_id else None
+        ),
+        "deferred": deferred,
     }
 
 
@@ -385,6 +441,7 @@ async def list_categories(
                 "category_id": str(category.id),
                 "name": category.name,
                 "parent_id": str(category.parent_id) if category.parent_id else None,
+                "is_active": category.is_active,
             }
             for category in categories
         ]
@@ -405,6 +462,7 @@ async def list_colleagues(
                 "operator_id": str(colleague.id),
                 "display_name": colleague.display_name,
                 "email": colleague.email,
+                "presence_status": colleague.presence_status.value,
             }
             for colleague in colleagues
             if colleague.id != operator.id
@@ -470,13 +528,89 @@ async def user_ad_photo(
     return Response(content=photo, media_type=media_type)
 
 
+class AdSearchOut(BaseModel):
+    login: str = ""
+    full_name: str = ""
+    email: str = ""
+    title: str = ""
+    department: str = ""
+    company: str = ""
+    phone: str = ""
+    disabled: bool = False
+    groups: list[str] = []
+    mobile: str = ""
+    manager: str = ""
+    password_changed_at: str | None = None
+    password_expires_at: str | None = None
+    locked: bool = False
+    demo: bool = False
+
+
+def _normalize_ad_card(card: dict[str, Any]) -> AdSearchOut:
+    changed = card.get("password_changed_at")
+    expires = card.get("password_expires_at")
+    return AdSearchOut(
+        login=str(card.get("login") or ""),
+        full_name=str(card.get("full_name") or ""),
+        email=str(card.get("email") or ""),
+        title=str(card.get("title") or ""),
+        department=str(card.get("department") or ""),
+        company=str(card.get("company") or ""),
+        phone=str(card.get("phone") or ""),
+        mobile=str(card.get("mobile") or ""),
+        manager=str(card.get("manager") or ""),
+        disabled=bool(card.get("disabled")),
+        locked=bool(card.get("locked")),
+        groups=[str(g) for g in card.get("groups") or []],
+        password_changed_at=str(changed) if changed else None,
+        password_expires_at=str(expires) if expires else None,
+        demo=bool(card.get("demo")),
+    )
+
+
+@router.get("/ad/search")
+async def ad_search(
+    operator: Annotated[Operator, Depends(require_operator)],
+    q: Annotated[str, Query(min_length=1, max_length=128)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> dict[str, Any]:
+    """AD people search for the lookup dialog (login / name / e-mail)."""
+    try:
+        results = await AdInfoService().search(q, limit=limit)
+    except AdUnavailableError as exc:
+        raise ApiError(
+            code="AD_UNAVAILABLE", message="AD недоступен, попробуйте позже", status_code=503
+        ) from exc
+    return {"results": [_normalize_ad_card(card).model_dump() for card in results]}
+
+
+@router.get("/ad/user")
+async def ad_user(
+    operator: Annotated[Operator, Depends(require_operator)],
+    login: Annotated[str, Query(min_length=1, max_length=128)],
+) -> dict[str, Any]:
+    """Full AD card for one login (detail view of the lookup dialog)."""
+    try:
+        card = await AdInfoService().user_by_login(login)
+    except AdUnavailableError as exc:
+        raise ApiError(
+            code="AD_UNAVAILABLE", message="AD недоступен, попробуйте позже", status_code=503
+        ) from exc
+    if card is None:
+        raise ApiError(
+            code="NOT_FOUND", message="Пользователь не найден в AD", status_code=404
+        )
+    return _normalize_ad_card(card).model_dump()
+
+
 @router.get("/tickets/{ticket_id}/assignment-history")
 async def ticket_assignment_history(
     ticket_id: uuid.UUID,
     operator: Annotated[Operator, Depends(require_operator)],
     request: Request,
 ) -> dict[str, Any]:
-    """Read assignment audit events without exposing unrelated audit records."""
+    """Movement history: operator assignments, deferred queueing and the
+    AI -> operator handoff, without exposing unrelated audit records."""
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         ticket = await TicketRepository().get(session, ticket_id)
@@ -485,9 +619,20 @@ async def ticket_assignment_history(
         stmt = (
             select(AuditLog)
             .where(
-                AuditLog.entity_type == "ticket",
-                AuditLog.entity_id == ticket_id,
-                AuditLog.action == "ticket.assigned",
+                or_(
+                    and_(
+                        AuditLog.entity_type == "ticket",
+                        AuditLog.entity_id == ticket_id,
+                        AuditLog.action.in_(
+                            ("ticket.assigned", "ticket.assignment_queued")
+                        ),
+                    ),
+                    and_(
+                        AuditLog.entity_type == "conversation",
+                        AuditLog.entity_id == ticket.conversation_id,
+                        AuditLog.action == "handoff.accepted",
+                    ),
+                )
             )
             .order_by(desc(AuditLog.created_at))
         )
@@ -495,6 +640,7 @@ async def ticket_assignment_history(
     return {
         "events": [
             {
+                "action": event.action,
                 "actor_id": str(event.actor_id) if event.actor_id else None,
                 "assignee_id": (event.details or {}).get("assignee_id"),
                 "created_at": event.created_at.isoformat(),

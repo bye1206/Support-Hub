@@ -67,6 +67,13 @@ class Ticket(UuidPkMixin, TimestampMixin, Base):
         ForeignKey("operators.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    # Deferred assignment (owner): when the target operator is at capacity the
+    # ticket is queued here and lands on them as soon as a slot frees up.
+    pending_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("operators.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     # Main category (D-026); directory management is the admin panel (stage 9).
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

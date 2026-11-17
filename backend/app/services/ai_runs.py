@@ -48,6 +48,7 @@ from app.repositories.messages import MessageRepository
 from app.repositories.tickets import TicketRepository
 from app.services.audit import AuditService
 from app.services.messages import MessageService
+from app.services.tickets import TicketService
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +305,9 @@ class AiRunService:
         await self._message_service.apply_ticket_trigger(
             session, ticket, TicketTrigger.AI_RESOLVED
         )
+        # Owner flow step 7b (2026-11-13): "помогло" closes the dialog with
+        # the same farewell note an operator's resolve sends.
+        await TicketService().send_resolution_note(session, conversation.id)
         await self._runs.cancel_pending_for_conversation(
             session, conversation_id=conversation.id
         )
@@ -349,6 +353,9 @@ class AiRunService:
         await self._message_service.apply_ticket_trigger(
             session, ticket, TicketTrigger.AI_REQUESTED_HANDOFF
         )
+        # Owner flow step 9 (2026-11-13): the handed-off ticket goes to a free
+        # operator right away; if everyone is at capacity it waits unassigned.
+        await TicketService().route_unassigned(session)
         await self._runs.cancel_pending_for_conversation(
             session, conversation_id=conversation.id
         )

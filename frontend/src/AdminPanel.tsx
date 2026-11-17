@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import "./AdminPanel.css";
 
 type Role = "OPERATOR" | "SUPERVISOR" | "ADMIN";
@@ -9,6 +9,7 @@ type Operator = {
   display_name: string | null;
   role: Role;
   is_active: boolean;
+  presence_status?: string;
   max_active_tickets: number;
   created_at: string;
 };
@@ -23,7 +24,50 @@ type AuditEntry = {
 type Overview = { tickets: number; active_operators: number };
 type Category = { category_id: string; name: string; parent_id: string | null; is_active: boolean };
 type Tag = { tag_id: string; name: string; is_active: boolean };
-type Theme = "light" | "dark";
+type Ticket = {
+  ticket_id: string;
+  user_id: string;
+  status: string;
+  priority: string;
+  assignee_id: string | null;
+  pending_assignee_id: string | null;
+  created_at: string;
+  messages?: Array<{
+    message_id: string;
+    author_type: string;
+    text: string;
+    created_at: string;
+  }>;
+};
+type Colleague = {
+  operator_id: string;
+  display_name: string | null;
+  email: string;
+  presence_status?: string;
+  max_active_tickets?: number;
+};
+
+const presenceLabels: Record<string, string> = {
+  ACTIVE: "Активен",
+  LUNCH: "Обед",
+  BREAK: "Перерыв",
+  OFFLINE: "Офлайн",
+};
+
+async function opApi<T>(path: string, auth: Auth, init?: RequestInit): Promise<T> {
+  const response = await fetch(`/api/v1/operator${path}`, {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${auth.token}`,
+    },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error?.message || "Не удалось выполнить запрос");
+  }
+  return response.json() as Promise<T>;
+}
 
 async function adminApi<T>(path: string, auth: Auth, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/v1/admin${path}`, {
@@ -46,26 +90,64 @@ const roleLabels: Record<Role, string> = {
   ADMIN: "Администратор",
 };
 
+const ticketStatuses: Record<string, string> = {
+  NEW: "Без назначения",
+  OPEN: "В работе",
+  AI_PROCESSING: "Обработка ИИ",
+  PENDING_USER: "Ожидает пользователя",
+  RESOLVED: "Решено",
+  CLOSED: "Закрыт",
+};
+
+const authorLabels: Record<string, string> = {
+  USER: "Пользователь",
+  OPERATOR: "Оператор",
+  AI: "ИИ",
+  SYSTEM: "Система",
+};
+const messageHeading = (authorType: string) =>
+  authorLabels[authorType] || authorType;
+
+const shortId = (id: string) => id.slice(0, 8);
+
+const initials = (name: string) =>
+  name
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "?";
+
 export function AdminPanel({
   auth,
   selfId,
   role,
-  theme,
-  onToggleTheme,
   onRoleChange,
-  onClose,
 }: {
   auth: Auth;
   selfId: string;
   role: Role;
-  theme: Theme;
-  onToggleTheme: () => void;
   onRoleChange: (role: Role) => void;
-  onClose: () => void;
 }) {
-  const [section, setSection] = useState<"overview" | "operators" | "categories" | "tags" | "audit">("overview");
+  const [section, setSection] = useState<"overview" | "distribution" | "operators" | "categories" | "tags" | "audit">("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [operators, setOperators] = useState<Operator[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [colleagues, setColleagues] = useState<Colleague[]>([]);
+  const [distSelected, setDistSelected] = useState<string | null>(null);
+  const [distTicket, setDistTicket] = useState<Ticket | null>(null);
+  const [assignFor, setAssignFor] = useState<Ticket | null>(null);
+  const [assignTo, setAssignTo] = useState<string | null>(null);
+  const [assignPriority, setAssignPriority] = useState("NORMAL");
+  const [staffModal, setStaffModal] = useState(false);
+  const [unassignedModal, setUnassignedModal] = useState(false);
+  const [deleteCategory, setDeleteCategory] = useState<Category | null>(null);
+  const [toastMessage, setToastMessage] = useState("");
+  const [themesOpen, setThemesOpen] = useState<Category | null>(null);
+  const [themeName, setThemeName] = useState("");
+  const [categorySearchOpen, setCategorySearchOpen] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const categorySearchRef = useRef<HTMLInputElement>(null);
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -90,10 +172,38 @@ export function AdminPanel({
     requests.push(adminApi<{ entries: AuditEntry[] }>("/audit", auth).then((data) => active && setAudit(data.entries)));
     requests.push(adminApi<{ categories: Category[] }>("/categories", auth).then((data) => active && setCategories(data.categories)));
     requests.push(adminApi<{ tags: Tag[] }>("/tags", auth).then((data) => active && setTags(data.tags)));
+    if (role !== "OPERATOR") {
+      requests.push(opApi<{ tickets: Ticket[] }>("/tickets?limit=200", auth).then((data) => active && setTickets(data.tickets)));
+      requests.push(opApi<{ colleagues: Colleague[] }>("/colleagues", auth).then((data) => active && setColleagues(data.colleagues)));
+    }
     void Promise.all(requests)
       .catch((cause: unknown) => active && setError(cause instanceof Error ? cause.message : "Не удалось загрузить панель"))
       .finally(() => active && setBusy(false));
     return () => { active = false; };
+  }, [auth, role]);
+
+  // Presence changes constantly; refresh staff statuses quietly.
+  useEffect(() => {
+    const refresh = () => {
+      if (role === "ADMIN")
+        void adminApi<{ operators: Operator[] }>("/operators", auth)
+          .then((data) => setOperators(data.operators))
+          .catch(() => {});
+      if (role !== "OPERATOR") {
+        void opApi<{ colleagues: Colleague[] }>("/colleagues", auth)
+          .then((data) => setColleagues(data.colleagues))
+          .catch(() => {});
+        // Owner request 2026-11-13: new chats must appear in the
+        // distribution panel without reopening it.
+        void opApi<{ tickets: Ticket[] }>("/tickets?limit=200", auth)
+          .then((data) => setTickets(data.tickets))
+          .catch(() => {});
+      }
+    };
+    // Owner request 2026-11-13: 3 s so new chats reach the distribution
+    // panel almost instantly.
+    const timer = window.setInterval(refresh, 3000);
+    return () => window.clearInterval(timer);
   }, [auth, role]);
 
   const changeRole = async (operator: Operator, nextRole: Role) => {
@@ -154,6 +264,20 @@ export function AdminPanel({
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Категория не сохранена"); }
   };
 
+  const addTheme = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!themesOpen) return;
+    try {
+      const theme = await adminApi<Category>("/categories", auth, {
+        method: "POST",
+        body: JSON.stringify({ name: themeName, parent_id: themesOpen.category_id }),
+      });
+      setCategories((items) => [...items.filter((item) => item.category_id !== theme.category_id), theme].sort((a, b) => a.name.localeCompare(b.name, "ru")));
+      setThemeName("");
+      setError("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Тема не сохранена"); }
+  };
+
   const saveTag = async (event: FormEvent) => {
     event.preventDefault();
     try {
@@ -201,22 +325,163 @@ export function AdminPanel({
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Изменение не сохранено"); }
   };
 
+  const confirmCategoryDelete = async (categoryId: string) => {
+    try {
+      const result = await adminApi<{ deleted: boolean; deactivated: boolean }>(
+        `/categories/${categoryId}`,
+        auth,
+        { method: "DELETE" },
+      );
+      setDeleteCategory(null);
+      if (result.deleted) {
+        setCategories((items) => items.filter((item) => item.category_id !== categoryId));
+        setToastMessage("Категория удалена");
+      } else {
+        setCategories((items) => items.map((item) => item.category_id === categoryId ? { ...item, is_active: false } : item));
+        setToastMessage("Категория используется в обращениях — она отключена и скрыта из выбора");
+      }
+      window.setTimeout(() => setToastMessage(""), 4000);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось удалить категорию");
+    }
+  };
+
+  const refreshTickets = async () => {
+    const data = await opApi<{ tickets: Ticket[] }>("/tickets?limit=200", auth);
+    setTickets(data.tickets);
+  };
+
+  const activeTickets = tickets.filter((ticket) => ticket.status !== "RESOLVED" && ticket.status !== "CLOSED");
+  const staff: Array<Operator | Colleague> = role === "ADMIN"
+    ? operators
+    : colleagues.map((colleague) => ({ ...colleague, max_active_tickets: 5 }));
+  // Distribution targets active operators only: an offline / on-break
+  // colleague is shown grayed out and cannot receive chats.
+  const isReachable = (member: Operator | Colleague) =>
+    (member as Operator).is_active !== false &&
+    (member.presence_status ?? "ACTIVE") === "ACTIVE";
+  const distStaff = staff.filter(isReachable);
+  const loadOf = (operatorId: string) =>
+    activeTickets.filter((ticket) => ticket.assignee_id === operatorId).length;
+  const nameOf = (operatorId: string | null) => {
+    if (!operatorId) return null;
+    const member = staff.find((item) => item.operator_id === operatorId);
+    return member ? member.display_name || member.email : shortId(operatorId);
+  };
+  const operatorTickets = distSelected
+    ? activeTickets.filter((ticket) => ticket.assignee_id === distSelected)
+    : [];
+  // Чаты у ИИ в распределении не нужны.
+  const unassignedTickets = activeTickets.filter(
+    (ticket) => !ticket.assignee_id && ticket.status !== "AI_PROCESSING",
+  );
+
+  const openAssign = (ticket: Ticket) => {
+    setAssignFor(ticket);
+    setAssignTo(null);
+    setAssignPriority(ticket.priority || "NORMAL");
+  };
+
+  const confirmAssign = async () => {
+    if (!assignFor || !assignTo) return;
+    try {
+      if (assignPriority !== assignFor.priority) {
+        await opApi(`/tickets/${assignFor.ticket_id}/priority`, auth, {
+          method: "PATCH",
+          body: JSON.stringify({ priority: assignPriority }),
+        });
+      }
+      await opApi(`/tickets/${assignFor.ticket_id}/assign`, auth, {
+        method: "POST",
+        body: JSON.stringify({ assignee_id: assignTo }),
+      });
+      await refreshTickets();
+      setAssignFor(null);
+      setAssignTo(null);
+      setDistTicket(null);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось назначить обращение");
+    }
+  };
+
+  const renderChatMessages = (ticket: Ticket | null) => (
+    <div className="history-messages">
+      {(ticket?.messages ?? []).map((message) => (
+        <div
+          key={message.message_id}
+          className={`message ${message.author_type === "OPERATOR" ? "from-operator" : ""}`}
+        >
+          <div className="message-content">
+            <div className="message-heading">
+              <strong>{messageHeading(message.author_type)}</strong>
+              <time>
+                {new Date(message.created_at).toLocaleString("ru-RU", {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </time>
+            </div>
+            <div className="message-bubble">{message.text}</div>
+          </div>
+        </div>
+      ))}
+      {!(ticket?.messages ?? []).length && (
+        <div className="past-empty">Сообщений пока нет.</div>
+      )}
+    </div>
+  );
+
+  const openDistTicket = async (ticket: Ticket) => {
+    try {
+      const card = await opApi<Ticket>(`/tickets/${ticket.ticket_id}`, auth);
+      setDistTicket(card);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось открыть чат");
+    }
+  };
+
+  const renderDistTicket = (ticket: Ticket) => (
+    <div className="dist-ticket" key={ticket.ticket_id}>
+      <div className="dist-row">
+        <button
+          className="dist-row-main"
+          onClick={() => void openDistTicket(ticket)}
+        >
+          <strong>#{shortId(ticket.ticket_id)}</strong>
+          <span className="muted">
+            Пользователь {shortId(ticket.user_id)} ·{" "}
+            {ticketStatuses[ticket.status] || ticket.status}
+          </span>
+          {ticket.pending_assignee_id && (
+            <span className="pending-badge" title={`Отложено для ${nameOf(ticket.pending_assignee_id) || "сотрудника"}`}>Отложено</span>
+          )}
+        </button>
+        <button className="dist-assign" onClick={() => openAssign(ticket)}>
+          Назначить
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <section className="admin-panel" aria-label="Административная панель">
       <header className="admin-header">
         <div><p className="eyebrow">SUPPORT HUB</p><h1>Панель управления</h1></div>
-        <div className="admin-header-actions">
-          <button className="icon-button theme-toggle" onClick={onToggleTheme} aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"} title={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}><svg viewBox="0 0 24 24" aria-hidden="true">{theme === "dark" ? <><path d="M20.2 15.3A8.4 8.4 0 0 1 8.7 3.8 8.5 8.5 0 1 0 20.2 15.3Z" /><path d="M16.5 3.5v4M14.5 5.5h4" /></> : <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></>}</svg></button>
-          <button className="icon-button" onClick={onClose} aria-label="Закрыть панель" title="Вернуться к обращениям"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
-        </div>
+        <div className="admin-header-actions" />
       </header>
       <nav className="admin-nav" aria-label="Разделы панели">
-        {([ ["overview", "Обзор"], ["operators", "Сотрудники"], ["categories", "Категории"], ["tags", "Теги"], ["audit", "Аудит"] ] as const)
+        {([ ["overview", "Обзор"], ["distribution", "Распределение"], ["operators", "Сотрудники"], ["categories", "Категории"], ["tags", "Теги"], ["audit", "Аудит"] ] as const)
           .filter(([key]) => (key !== "operators" || role === "ADMIN") && (key !== "categories" && key !== "tags" || role !== "OPERATOR"))
           .map(([key, label]) => <button key={key} className={section === key ? "active" : ""} onClick={() => setSection(key)}>{label}</button>)}
       </nav>
       <div className="admin-content">
         {error && <div className="admin-error" role="alert">{error}</div>}
+        {toastMessage && <div className="admin-toast" role="status">{toastMessage}</div>}
         {busy ? <p className="admin-muted">Загружаем данные…</p> : (
           <>
             {section === "overview" && <>
@@ -227,18 +492,145 @@ export function AdminPanel({
               </div>
               <div className="admin-note"><strong>Доступы</strong><span>Ваша роль: {roleLabels[role]}. Действия проверяются сервером.</span></div>
             </>}
+            {section === "distribution" && <>
+              <p className="admin-intro">Нажмите на сотрудника — откроется окно со всеми его чатами: история, информация и кнопка «Назначить». Справа — неназначенные чаты. Чаты в обработке ИИ здесь не отображаются.</p>
+              <div className="dist-full">
+                <div className="dist-layout">
+                  <div className="dist-col">
+                  <div className="dist-col-title">Сотрудники</div>
+                  <div className="dist-grid">
+                    {distStaff.slice(0, 10).map((member) => {
+                      const load = loadOf(member.operator_id);
+                      const max = member.max_active_tickets ?? 5;
+                      const full = load >= max;
+                      return (
+                        <button
+                          key={member.operator_id}
+                          className={`dist-operator ${full ? "full" : ""}`}
+                          onClick={() => {
+                            setDistSelected(member.operator_id);
+                            setDistTicket(null);
+                          }}
+                        >
+                          <span className="dist-avatar">{initials(member.display_name || member.email)}</span>
+                          <span className="dist-name">{member.display_name || member.email}<span>{member.email}</span></span>
+                          <span className="dist-load">{load}/{max}{full ? " · полная" : ""}</span>
+                        </button>
+                      );
+                    })}
+                    {!distStaff.length && <p className="admin-muted">Нет активных сотрудников.</p>}
+                  </div>
+                  {distStaff.length > 10 && (
+                    <button
+                      className="dist-more"
+                      onClick={() => setStaffModal(true)}
+                    >
+                      Показать больше · {distStaff.length}
+                    </button>
+                  )}
+                </div>
+                <div className="dist-col">
+                  <div className="dist-dialogs">
+                    <div className="dist-col-title">Неназначенные чаты</div>
+                    {unassignedTickets.slice(0, 10).map((ticket) => renderDistTicket(ticket))}
+                    {!unassignedTickets.length && (
+                      <p className="admin-muted">Неназначенных чатов нет.</p>
+                    )}
+                    {unassignedTickets.length > 10 && (
+                      <button
+                        className="dist-more"
+                        onClick={() => setUnassignedModal(true)}
+                      >
+                        Показать больше · {unassignedTickets.length}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                </div>
+              </div>
+            </>}
             {section === "operators" && role === "ADMIN" && <>
               <p className="admin-intro">Профили, роли и лимиты нагрузки. Лимит — сколько активных обращений авто-распределение может назначить сотруднику одновременно (прямая передача не ограничена).</p>
               <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Лимит</th><th>Статус</th><th>Действие</th></tr></thead><tbody>
-                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><input className="limit-input" type="number" min={1} max={100} defaultValue={operator.max_active_tickets} aria-label={`Лимит обращений ${operator.email}`} disabled={!operator.is_active} onBlur={(event) => void changeLimit(operator, Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") (event.target as HTMLInputElement).blur(); }} /></td><td><span className={`admin-state ${operator.is_active ? "active" : "inactive"}`}>{operator.is_active ? "Активен" : "Отключён"}</span></td><td>{operator.is_active && operator.operator_id !== selfId && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} title="Куда передать активные обращения этого сотрудника при отключении" value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button title="Отключить профиль: сотрудник больше не сможет входить; активные обращения уйдут выбранному сотруднику или в общую очередь" onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
+                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><input className="limit-input" type="number" min={1} max={100} defaultValue={operator.max_active_tickets} aria-label={`Лимит обращений ${operator.email}`} disabled={!operator.is_active} onBlur={(event) => void changeLimit(operator, Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") (event.target as HTMLInputElement).blur(); }} /></td><td><span className={`admin-state ${!operator.is_active ? "inactive" : operator.presence_status === "ACTIVE" || !operator.presence_status ? "active" : "away"}`}>{!operator.is_active ? "Отключён" : presenceLabels[operator.presence_status ?? "ACTIVE"]}</span></td><td>{operator.is_active && operator.operator_id !== selfId && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} title="Куда передать активные обращения этого сотрудника при отключении" value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button title="Отключить профиль: сотрудник больше не сможет входить; активные обращения уйдут выбранному сотруднику или в общую очередь" onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
               </tbody></table></div>
             </>}
             {section === "categories" && <>
-              <p className="admin-intro">Справочник тем обращений. Подкатегорию можно создать, выбрав родителя.</p>
-              <form className="directory-form" onSubmit={(event) => void saveCategory(event)}><input required maxLength={255} placeholder="Название категории" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} /><select aria-label="Родительская категория" value={categoryParent} onChange={(event) => setCategoryParent(event.target.value)}><option value="">Верхний уровень</option>{categories.filter((item) => item.is_active).map((item) => <option key={item.category_id} value={item.category_id}>{item.name}</option>)}</select><button type="submit">Добавить</button></form>
-              <div className="directory-list">{categories.map((category) => <div key={category.category_id} className={`directory-row ${!category.is_active ? "inactive" : ""}`}>
-                {editingCategory?.category_id === category.category_id ? <form className="directory-edit" onSubmit={(event) => void updateCategory(event)}><input required maxLength={255} value={editingCategory.name} onChange={(event) => setEditingCategory({ ...editingCategory, name: event.target.value })} /><select aria-label="Родительская категория" value={editingCategory.parent_id || ""} onChange={(event) => setEditingCategory({ ...editingCategory, parent_id: event.target.value || null })}><option value="">Верхний уровень</option>{categories.filter((item) => item.is_active && item.category_id !== category.category_id).map((item) => <option key={item.category_id} value={item.category_id}>{item.name}</option>)}</select><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingCategory(null)}>Отмена</button></form> : <><span>{category.parent_id ? "↳ " : ""}{category.name}</span><span>{category.is_active ? "Активна" : "Отключена"}</span><div className="directory-actions">{category.is_active && <button onClick={() => setEditingCategory(category)}>Изменить</button>}<button onClick={() => void setDirectoryActive("categories", category.category_id, !category.is_active)}>{category.is_active ? "Отключить" : "Включить"}</button></div></>}
-              </div>)}</div>
+              <p className="admin-intro">Два уровня: категория → тема (у темы подкатегорий нет). Нажмите на категорию, чтобы открыть её темы. Категории и темы используются в окне «Решить обращение» при закрытии чатов.</p>
+              <div className="category-toolbar">
+                <form className="directory-form" onSubmit={(event) => void saveCategory(event)}>
+                  <input required maxLength={255} placeholder="Название категории" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} />
+                  <select aria-label="Родительская категория" value={categoryParent} onChange={(event) => setCategoryParent(event.target.value)}><option value="">Верхний уровень (категория)</option>{categories.filter((item) => item.is_active && !item.parent_id).map((item) => <option key={item.category_id} value={item.category_id}>{item.name}</option>)}</select>
+                  <button type="submit">Добавить</button>
+                </form>
+                <div className="category-search">
+                  <div
+                    className={`admin-inline-search ${categorySearchOpen ? "open" : ""}`}
+                  >
+                    <input
+                      ref={categorySearchRef}
+                      tabIndex={categorySearchOpen ? 0 : -1}
+                      placeholder="Поиск по категориям и темам"
+                      value={categoryQuery}
+                      onChange={(event) => setCategoryQuery(event.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className={`icon-button ${categorySearchOpen ? "active-icon" : ""}`}
+                    title="Поиск"
+                    aria-label="Поиск по категориям"
+                    onClick={() => {
+                      const opening = !categorySearchOpen;
+                      setCategorySearchOpen(opening);
+                      if (!opening) setCategoryQuery("");
+                      else
+                        requestAnimationFrame(() =>
+                          requestAnimationFrame(() => categorySearchRef.current?.focus()),
+                        );
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="11" cy="11" r="6.5" />
+                      <path d="m16 16 4.5 4.5" />
+                    </svg>
+                    {categoryQuery.trim() && <i className="tool-dot" />}
+                  </button>
+                </div>
+              </div>
+              <div className="directory-list">{(() => {
+                const query = categoryQuery.trim().toLowerCase();
+                const topLevel = categories.filter((category) => !category.parent_id);
+                const visible = query
+                  ? topLevel.filter(
+                      (category) =>
+                        category.name.toLowerCase().includes(query) ||
+                        categories.some(
+                          (theme) =>
+                            theme.parent_id === category.category_id &&
+                            theme.name.toLowerCase().includes(query),
+                        ),
+                    )
+                  : topLevel;
+                return visible.length ? (
+                  visible.map((category) => <div key={category.category_id} className={`directory-row ${!category.is_active ? "inactive" : ""}`}>
+                    {editingCategory?.category_id === category.category_id ? <form className="directory-edit" onSubmit={(event) => void updateCategory(event)}><input required maxLength={255} value={editingCategory.name} onChange={(event) => setEditingCategory({ ...editingCategory, name: event.target.value })} /><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingCategory(null)}>Отмена</button></form> : <>
+                      <button className="directory-open" onClick={() => { setThemesOpen(category); setThemeName(""); }} title="Открыть темы категории">
+                        {category.name}
+                        <span className="muted">тем: {categories.filter((item) => item.parent_id === category.category_id).length}</span>
+                      </button>
+                      <span>{category.is_active ? "Активна" : "Отключена"}</span>
+                      <div className="directory-actions">
+                        {category.is_active && <button onClick={() => setEditingCategory(category)}>Изменить</button>}
+                        <button onClick={() => void setDirectoryActive("categories", category.category_id, !category.is_active)}>{category.is_active ? "Отключить" : "Включить"}</button>
+                        <button className="directory-delete" title="Удалить" aria-label={`Удалить ${category.name}`} onClick={() => setDeleteCategory(category)}>×</button>
+                      </div>
+                    </>}
+                  </div>)
+                ) : (
+                  <div className="past-empty">Ничего не найдено.</div>
+                );
+              })()}</div>
             </>}
             {section === "tags" && <>
               <p className="admin-intro">Метки для группировки и поиска обращений.</p>
@@ -257,6 +649,326 @@ export function AdminPanel({
           </>
         )}
       </div>
+      {staffModal && !distSelected && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setStaffModal(false)}
+          role="presentation"
+        >
+          <div
+            className="modal wide"
+            role="dialog"
+            aria-label="Все сотрудники"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">Сотрудники · {distStaff.length}</div>
+            <div className="dist-grid">
+              {distStaff.map((member) => {
+                const load = loadOf(member.operator_id);
+                const max = member.max_active_tickets ?? 5;
+                const full = load >= max;
+                return (
+                  <button
+                    key={member.operator_id}
+                    className={`dist-operator ${full ? "full" : ""}`}
+                    onClick={() => {
+                      setStaffModal(false);
+                      setDistSelected(member.operator_id);
+                      setDistTicket(null);
+                    }}
+                  >
+                    <span className="dist-avatar">{initials(member.display_name || member.email)}</span>
+                    <span className="dist-name">{member.display_name || member.email}<span>{member.email}</span></span>
+                    <span className="dist-load">{load}/{max}{full ? " · полная" : ""}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button className="quiet-action" onClick={() => setStaffModal(false)}>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+      {distSelected && !assignFor && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setDistSelected(null);
+            setDistTicket(null);
+          }}
+          role="presentation"
+        >
+          <div
+            className="modal wide"
+            role="dialog"
+            aria-label="Диалоги сотрудника"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">
+              Чаты · {nameOf(distSelected) || shortId(distSelected)}
+            </div>
+            {operatorTickets.map((ticket) => renderDistTicket(ticket))}
+            {!operatorTickets.length && (
+              <div className="past-empty">Активных чатов нет.</div>
+            )}
+            <button
+              className="quiet-action"
+              onClick={() => {
+                setDistSelected(null);
+                setDistTicket(null);
+              }}
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+      {unassignedModal && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setUnassignedModal(false)}
+          role="presentation"
+        >
+          <div
+            className="modal wide"
+            role="dialog"
+            aria-label="Все неназначенные чаты"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">
+              Неназначенные чаты · {unassignedTickets.length}
+            </div>
+            {unassignedTickets.map((ticket) => renderDistTicket(ticket))}
+            {!unassignedTickets.length && (
+              <div className="past-empty">Неназначенных чатов нет.</div>
+            )}
+            <button
+              className="quiet-action"
+              onClick={() => setUnassignedModal(false)}
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+      {distTicket && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setDistTicket(null)}
+          role="presentation"
+        >
+          <div
+            className="modal wide"
+            role="dialog"
+            aria-label="Чат обращения"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">
+              #{shortId(distTicket.ticket_id)} ·{" "}
+              {ticketStatuses[distTicket.status] || distTicket.status}
+            </div>
+            <div className="muted history-meta">
+              Пользователь #{shortId(distTicket.user_id)}
+              {" · приоритет: "}
+              {distTicket.priority === "URGENT"
+                ? "срочный"
+                : distTicket.priority === "HIGH"
+                  ? "высокий"
+                  : "обычный"}
+              {` · открыт ${new Date(distTicket.created_at).toLocaleString("ru-RU")}`}
+            </div>
+            {renderChatMessages(distTicket)}
+            <button
+              className="resolve-submit"
+              onClick={() => openAssign(distTicket)}
+            >
+              Назначить сотруднику
+            </button>
+            <button className="quiet-action" onClick={() => setDistTicket(null)}>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+      {assignFor && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setAssignFor(null)}
+          role="presentation"
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-label="Назначить обращение"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">
+              Назначить #{shortId(assignFor.ticket_id)}
+            </div>
+            <div className="assign-grid">
+              {distStaff.map((member) => {
+                const load = loadOf(member.operator_id);
+                const max = member.max_active_tickets ?? 5;
+                return (
+                  <button
+                    key={member.operator_id}
+                    className={`assign-candidate ${assignTo === member.operator_id ? "selected" : ""}`}
+                    onClick={() => setAssignTo(member.operator_id)}
+                  >
+                    <span className="dist-avatar">{initials(member.display_name || member.email)}</span>
+                    <span className="dist-name">
+                      {member.display_name || member.email}
+                      <span>
+                        Чатов: {load} из {max}
+                        {load >= max ? " · полная загрузка (встанет в отложенные)" : ""}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <label className="resolve-label" htmlFor="assign-priority">
+              Приоритет чата
+              <select
+                id="assign-priority"
+                value={assignPriority}
+                onChange={(event) => setAssignPriority(event.target.value)}
+              >
+                <option value="NORMAL">Обычный</option>
+                <option value="HIGH">Высокий</option>
+                <option value="URGENT">Срочный</option>
+              </select>
+            </label>
+            <button
+              className="resolve-submit"
+              disabled={!assignTo}
+              onClick={() => void confirmAssign()}
+            >
+              Назначить
+            </button>
+            <button className="quiet-action" onClick={() => setAssignFor(null)}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+      {themesOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setThemesOpen(null)}
+          role="presentation"
+        >
+          <div
+            className="modal wide"
+            role="dialog"
+            aria-label="Темы категории"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">
+              Категория «{themesOpen.name}» ·{" "}
+              {categories.filter((item) => item.parent_id === themesOpen.category_id).length} тем
+            </div>
+            <div className="directory-list">
+              {categories
+                .filter((item) => item.parent_id === themesOpen.category_id)
+                .map((theme) => (
+                  <div
+                    key={theme.category_id}
+                    className={`directory-row ${!theme.is_active ? "inactive" : ""}`}
+                  >
+                    {editingCategory?.category_id === theme.category_id ? (
+                      <form className="directory-edit" onSubmit={(event) => void updateCategory(event)}>
+                        <input
+                          required
+                          maxLength={255}
+                          value={editingCategory.name}
+                          onChange={(event) =>
+                            setEditingCategory({ ...editingCategory, name: event.target.value })
+                          }
+                        />
+                        <button type="submit">Сохранить</button>
+                        <button type="button" onClick={() => setEditingCategory(null)}>Отмена</button>
+                      </form>
+                    ) : (
+                      <>
+                        <span>{theme.name}</span>
+                        <span>{theme.is_active ? "Активна" : "Отключена"}</span>
+                        <div className="directory-actions">
+                          {theme.is_active && (
+                            <button onClick={() => setEditingCategory(theme)}>Изменить</button>
+                          )}
+                          <button
+                            onClick={() =>
+                              void setDirectoryActive("categories", theme.category_id, !theme.is_active)
+                            }
+                          >
+                            {theme.is_active ? "Отключить" : "Включить"}
+                          </button>
+                          <button
+                            className="directory-delete"
+                            title="Удалить"
+                            aria-label={`Удалить ${theme.name}`}
+                            onClick={() => setDeleteCategory(theme)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              {!categories.some((item) => item.parent_id === themesOpen.category_id) && (
+                <div className="past-empty">Тем пока нет.</div>
+              )}
+            </div>
+            <form className="directory-form" onSubmit={(event) => void addTheme(event)}>
+              <input
+                required
+                maxLength={255}
+                placeholder="Название темы"
+                value={themeName}
+                onChange={(event) => setThemeName(event.target.value)}
+              />
+              <button type="submit">Добавить тему</button>
+            </form>
+            <button className="quiet-action" onClick={() => setThemesOpen(null)}>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+      {deleteCategory && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setDeleteCategory(null)}
+          role="presentation"
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-label="Удаление категории"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">Удалить категорию?</div>
+            <p className="admin-muted" style={{ margin: 0 }}>
+              «{deleteCategory.name}»{deleteCategory.parent_id ? "" : " вместе с её темами"} будет
+              удалена из справочника и пропадёт из окна «Решить обращение».
+              Если она уже использовалась в обращениях, она будет только
+              отключена, чтобы история осталась корректной.
+            </p>
+            <button
+              className="resolve-submit"
+              onClick={() => void confirmCategoryDelete(deleteCategory.category_id)}
+            >
+              Да, удалить
+            </button>
+            <button className="quiet-action" onClick={() => setDeleteCategory(null)}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

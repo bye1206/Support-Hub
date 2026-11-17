@@ -156,9 +156,11 @@ async def _ticket_state(ticket_id: uuid.UUID) -> tuple[uuid.UUID | None, list[st
         factory.kw["bind"].engine.dispose()  # type: ignore[attr-defined]
 
 
-def test_least_loaded_operator_gets_new_ticket_and_channel_tag(
+def test_new_ticket_stays_with_ai_and_gets_channel_tag(
     client: TestClient,
 ) -> None:
+    """Owner flow (2026-11-13): a NEW dialog belongs to the AI — no operator
+    is assigned at birth; the channel tag is still applied."""
     busy = asyncio.run(_add_operator("busy@corp.test"))
     asyncio.run(_add_operator("free@corp.test"))
     asyncio.run(_seed_open_ticket_for(busy))
@@ -169,29 +171,27 @@ def test_least_loaded_operator_gets_new_ticket_and_channel_tag(
     assert body["conversation_created"] is True
 
     assignee, tags = asyncio.run(_ticket_state(uuid.UUID(body["ticket_id"])))
-    assert assignee is not None and assignee != busy  # the free one won
+    assert assignee is None  # the AI owns the dialog first
     assert "support-dm" in tags
 
 
 def test_no_operators_leaves_ticket_unassigned(client: TestClient) -> None:
     body = client.post(
-        "/api/v1/integrations/tag/messages", json=payload(), headers=headers()
+        "/api/v1/integrations/tag/messages", json=payload(post_id="post-auto-2"), headers=headers()
     ).json()
     assignee, tags = asyncio.run(_ticket_state(uuid.UUID(body["ticket_id"])))
     assert assignee is None
     assert "support-dm" in tags
 
 
-def test_auto_assign_skips_operators_at_limit(client: TestClient) -> None:
-    """Both operators are at their max_active_tickets: the ticket stays unassigned."""
-    busy_a = asyncio.run(_add_operator("lim-a@corp.test", max_active=1))
-    busy_b = asyncio.run(_add_operator("lim-b@corp.test", max_active=1))
-    asyncio.run(_seed_open_ticket_for(busy_a))
-    asyncio.run(_seed_open_ticket_for(busy_b))
+def test_auto_assign_flag_no_longer_assigns_new_tickets(client: TestClient) -> None:
+    """Owner flow (2026-11-13): even with AUTO_ASSIGN_ENABLED=true a new
+    dialog is not assigned to an operator — the AI handles it first."""
+    asyncio.run(_add_operator("aa@corp.test"))
 
     body = client.post(
         "/api/v1/integrations/tag/messages",
-        json=payload(post_id="post-auto-2"),
+        json=payload(post_id="post-auto-3"),
         headers=headers(),
     ).json()
     assignee, _ = asyncio.run(_ticket_state(uuid.UUID(body["ticket_id"])))

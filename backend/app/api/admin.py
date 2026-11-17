@@ -51,6 +51,7 @@ def _operator_view(operator: Operator) -> dict[str, str | bool | int | None]:
         "display_name": operator.display_name,
         "role": operator.role.value,
         "is_active": operator.is_active,
+        "presence_status": operator.presence_status.value,
         "max_active_tickets": operator.max_active_tickets,
         "created_at": operator.created_at.isoformat(),
     }
@@ -130,6 +131,13 @@ async def create_category(
             parent = await session.get(TicketCategory, payload.parent_id)
             if parent is None or not parent.is_active:
                 raise ApiError("INVALID_PARENT", "Parent category is unavailable", status_code=422)
+            if parent.parent_id is not None:
+                # Owner rule: strictly two levels — category -> theme.
+                raise ApiError(
+                    "CATEGORY_DEPTH",
+                    "Only two levels are allowed: a category and its themes",
+                    status_code=409,
+                )
         duplicate = await session.scalar(
             select(TicketCategory.id).where(
                 TicketCategory.parent_id == payload.parent_id,
@@ -182,6 +190,24 @@ async def update_category(
             parent = await session.get(TicketCategory, payload.parent_id)
             if parent is None or not parent.is_active:
                 raise ApiError("INVALID_PARENT", "Parent category is unavailable", status_code=422)
+            if parent.parent_id is not None:
+                # Owner rule: strictly two levels — category -> theme.
+                raise ApiError(
+                    "CATEGORY_DEPTH",
+                    "Only two levels are allowed: a category and its themes",
+                    status_code=409,
+                )
+            has_children = await session.scalar(
+                select(func.count()).select_from(TicketCategory).where(
+                    TicketCategory.parent_id == category.id
+                )
+            )
+            if has_children:
+                raise ApiError(
+                    "CATEGORY_HAS_CHILDREN",
+                    "A category with themes cannot become a theme itself",
+                    status_code=409,
+                )
             all_categories = (await session.scalars(select(TicketCategory))).all()
             parents = {item.id: item.parent_id for item in all_categories}
             cursor = parent.id
@@ -286,6 +312,56 @@ async def activate_category(
             action="category.activated", entity_type="ticket_category", entity_id=category.id,
         ))
     return {"is_active": True}
+
+
+@router.delete("/categories/{category_id}")
+async def delete_category(
+    category_id: uuid.UUID,
+    request: Request,
+    actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> dict[str, bool]:
+    """Remove the category. A category already used by tickets is kept for
+    the history (D-010: tickets must keep their category) and merely
+    deactivated; unused ones are deleted outright, subcategories too."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        category = await session.scalar(
+            select(TicketCategory).where(TicketCategory.id == category_id).with_for_update()
+        )
+        if category is None:
+            raise ApiError("CATEGORY_NOT_FOUND", "Category was not found", status_code=404)
+        children = (
+            await session.scalars(
+                select(TicketCategory).where(TicketCategory.parent_id == category.id)
+            )
+        ).all()
+        subject_ids = [category.id, *(child.id for child in children)]
+        used = await session.scalar(
+            select(func.count()).select_from(Ticket).where(
+                Ticket.category_id.in_(subject_ids)
+            )
+        )
+        if used:
+            for subject in [category, *children]:
+                subject.is_active = False
+            session.add(AuditLog(
+                actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+                action="category.deactivated", entity_type="ticket_category",
+                entity_id=category.id,
+                details={"reason": "delete_requested_in_use", "tickets": used},
+            ))
+            return {"deleted": False, "deactivated": True}
+        for child in children:
+            await session.delete(child)
+        await session.delete(category)
+        session.add(AuditLog(
+            actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+            action="category.deleted", entity_type="ticket_category",
+            entity_id=category.id,
+        ))
+    return {"deleted": True, "deactivated": False}
 
 
 @router.get("/tags")

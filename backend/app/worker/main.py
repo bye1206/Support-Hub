@@ -26,7 +26,13 @@ class WorkerSettings:
     redis_settings = _redis_settings()
 
     # Session expiry runs every minute; expiry is idempotent (P-05).
-    cron_jobs = [cron(expire_sessions, minute=set(range(60)), run_at_startup=False)]
+    cron_jobs = [
+        cron(expire_sessions, minute=set(range(60)), run_at_startup=False),
+        # Outbox dispatch loop: nothing else enqueues process_outbox, so the
+        # worker must poll by itself. Every 10 s keeps reply latency low;
+        # processing is at-least-once and idempotent by idempotency_key.
+        cron(process_outbox, second=set(range(0, 60, 10)), run_at_startup=True),
+    ]
 
     on_startup: Any = None
     on_shutdown: Any = None

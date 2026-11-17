@@ -37,6 +37,16 @@ class UserRepository:
         """P-06: create user + identity on first sight (race-safe via savepoint)."""
         existing = await self.get_by_identity(session, channel_type, external_user_id)
         if existing is not None:
+            # Refresh display name when a better (fuller) name arrives and the
+            # current one is a bare external id (owner 2026-11-13, kvasha_sn).
+            if (
+                external_user_name
+                and existing.display_name
+                and external_user_name != existing.display_name
+                and " " in external_user_name
+                and " " not in existing.display_name
+            ):
+                existing.display_name = external_user_name
             return existing
 
         user = User(display_name=external_user_name or external_user_id)

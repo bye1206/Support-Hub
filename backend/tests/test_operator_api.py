@@ -345,8 +345,9 @@ async def test_ticket_card_contains_full_history(client: TestClient, seed) -> No
     body = card.json()
     assert body["conversation_id"] == str(conversation_id)
     authors = [m["author_type"] for m in body["messages"]]
-    assert authors == ["USER", "OPERATOR"]
-    assert body["messages"][1]["text"] == "Передаём специалисту"
+    # hello, greeting note, question, operator reply.
+    assert authors == ["USER", "SYSTEM", "USER", "OPERATOR"]
+    assert body["messages"][-1]["text"] == "Передаём специалисту"
 
 
 @pytest.mark.anyio
@@ -487,7 +488,8 @@ async def test_note_is_not_a_message_and_keeps_status(
     body = card.json()
     texts = [m["text"] for m in body["messages"]]
     assert "Секретная служебная заметка" not in texts
-    assert [m["author_type"] for m in body["messages"]] == ["USER"]
+    # hello, greeting note, question — the note itself is not here (D-025).
+    assert [m["author_type"] for m in body["messages"]] == ["USER", "SYSTEM", "USER"]
     assert body["status"] == "AI_PROCESSING"  # a note must not move the status
 
 
@@ -681,26 +683,26 @@ async def test_operator_reply_reaches_bot_via_outbox(
 
     handler = RoutingOutboxHandler(bot=OkBot(), fallback=LoggingOutboxHandler())
     async with session_factory() as session:
-        # message.user_received (ingress) + message.outbound (the reply).
+        # Greeting outbound (ingress) + user_received + reply outbound.
         dispatched = await OutboxService(handler=handler).process_batch(session)
 
-    assert dispatched == 2
-    assert delivered == [
-        {
-            "message_id": reply_message_id,
-            "conversation_id": str(conversation_id),
-        }
-    ]
+    assert dispatched == 3
+    assert len(delivered) == 2  # greeting note + the operator reply
+    assert delivered[-1] == {
+        "message_id": reply_message_id,
+        "conversation_id": str(conversation_id),
+    }
 
     async with session_factory() as check:
-        row = (
+        rows = (
             await check.scalars(
                 select(OutboxEvent).where(
                     OutboxEvent.event_type == "message.outbound"
                 )
             )
-        ).one()
-        assert row.status == OutboxStatus.PROCESSED
+        ).all()
+        # Greeting note + the operator reply, both delivered.
+        assert {row.status for row in rows} == {OutboxStatus.PROCESSED}
 
 
 @pytest.mark.anyio
@@ -752,7 +754,15 @@ async def test_ticket_card_does_not_leak_other_conversation(
         by_conversation[body["conversation_id"]] = [m["text"] for m in body["messages"]]
 
     assert len(by_conversation) == 2
-    assert sorted(by_conversation.values()) == [["Проблема А"], ["Проблема Б"]]
+    # Each dialog: hello, greeting note, then the question.
+    for texts in sorted(by_conversation.values()):
+        assert texts[0] == "здравствуйте"
+        assert texts[1].startswith("Добрый день")
+        assert texts[1].endswith("Напишите ваш вопрос.")
+    assert sorted(texts[2] for texts in by_conversation.values()) == [
+        "Проблема А",
+        "Проблема Б",
+    ]
 
 
 @pytest.mark.anyio

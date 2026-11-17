@@ -8,6 +8,7 @@ Failures are rate-limited per client IP (X-Forwarded-For only when trusted).
 
 import base64
 import hmac
+import json
 import logging
 from typing import Annotated, Any
 
@@ -35,6 +36,7 @@ from app.models import (
 from app.repositories.operators import OperatorRepository
 from app.services._tx import unit_of_work
 from app.services.audit import AuditService
+from app.services.tickets import TicketService
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +224,10 @@ async def logout(
             await OperatorRepository().set_presence(
                 session, record.operator_id, status=PresenceStatus.OFFLINE
             )
+            # Owner rule: signing out releases active chats to the queue.
+            await TicketService().release_operator_tickets(
+                session, record.operator_id
+            )
             await AuditService().log(
                 session,
                 actor_type=AuditActorType.OPERATOR,
@@ -239,10 +245,14 @@ async def update_presence(
     operator: Annotated[Operator, Depends(require_operator)],
     request: Request,
 ) -> dict[str, str]:
-    """Switch the operator's own status (ACTIVE/LUNCH/BREAK/OFFLINE)."""
+    """Switch the operator's own status (ACTIVE/LUNCH/BREAK/OFFLINE).
+
+    Owner rule: leaving ACTIVE releases the operator's active chats back to
+    the queue (HIGH priority, auto-routed to free operators)."""
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         async with unit_of_work(session):
+            was_active = operator.presence_status == PresenceStatus.ACTIVE
             await OperatorRepository().set_presence(
                 session, operator.id, status=PresenceStatus(payload.status)
             )
@@ -255,6 +265,12 @@ async def update_presence(
                 actor_id=operator.id,
                 details={"to": payload.status},
             )
+            if was_active and payload.status != "ACTIVE":
+                await TicketService().release_operator_tickets(session, operator.id)
+    try:
+        await deps.redis.publish_event(json.dumps({"type": "tickets.changed"}))
+    except Exception:  # noqa: BLE001 - redis trouble must not break the API
+        pass
     return {"status": payload.status}
 
 

@@ -17,7 +17,7 @@ const ticket = {
   user_id: "99999999-8888-7777-6666-555555555555",
   status: "OPEN",
   priority: "NORMAL",
-  assignee_id: null,
+  assignee_id: "op-1",
   category_id: null,
   tags: [] as string[],
   created_at: "2026-11-10T10:00:00Z",
@@ -82,9 +82,10 @@ function stubNetwork() {
 
 async function openTicket(calls: Call[]) {
   render(<App />);
-  // The queue row shows the short ticket id.
-  const row = await screen.findByText("#11111111");
-  fireEvent.click(row);
+  // The queue row shows the short ticket id (it appears in its section and
+  // in the section "Все обращения" - click the first occurrence).
+  const rows = await screen.findAllByText("#11111111");
+  fireEvent.click(rows[0]);
   // The composer appears once the ticket card is loaded.
   await screen.findByLabelText("Публичный ответ");
   return calls;
@@ -203,7 +204,7 @@ describe("websocket connection", () => {
   it("connects to /ws with the dev token in the query string", async () => {
     const calls = stubNetwork();
     render(<App />);
-    await screen.findByText("#11111111");
+    await screen.findAllByText("#11111111");
 
     expect(FakeWebSocket.last).not.toBeNull();
     expect(FakeWebSocket.last?.url).toContain("/ws?token=dev-token");

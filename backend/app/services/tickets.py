@@ -16,6 +16,9 @@ from app.models import (
     AuditActorType,
     Conversation,
     DialogMode,
+    Message,
+    MessageAuthorType,
+    MessageDeliveryState,
     Tag,
     Ticket,
     TicketStatus,
@@ -24,11 +27,13 @@ from app.repositories.ai_runs import AiHandoffRepository
 from app.repositories.categories import TicketCategoryRepository
 from app.repositories.channels import ChannelRepository
 from app.repositories.conversations import ConversationRepository
+from app.repositories.messages import MessageRepository
 from app.repositories.operators import OperatorRepository
 from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
 from app.services._tx import unit_of_work
 from app.services.audit import AuditService
+from app.services.outbox import OutboxService
 from app.services.sessions import SessionService
 
 
@@ -55,6 +60,7 @@ class TicketService:
     ) -> None:
         self._tickets = tickets or TicketRepository()
         self._conversations = conversations or ConversationRepository()
+        self._messages = MessageRepository()
         self._sessions = sessions or SessionService()
         self._audit = audit or AuditService()
         self._operators = operators or OperatorRepository()
@@ -62,6 +68,7 @@ class TicketService:
         self._categories = categories or TicketCategoryRepository()
         self._tags = tags or TagRepository()
         self._channels = channels or ChannelRepository()
+        self._outbox = OutboxService()
 
     async def route_incoming(
         self,
@@ -93,7 +100,9 @@ class TicketService:
                 entity_id=ticket.id,
                 details={"conversation_id": str(conversation.id)},
             )
-            await self._auto_assign(session, ticket)
+            # Owner flow (2026-11-13): a NEW dialog belongs to the AI first
+            # (greeting -> question -> AI answer). Operators take over only
+            # via the handoff key / the distribution panel — never at birth.
             await self._auto_tag_from_channel(session, ticket, channel_id)
             return RoutingResult(
                 conversation=conversation,
@@ -113,29 +122,6 @@ class TicketService:
             ticket=last,
             conversation_created=False,
             ticket_reopened=False,
-        )
-
-    async def _auto_assign(self, session: AsyncSession, ticket: Ticket) -> None:
-        """D-031 auto-assignment (least-loaded active operator), flag-gated.
-        Caller's transaction; no candidates -> the ticket stays unassigned."""
-        from app.config import get_settings
-
-        if not get_settings().auto_assign_enabled:
-            return
-        assignee = await self._operators.least_loaded_active(session)
-        if assignee is None:
-            return
-        await self._tickets.set_assignee(
-            session, ticket.id, assignee_id=assignee.id
-        )
-        await session.refresh(ticket)
-        await self._audit.log(
-            session,
-            actor_type=AuditActorType.SYSTEM,
-            action="ticket.assigned",
-            entity_type="ticket",
-            entity_id=ticket.id,
-            details={"assignee_id": str(assignee.id), "auto": True},
         )
 
     async def _auto_tag_from_channel(
@@ -178,6 +164,7 @@ class TicketService:
             ticket = await self._apply_status(
                 session, ticket_id, TicketTrigger.OPERATOR_RESOLVED
             )
+            await self._notify_resolution(session, ticket.conversation_id)
             await self._audit.log(
                 session,
                 actor_type=AuditActorType.OPERATOR,
@@ -186,6 +173,9 @@ class TicketService:
                 entity_id=ticket_id,
                 actor_id=actor_id,
             )
+            if ticket.assignee_id:
+                await self._apply_pending(session, ticket.assignee_id)
+            await self._auto_route_queue(session)
             return ticket
 
     async def close(
@@ -226,6 +216,9 @@ class TicketService:
                 actor_id=actor_id,
                 details={"conversation_id": str(conversation.id)},
             )
+            if ticket.assignee_id:
+                await self._apply_pending(session, ticket.assignee_id)
+            await self._auto_route_queue(session)
             return ticket
 
     async def _apply_status(
@@ -248,6 +241,87 @@ class TicketService:
             await session.refresh(ticket)
         return ticket
 
+    async def send_resolution_note(self, session: AsyncSession, conversation_id: uuid.UUID) -> None:
+        """Public wrapper: the farewell note to the user (operator resolve
+        and the AI "помогло" key both end a dialog with it)."""
+        await self._notify_resolution(session, conversation_id)
+
+    async def route_unassigned(self, session: AsyncSession) -> int:
+        """Public wrapper: hand unassigned human tickets to free ACTIVE
+        operators (owner flow step 9 after the AI handoff key)."""
+        return await self._auto_route_queue(session)
+
+    async def _notify_assignment(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        operator_name: str,
+    ) -> None:
+        """System message telling the user an operator took the chat.
+        Owner request 2026-11-13: the note must reach the user in Tag, so it
+        goes through the outbound outbox like any operator reply."""
+        message = await self._create_system_message(
+            session,
+            conversation_id,
+            (
+                f"Оператор {operator_name} назначен. "
+                "Он изучит проблему и поможет в ближайшее время."
+            ),
+        )
+        await self._outbox.register(
+            session,
+            event_type="message.outbound",
+            aggregate_type="message",
+            aggregate_id=message.id,
+            idempotency_key=f"message:{message.id}",
+            payload={
+                "message_id": str(message.id),
+                "conversation_id": str(conversation_id),
+            },
+        )
+
+    async def _notify_resolution(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """Owner request 2026-11-13: on resolve the user gets a farewell
+        note, delivered to Tag through the outbound outbox."""
+        message = await self._create_system_message(
+            session,
+            conversation_id,
+            "Диалог со специалистом завершен!\nСпасибо за обращение в техподдержку! 🙌",
+        )
+        await self._outbox.register(
+            session,
+            event_type="message.outbound",
+            aggregate_type="message",
+            aggregate_id=message.id,
+            idempotency_key=f"message:{message.id}",
+            payload={
+                "message_id": str(message.id),
+                "conversation_id": str(conversation_id),
+            },
+        )
+
+    async def _create_system_message(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        text: str,
+    ) -> Message:
+        sequence = await self._conversations.allocate_sequence(
+            session, conversation_id
+        )
+        return await self._messages.create(
+            session,
+            conversation_id=conversation_id,
+            sequence_no=sequence,
+            author_type=MessageAuthorType.SYSTEM,
+            delivery_state=MessageDeliveryState.DELIVERED,
+            text=text,
+        )
+
     async def assign(
         self,
         session: AsyncSession,
@@ -255,9 +329,11 @@ class TicketService:
         *,
         assignee_id: uuid.UUID | None,
         actor_id: uuid.UUID,
-    ) -> Ticket:
+    ) -> tuple[Ticket, bool]:
         """Manual assignment (docs/06 §6); D-031 auto-assignment stays behind
-        a flag (P-07). Own transaction."""
+        a flag (P-07). Owner rule: if the target operator is at capacity the
+        ticket is queued (pending_assignee_id) and lands on them as soon as a
+        slot frees up. Returns (ticket, deferred). Own transaction."""
         async with unit_of_work(session):
             ticket = await self._tickets.get(session, ticket_id)
             if ticket is None:
@@ -268,16 +344,42 @@ class TicketService:
                 raise ValueError(
                     f"Ticket {ticket_id} is {ticket.status.value} and cannot be assigned"
                 )
+            previous_assignee = ticket.assignee_id
+            deferred = False
+            assignee = None
             if assignee_id is not None:
                 assignee = await self._operators.get(session, assignee_id)
                 if assignee is None:
                     raise ValueError(f"Operator {assignee_id} not found")
                 if not assignee.is_active:
                     raise ValueError(f"Operator {assignee_id} is deactivated")
+                load = await self._tickets.count_active_for(session, assignee_id)
+                # Re-assigning to the same operator or re-queuing is allowed.
+                if load >= assignee.max_active_tickets and ticket.assignee_id != assignee_id:
+                    await self._tickets.set_pending_assignee(
+                        session, ticket_id, pending_assignee_id=assignee_id
+                    )
+                    await self._audit.log(
+                        session,
+                        actor_type=AuditActorType.OPERATOR,
+                        action="ticket.assignment_queued",
+                        entity_type="ticket",
+                        entity_id=ticket_id,
+                        actor_id=actor_id,
+                        details={"assignee_id": str(assignee_id)},
+                    )
+                    await session.refresh(ticket)
+                    return ticket, True
             await self._tickets.set_assignee(
                 session, ticket_id, assignee_id=assignee_id
             )
+            await self._tickets.set_pending_assignee(
+                session, ticket_id, pending_assignee_id=None
+            )
             await session.refresh(ticket)
+            # Owner rule 2026-11-13: assignment IS a claim — the dialog leaves
+            # the AI immediately (no "assigned but still with the AI" state).
+            await self._claim_from_ai(session, ticket)
             await self._audit.log(
                 session,
                 actor_type=AuditActorType.OPERATOR,
@@ -287,7 +389,142 @@ class TicketService:
                 actor_id=actor_id,
                 details={"assignee_id": str(assignee_id) if assignee_id else None},
             )
-            return ticket
+            if assignee is not None:
+                await self._notify_assignment(
+                    session,
+                    ticket.conversation_id,
+                    assignee.display_name or assignee.email,
+                )
+            # The previous assignee just lost a slot - deliver their queued
+            # tickets. The released ticket itself stays in the common queue
+            # for manual/auto distribution, it does not bounce back.
+            if previous_assignee is not None and previous_assignee != assignee_id:
+                await self._apply_pending(session, previous_assignee)
+            return ticket, deferred
+
+    async def _claim_from_ai(self, session: AsyncSession, ticket: Ticket) -> None:
+        """Pull the dialog out of the AI when an operator takes the ticket:
+        AI_ACTIVE -> HUMAN_ACTIVE, AI_PROCESSING -> OPEN. No-op in human
+        dialogs. Caller's transaction."""
+        conversation = await self._conversations.get(
+            session, ticket.conversation_id
+        )
+        if conversation is None or conversation.mode != DialogMode.AI_ACTIVE:
+            return
+        new_mode = next_dialog_mode(
+            str(conversation.mode), DialogTrigger.OPERATOR_TOOK_OVER
+        )
+        await self._conversations.change_mode(
+            session,
+            conversation.id,
+            from_mode=conversation.mode,
+            to_mode=DialogMode(new_mode),
+            expected_state_version=conversation.state_version,
+        )
+        if ticket.status == TicketStatus.AI_PROCESSING:
+            await self._apply_status(session, ticket.id, TicketTrigger.OPERATOR_CLAIM)
+
+    async def _apply_pending(self, session: AsyncSession, operator_id: uuid.UUID) -> None:
+        """Deliver queued tickets to the operator while they have capacity
+        (oldest first). Caller's transaction."""
+        while True:
+            operator = await self._operators.get(session, operator_id)
+            if operator is None or not operator.is_active:
+                return
+            load = await self._tickets.count_active_for(session, operator_id)
+            if load >= operator.max_active_tickets:
+                return
+            pending = await self._tickets.oldest_pending_for(session, operator_id)
+            if pending is None:
+                return
+            await self._tickets.set_assignee(
+                session, pending.id, assignee_id=operator_id
+            )
+            await self._tickets.set_pending_assignee(
+                session, pending.id, pending_assignee_id=None
+            )
+            # Same owner rule as manual assignment: delivery IS a claim.
+            await self._claim_from_ai(session, pending)
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.SYSTEM,
+                action="ticket.assigned",
+                entity_type="ticket",
+                entity_id=pending.id,
+                details={
+                    "assignee_id": str(operator_id),
+                    "deferred_applied": True,
+                },
+            )
+            await self._notify_assignment(
+                session, pending.conversation_id, operator.display_name or operator.email
+            )
+
+    async def release_operator_tickets(
+        self, session: AsyncSession, operator_id: uuid.UUID
+    ) -> int:
+        """Owner rule: an operator who leaves ACTIVE (lunch/break/offline)
+        must not keep chats. Their active tickets return to the queue with
+        HIGH priority and are routed to free operators right away; when
+        everyone is at capacity they wait and go to the first freed slot.
+        Own transaction. Returns the number of released tickets."""
+        async with unit_of_work(session):
+            tickets = await self._tickets.list_active_for_operator(
+                session, operator_id
+            )
+            for ticket in tickets:
+                await self._tickets.set_assignee(
+                    session, ticket.id, assignee_id=None
+                )
+                if ticket.priority == "NORMAL":
+                    await self._tickets.set_priority(
+                        session, ticket.id, priority="HIGH"
+                    )
+                await self._audit.log(
+                    session,
+                    actor_type=AuditActorType.SYSTEM,
+                    action="ticket.released",
+                    entity_type="ticket",
+                    entity_id=ticket.id,
+                    details={
+                        "operator_id": str(operator_id),
+                        "reason": "presence_not_active",
+                    },
+                )
+            await self._auto_route_queue(session)
+            return len(tickets)
+
+    async def _auto_route_queue(self, session: AsyncSession) -> int:
+        """Hand unassigned active tickets to free ACTIVE operators, highest
+        priority first (owner rule); leftovers wait for a freed slot.
+        Caller's transaction."""
+        assigned = 0
+        while True:
+            queue = await self._tickets.list_unassigned_active(session)
+            if not queue:
+                break
+            operator = await self._operators.least_loaded_active(session)
+            if operator is None:
+                break
+            ticket = queue[0]
+            await self._tickets.set_assignee(
+                session, ticket.id, assignee_id=operator.id
+            )
+            # Same owner rule: delivery IS a claim (AI loses the dialog).
+            await self._claim_from_ai(session, ticket)
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.SYSTEM,
+                action="ticket.assigned",
+                entity_type="ticket",
+                entity_id=ticket.id,
+                details={"assignee_id": str(operator.id), "auto": True},
+            )
+            await self._notify_assignment(
+                session, ticket.conversation_id, operator.display_name or operator.email
+            )
+            assigned += 1
+        return assigned
 
     async def set_priority(
         self,

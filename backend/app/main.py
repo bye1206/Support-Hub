@@ -29,8 +29,36 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = get_settings()  # validates the environment
+    listener = None
+    if settings.tag_direct_mode:
+        # Owner request 2026-11-13: direct Mattermost integration — a WebSocket
+        # listener feeds bot DMs into the same ingress pipeline as the webhook.
+        from app.integrations.tag.direct import (
+            TagDirectListener,
+            fetch_bot_user_id,
+            ingest_direct_message,
+        )
+
+        try:
+            me = await fetch_bot_user_id(settings)
+        except Exception:  # noqa: BLE001 - token problems must not stop the API
+            logger.exception("Tag direct: /users/me failed; listener not started")
+            me = None
+        if me is not None:
+            listener = TagDirectListener(
+                settings,
+                app.state.deps.db.session_factory,
+                lambda fields: ingest_direct_message(
+                    app.state.deps.db.session_factory, fields
+                ),
+                me_user_id=me,
+            )
+            listener.start()
+            logger.info("Tag direct listener started (bot user %s)", me)
     logger.info("Startup complete (env=%s, version=%s)", settings.app_env, __version__)
     yield
+    if listener is not None:
+        await listener.stop()
     await app.state.deps.close()
     logger.info("Shutdown complete")
 

@@ -38,6 +38,23 @@ def ingress_kwargs(**overrides: object) -> dict:
     return kwargs
 
 
+async def start_dialog(session, text: str, *, post_id: str | None = None):
+    """Owner flow (2026-11-13): the first message of a fresh dialog only
+    gets the greeting; the actual question (this helper's text) is what
+    reaches the AI. Returns the question's ingest result."""
+    service = MessageService()
+    await service.handle_incoming_user_message(
+        session,
+        **ingress_kwargs(
+            text="здравствуйте",
+            external_post_id=f"post-hello-{uuid.uuid4().hex[:8]}",
+        ),
+    )
+    return await service.handle_incoming_user_message(
+        session, **ingress_kwargs(text=text, external_post_id=post_id)
+    )
+
+
 @pytest.mark.anyio
 async def test_first_message_creates_full_chain(session_factory) -> None:
     async with session_factory() as session:
@@ -48,8 +65,9 @@ async def test_first_message_creates_full_chain(session_factory) -> None:
 
         # P-06: user auto-provisioned with the channel identity.
         assert result.message.author_user_id is not None
-        # D-039: the first message puts the ticket into "Обработка ИИ".
-        assert result.ticket.status == TicketStatus.AI_PROCESSING
+        # Owner flow: the FIRST message is the greeting stage — the ticket
+        # stays NEW until the user actually asks the question.
+        assert result.ticket.status == TicketStatus.NEW
         assert result.conversation.mode == DialogMode.AI_ACTIVE
         assert result.conversation_created is True
         # D-007: exactly 3 hours.
@@ -57,7 +75,7 @@ async def test_first_message_creates_full_chain(session_factory) -> None:
         assert result.message.sequence_no == 1
 
         outbox = list((await session.scalars(select(OutboxEvent))).all())
-        assert [e.event_type for e in outbox] == ["message.user_received"]
+        assert [e.event_type for e in outbox] == ["message.outbound"]  # greeting
 
         audit_actions = set(
             (await session.scalars(select(AuditLog.action))).all()
@@ -84,7 +102,8 @@ async def test_duplicate_post_id_does_not_create_second_message(session_factory)
     assert second.message.id == first.message.id
 
     async with session_factory() as check:
-        assert len(list((await check.scalars(select(Message))).all())) == 1
+        # The user's hello + the greeting note; the duplicate was dropped.
+        assert len(list((await check.scalars(select(Message))).all())) == 2
         assert len(list((await check.scalars(select(OutboxEvent))).all())) == 1
         assert len(list((await check.scalars(select(Ticket))).all())) == 1
 
@@ -93,9 +112,7 @@ async def test_duplicate_post_id_does_not_create_second_message(session_factory)
 async def test_ai_reply_opens_new_ticket(session_factory) -> None:
     service = MessageService()
     async with session_factory() as session:
-        first = await service.handle_incoming_user_message(
-            session, **ingress_kwargs(text="Вопрос к ИИ")
-        )
+        first = await start_dialog(session, "Вопрос к ИИ")
         conversation_id, ticket_id = first.conversation.id, first.ticket.id
 
     async with session_factory() as session:
@@ -105,21 +122,23 @@ async def test_ai_reply_opens_new_ticket(session_factory) -> None:
 
     assert reply.ticket.id == ticket_id
     assert reply.ticket.status == TicketStatus.OPEN  # D-039: processing done
-    assert reply.message.sequence_no == 2
+    assert reply.message.sequence_no == 4  # hello, greeting, question, AI
     assert reply.message.author_type == MessageAuthorType.AI
 
     async with session_factory() as check:
         events = list((await check.scalars(select(OutboxEvent.event_type))).all())
-    assert events == ["message.user_received", "message.outbound"]
+    assert events == [
+        "message.outbound",  # greeting note
+        "message.user_received",  # the question
+        "message.outbound",  # the AI answer
+    ]
 
 
 @pytest.mark.anyio
 async def test_operator_reply_pends_user_and_takes_over_dialog(session_factory) -> None:
     service = MessageService()
     async with session_factory() as session:
-        first = await service.handle_incoming_user_message(
-            session, **ingress_kwargs(text="Нужен человек")
-        )
+        first = await start_dialog(session, "Нужен человек")
         ticket_id = first.ticket.id
 
     async with session_factory() as session:
@@ -130,7 +149,7 @@ async def test_operator_reply_pends_user_and_takes_over_dialog(session_factory) 
     # D-011: straight to PENDING_USER; dialog in human mode.
     assert reply.ticket.status == TicketStatus.PENDING_USER
     assert reply.conversation.mode == DialogMode.HUMAN_ACTIVE
-    assert reply.message.sequence_no == 2
+    assert reply.message.sequence_no == 4
 
     # User's next message returns the ticket to OPEN (docs/01 §5).
     async with session_factory() as session:
@@ -138,7 +157,7 @@ async def test_operator_reply_pends_user_and_takes_over_dialog(session_factory) 
             session, **ingress_kwargs(text="Вот скриншот")
         )
     assert follow_up.ticket.status == TicketStatus.OPEN
-    assert follow_up.message.sequence_no == 3
+    assert follow_up.message.sequence_no == 5
 
 
 @pytest.mark.anyio
@@ -147,9 +166,7 @@ async def test_resolve_then_user_message_starts_new_ticket(session_factory) -> N
     creates a NEW ticket in a NEW dialog; no reopen exists."""
     service = MessageService()
     async with session_factory() as session:
-        first = await service.handle_incoming_user_message(
-            session, **ingress_kwargs(text="Проблема")
-        )
+        first = await start_dialog(session, "Проблема")
         ticket_id, old_conversation_id = first.ticket.id, first.conversation.id
 
     async with session_factory() as session:
@@ -172,9 +189,7 @@ async def test_close_then_new_message_starts_new_ticket_and_dialog(
 ) -> None:
     service = MessageService()
     async with session_factory() as session:
-        first = await service.handle_incoming_user_message(
-            session, **ingress_kwargs(text="Проблема №1")
-        )
+        first = await start_dialog(session, "Проблема №1")
         ticket_id, old_conversation_id = first.ticket.id, first.conversation.id
 
     async with session_factory() as session:
@@ -188,7 +203,8 @@ async def test_close_then_new_message_starts_new_ticket_and_dialog(
     assert second.ticket.id != ticket_id
     assert second.conversation.id != old_conversation_id
     assert second.conversation_created is True
-    assert second.ticket.status == TicketStatus.AI_PROCESSING
+    # Fresh dialog: greeting stage, the ticket stays NEW until the question.
+    assert second.ticket.status == TicketStatus.NEW
     assert second.message.sequence_no == 1  # numbering restarts in the new dialog
 
     # The old dialog is closed with its sessions ENDED.
@@ -215,9 +231,7 @@ async def test_concurrent_messages_in_one_dialog_get_distinct_sequences(
     """Two simultaneous user messages: no duplicates, one ticket, retry wins."""
     service = MessageService()
     async with session_factory() as session:
-        first = await service.handle_incoming_user_message(
-            session, **ingress_kwargs(text="Первое")
-        )
+        first = await start_dialog(session, "Первое")
         conversation_id = first.conversation.id
         ticket_id = first.ticket.id
 
@@ -246,18 +260,16 @@ async def test_concurrent_messages_in_one_dialog_get_distinct_sequences(
         )
         ticket = await check.get(Ticket, ticket_id)
         assert ticket is not None
-        assert sorted(sequences) == [1, 2, 3]
+        # hello, greeting, question + the two concurrent messages.
+        assert sorted(sequences) == [1, 2, 3, 4, 5]
         assert ticket.status == TicketStatus.AI_PROCESSING  # D-039, both raced here
         assert ticket.state_version == 2
 
 
 @pytest.mark.anyio
 async def test_optimistic_conflict_on_simultaneous_resolve(session_factory) -> None:
-    service = MessageService()
     async with session_factory() as session:
-        first = await service.handle_incoming_user_message(
-            session, **ingress_kwargs(text="Конфликтный тикет")
-        )
+        first = await start_dialog(session, "Конфликтный тикет")
         ticket_id = first.ticket.id
 
     async with session_factory() as loser, session_factory() as winner:
@@ -326,7 +338,7 @@ async def _seed_conversation(
             session,
             channel_type="tag",
             external_user_id=external_user_id,
-            text="seed",
+            text="здравствуйте",
         )
         conversation_id, user_id = result.conversation.id, result.message.author_user_id
     assert user_id is not None

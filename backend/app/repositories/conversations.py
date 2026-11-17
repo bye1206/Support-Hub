@@ -3,11 +3,11 @@
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.exceptions import StateConflict
-from app.models import Conversation, ConversationSession, DialogMode, SessionStatus
+from app.models import Conversation, ConversationSession, DialogMode, Message, SessionStatus
 
 
 class ConversationRepository:
@@ -31,11 +31,24 @@ class ConversationRepository:
     async def allocate_sequence(
         self, session: AsyncSession, conversation_id: uuid.UUID
     ) -> int:
-        """Atomically reserve the next message number (row lock, G-10)."""
+        """Atomically reserve the next message number (row lock, G-10).
+
+        The reservation never looks backwards: maintenance/backfill writes
+        that inserted messages out-of-band (without bumping the counter) are
+        picked up via max(sequence_no), so a reserved number is always free."""
+        stored_max = (
+            select(func.coalesce(func.max(Message.sequence_no), 0) + 1)
+            .where(Message.conversation_id == conversation_id)
+            .scalar_subquery()
+        )
         result = await session.execute(
             update(Conversation)
             .where(Conversation.id == conversation_id)
-            .values(last_message_sequence=Conversation.last_message_sequence + 1)
+            .values(
+                last_message_sequence=func.greatest(
+                    Conversation.last_message_sequence + 1, stored_max
+                )
+            )
             .returning(Conversation.last_message_sequence)
         )
         sequence = result.scalar_one_or_none()

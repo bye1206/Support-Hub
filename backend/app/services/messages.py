@@ -18,6 +18,7 @@ Rules implemented here (services, not route handlers):
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +36,7 @@ from app.models import (
     DialogMode,
     Message,
     MessageAuthorType,
+    MessageDeliveryState,
     Ticket,
     TicketStatus,
 )
@@ -130,6 +132,35 @@ class MessageService:
                 external_post_id=external_post_id,
                 source_created_at=source_created_at,
             )
+            if routing.conversation_created:
+                # Owner flow (2026-11-13): the FIRST message of a dialog gets
+                # only the greeting — the actual question (the next message)
+                # is what goes to the AI. No AI run, ticket stays NEW.
+                greeting = await self._create_greeting(
+                    session, routing.conversation.id, user
+                )
+                await self._register_outbound(session, greeting, routing.conversation.id)
+                await self._audit.log(
+                    session,
+                    actor_type=AuditActorType.USER,
+                    action="message.created",
+                    entity_type="message",
+                    entity_id=message.id,
+                    actor_id=user.id,
+                    details={
+                        "conversation_id": str(routing.conversation.id),
+                        "sequence_no": sequence,
+                        "greeting_stage": True,
+                    },
+                )
+                return IngestResult(
+                    message=message,
+                    conversation=routing.conversation,
+                    ticket=routing.ticket,
+                    session=active_session,
+                    conversation_created=True,
+                    ticket_reopened=False,
+                )
             await self._apply_ticket_transition(session, routing)
             await self._outbox.register(
                 session,
@@ -338,6 +369,31 @@ class MessageService:
                     raise
                 # Another writer moved the ticket first: re-read and replay.
                 await session.refresh(ticket)
+
+    async def _create_greeting(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        user: Any,
+    ) -> Message:
+        """Owner flow step 2 (2026-11-13): greeting on the user's first
+        message, addressed by name when the Tag profile provided one."""
+        name = (getattr(user, "display_name", None) or "").strip()
+        salutation = f"Добрый день, {name}!" if name else "Добрый день!"
+        sequence = await self._conversations.allocate_sequence(
+            session, conversation_id
+        )
+        return await self._messages.create(
+            session,
+            conversation_id=conversation_id,
+            sequence_no=sequence,
+            author_type=MessageAuthorType.SYSTEM,
+            delivery_state=MessageDeliveryState.DELIVERED,
+            text=(
+                f"{salutation} Вы обратились в чат технической поддержки "
+                "пользователей офисов. Напишите ваш вопрос."
+            ),
+        )
 
     async def _register_outbound(
         self, session: AsyncSession, message: Message, conversation_id: uuid.UUID

@@ -29,6 +29,9 @@ class TicketTrigger(StrEnum):
     OPERATOR_REPLY = "OPERATOR_REPLY"
     OPERATOR_RESOLVED = "OPERATOR_RESOLVED"
     OPERATOR_CLOSED = "OPERATOR_CLOSED"
+    # Owner rule (2026-11-13): a ticket is either with the AI or with an
+    # operator. Manual assignment IS a claim — the AI loses the dialog.
+    OPERATOR_CLAIM = "OPERATOR_CLAIM"
     # D-043 (gateway trigger codes): the user's magic word confirmed the
     # problem is solved / asked for a human. AI acts, no message is published.
     AI_RESOLVED = "AI_RESOLVED"
@@ -42,6 +45,9 @@ _TICKET_TARGET: dict[TicketTrigger, str] = {
     TicketTrigger.OPERATOR_REPLY: "PENDING_USER",
     TicketTrigger.OPERATOR_RESOLVED: "RESOLVED",
     TicketTrigger.OPERATOR_CLOSED: "CLOSED",
+    # Manual assignment takes the dialog from the AI: the ticket becomes
+    # "В работе" immediately (owner rule 2026-11-13).
+    TicketTrigger.OPERATOR_CLAIM: "OPEN",
     # Gateway trigger codes (D-043): user confirmed solved / asked for human.
     TicketTrigger.AI_RESOLVED: "RESOLVED",
     TicketTrigger.AI_REQUESTED_HANDOFF: "OPEN",
@@ -82,6 +88,8 @@ _TICKET_ALLOWED_SOURCES: dict[TicketTrigger, frozenset[str]] = {
     TicketTrigger.OPERATOR_REPLY: frozenset(
         {"NEW", "AI_PROCESSING", "OPEN", "PENDING_USER"}
     ),
+    # Claim: manual assignment pulls the ticket out of AI processing.
+    TicketTrigger.OPERATOR_CLAIM: frozenset({"NEW", "AI_PROCESSING", "OPEN"}),
     TicketTrigger.OPERATOR_RESOLVED: frozenset(
         {"NEW", "AI_PROCESSING", "OPEN", "PENDING_USER"}
     ),

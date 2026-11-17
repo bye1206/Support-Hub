@@ -103,7 +103,7 @@ class OutboxService:
                     "Outbox dispatch failed: key=%s attempts=%s error=%s",
                     event.idempotency_key,
                     event.attempts,
-                    type(exc).__name__,
+                    exc or type(exc).__name__,
                 )
                 async with unit_of_work(session):
                     await self._repo.mark_failed(
