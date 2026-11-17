@@ -423,6 +423,12 @@
   overflow: auto;
   padding: 4px 9px 12px;
 }
+.queue-more {
+  padding: 10px 4px;
+  text-align: center;
+  font-size: 11px;
+  color: #8a93a5;
+}
 .ticket-row {
   display: block;
   width: 100%;

@@ -328,6 +328,7 @@ export default function App() {
     [historySearched, setHistorySearched] = useState(false),
     [queueTab, setQueueTab] = useState<"mine" | "queue">("mine"),
     [queueGroup, setQueueGroup] = useState("all"),
+    [visibleCount, setVisibleCount] = useState(100),
     [adOpen, setAdOpen] = useState(false),
     [adQuery, setAdQuery] = useState(""),
     [adResults, setAdResults] = useState<AdSearchResult[]>([]),
@@ -609,6 +610,11 @@ export default function App() {
       socket.current = null;
     };
   }, [auth.token, ready, sync]);
+  // Virtualization-lite (perf round 2026-11-17): render the queue windowed
+  // — a full 200-row list is mounted only when the operator actually scrolls.
+  useEffect(() => {
+    setVisibleCount(100);
+  }, [queueTab, queueGroup]);
   const columns = useMemo(() => {
     const active = tickets.filter(
       (t) => t.status !== "RESOLVED" && t.status !== "CLOSED",
@@ -1102,6 +1108,7 @@ export default function App() {
                   ];
             const selected =
               groups.find((group) => group.key === queueGroup) ?? groups[0];
+            const visible = selected.items.slice(0, visibleCount);
             return (
               <>
                 <div className="queue-groups" role="radiogroup" aria-label="Группа обращений">
@@ -1116,8 +1123,18 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <div className="ticket-list">
-                  {selected.items.map((ticket) => (
+                <div
+                  className="ticket-list"
+                  onScroll={(e) => {
+                    const el = e.currentTarget;
+                    if (
+                      visible.length < selected.items.length &&
+                      el.scrollTop + el.clientHeight >= el.scrollHeight - 240
+                    )
+                      setVisibleCount((count) => count + 100);
+                  }}
+                >
+                  {visible.map((ticket) => (
                     <TicketRow
                       key={ticket.ticket_id}
                       ticket={ticket}
@@ -1131,6 +1148,12 @@ export default function App() {
                       }}
                     />
                   ))}
+                  {visible.length < selected.items.length && (
+                    <div className="queue-more">
+                      Показано {visible.length} из {selected.items.length} —
+                      прокрутите вниз
+                    </div>
+                  )}
                   {!selected.items.length && (
                     <div className="empty-queue">
                       <span className="empty-shush">🤫</span>
