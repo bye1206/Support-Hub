@@ -55,6 +55,25 @@ def _store_photo(login: str, photo: bytes | None) -> None:
         _PHOTO_CACHE.clear()  # small self-healing cache, no LRU machinery
     _PHOTO_CACHE[login.lower()] = (time.monotonic(), photo)
 
+# Perf (2026-11-17): a login that does NOT exist in AD used to trigger a
+# fresh LDAP walk on every /ad/user call (each up to the 30 s search
+# budget). Cache the miss for 10 minutes — a newly created account becomes
+# visible within that window.
+_AD_MISS_CACHE: dict[str, float] = {}
+_AD_MISS_TTL_SECONDS = 600.0
+_AD_MISS_MAX_ENTRIES = 1024
+
+
+def _recently_missed(login: str) -> bool:
+    stored = _AD_MISS_CACHE.get(login.lower())
+    return stored is not None and time.monotonic() - stored < _AD_MISS_TTL_SECONDS
+
+
+def _mark_miss(login: str) -> None:
+    if len(_AD_MISS_CACHE) >= _AD_MISS_MAX_ENTRIES:
+        _AD_MISS_CACHE.clear()
+    _AD_MISS_CACHE[login.lower()] = time.monotonic()
+
 
 class AdInfoService:
     def __init__(
@@ -138,7 +157,12 @@ class AdInfoService:
                 return None
             card = demo_card(login)
             return {**{k: v for k, v in card.items() if not k.startswith("_")}, "demo": True}
-        return await self._directory.get_user(login)
+        if _recently_missed(login):
+            return None
+        found: dict[str, Any] | None = await self._directory.get_user(login)
+        if not found:
+            _mark_miss(login)
+        return found
 
     async def photo_for_login(self, login: str) -> bytes | None:
         """AD photo bytes for an arbitrary login (operator self avatar)."""
