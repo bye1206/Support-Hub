@@ -1,9 +1,11 @@
 """Ticket lifecycle: P-04 routing, resolve/close (D-010 revised: terminal), dialog mode."""
 
+import logging
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.exceptions import StateConflict
 from app.domain.state_machines import (
@@ -35,6 +37,8 @@ from app.services._tx import unit_of_work
 from app.services.audit import AuditService
 from app.services.outbox import OutboxService
 from app.services.sessions import SessionService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -116,6 +120,39 @@ class TicketService:
         )
         if existing_conversation is None:  # pragma: no cover - FK guarantees existence
             raise StateConflict(f"Conversation {last.conversation_id} missing")
+
+        # Owner rule (2026-11-17): a dialog cannot outlive its 3-hour session.
+        # If the dialog's session is gone (worker missed it or the message
+        # raced the sweep), the timeout closes the old ticket here and the
+        # user's message opens a fresh dialog with a fresh ticket below.
+        if not await self._sessions.has_live_session(
+            session, existing_conversation.id
+        ):
+            await self.close_on_timeout(session, last.id)
+            conversation = await self._conversations.create(
+                session, user_id=user_id, channel_id=channel_id
+            )
+            ticket = await self._tickets.create(
+                session, conversation_id=conversation.id, user_id=user_id
+            )
+            await self._audit.log(
+                session,
+                actor_type=AuditActorType.SYSTEM,
+                action="ticket.created",
+                entity_type="ticket",
+                entity_id=ticket.id,
+                details={
+                    "conversation_id": str(conversation.id),
+                    "after": "session_timeout",
+                },
+            )
+            await self._auto_tag_from_channel(session, ticket, channel_id)
+            return RoutingResult(
+                conversation=conversation,
+                ticket=ticket,
+                conversation_created=True,
+                ticket_reopened=False,
+            )
 
         return RoutingResult(
             conversation=existing_conversation,
@@ -303,6 +340,90 @@ class TicketService:
                 "conversation_id": str(conversation_id),
             },
         )
+
+    TIMEOUT_FAREWELL_TEXT = (
+        "Диалог закрыт: время сессии ограничено (3 часа).\n"
+        "Если проблема не решена — напишите повторно, мы продолжим работу."
+    )
+    TIMEOUT_OPERATOR_NOTE = (
+        "Сессия завершена по таймауту (3 часа). Диалог закрыт и убран из очереди."
+    )
+
+    async def close_on_timeout(self, session: AsyncSession, ticket_id: uuid.UUID) -> Ticket | None:
+        """Owner rule (2026-11-17): the 3-hour session timeout closes the
+        ticket and the dialog. The user gets a farewell note in Tag (outbox);
+        the operator sees a system note in the dialog history and the dialog
+        leaves their queue. Terminal: no reopen, the user's next message
+        starts a new ticket. Caller's transaction."""
+        ticket = await self._tickets.get(session, ticket_id)
+        if ticket is None:
+            raise StateConflict(f"Ticket {ticket_id} not found")
+        if ticket.status in (TicketStatus.RESOLVED, TicketStatus.CLOSED):
+            return None
+        ticket = await self._apply_status(session, ticket_id, TicketTrigger.SESSION_TIMEOUT)
+        conversation = await self._conversations.get(session, ticket.conversation_id)
+        if conversation is not None and conversation.mode != DialogMode.CLOSED:
+            new_mode = next_dialog_mode(
+                str(conversation.mode), DialogTrigger.CONVERSATION_CLOSED
+            )
+            await self._conversations.change_mode(
+                session,
+                conversation.id,
+                from_mode=conversation.mode,
+                to_mode=DialogMode(new_mode),
+                expected_state_version=conversation.state_version,
+            )
+        await self._sessions.end_active(session, ticket.conversation_id)
+        # The user-facing farewell goes out through Tag like any reply.
+        farewell = await self._create_system_message(
+            session, ticket.conversation_id, self.TIMEOUT_FAREWELL_TEXT
+        )
+        await self._outbox.register(
+            session,
+            event_type="message.outbound",
+            aggregate_type="message",
+            aggregate_id=farewell.id,
+            idempotency_key=f"message:{farewell.id}",
+            payload={
+                "message_id": str(farewell.id),
+                "conversation_id": str(ticket.conversation_id),
+            },
+        )
+        # The operator-facing note stays in the history only (no outbox).
+        await self._create_system_message(
+            session, ticket.conversation_id, self.TIMEOUT_OPERATOR_NOTE
+        )
+        await self._audit.log(
+            session,
+            actor_type=AuditActorType.SYSTEM,
+            action="ticket.timeout_closed",
+            entity_type="ticket",
+            entity_id=ticket.id,
+            details={"conversation_id": str(ticket.conversation_id)},
+        )
+        if ticket.assignee_id:
+            await self._apply_pending(session, ticket.assignee_id)
+        return ticket
+
+    async def close_timed_out(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> int:
+        """Worker step: close every non-terminal ticket whose dialog has no
+        unexpired ACTIVE session. One transaction per ticket; a failure on
+        one dialog does not block the rest."""
+        now = datetime.now(UTC)
+        async with factory() as session:
+            ticket_ids = await self._tickets.list_timed_out(session, now=now)
+        closed = 0
+        for ticket_id in ticket_ids:
+            async with factory() as session:
+                try:
+                    async with unit_of_work(session):
+                        if await self.close_on_timeout(session, ticket_id) is not None:
+                            closed += 1
+                except StateConflict:
+                    logger.warning("Timeout close skipped for %s", ticket_id)
+        return closed
 
     async def _create_system_message(
         self,

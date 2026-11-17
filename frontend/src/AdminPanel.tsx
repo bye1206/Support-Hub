@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import "./AdminPanel.css";
 
 type Role = "OPERATOR" | "SUPERVISOR" | "ADMIN";
@@ -183,22 +183,35 @@ export function AdminPanel({
   }, [auth, role]);
 
   // Presence changes constantly; refresh staff statuses quietly.
+  // Perf (2026-11-17): guard against overlapping polls (a slow answer used
+  // to stack the next tick's requests) and skip when the tab is hidden.
+  const refreshingRef = useRef(false);
   useEffect(() => {
     const refresh = () => {
-      if (role === "ADMIN")
-        void adminApi<{ operators: Operator[] }>("/operators", auth)
-          .then((data) => setOperators(data.operators))
-          .catch(() => {});
-      if (role !== "OPERATOR") {
-        void opApi<{ colleagues: Colleague[] }>("/colleagues", auth)
-          .then((data) => setColleagues(data.colleagues))
-          .catch(() => {});
-        // Owner request 2026-11-13: new chats must appear in the
-        // distribution panel without reopening it.
-        void opApi<{ tickets: Ticket[] }>("/tickets?limit=200", auth)
-          .then((data) => setTickets(data.tickets))
-          .catch(() => {});
-      }
+      if (refreshingRef.current || document.hidden) return;
+      refreshingRef.current = true;
+      void (async () => {
+        try {
+          if (role === "ADMIN")
+            await adminApi<{ operators: Operator[] }>("/operators", auth)
+              .then((data) => setOperators(data.operators))
+              .catch(() => {});
+          if (role !== "OPERATOR") {
+            await Promise.all([
+              opApi<{ colleagues: Colleague[] }>("/colleagues", auth)
+                .then((data) => setColleagues(data.colleagues))
+                .catch(() => {}),
+              // Owner request 2026-11-13: new chats must appear in the
+              // distribution panel without reopening it.
+              opApi<{ tickets: Ticket[] }>("/tickets?limit=200", auth)
+                .then((data) => setTickets(data.tickets))
+                .catch(() => {}),
+            ]);
+          }
+        } finally {
+          refreshingRef.current = false;
+        }
+      })();
     };
     // Owner request 2026-11-13: 3 s so new chats reach the distribution
     // panel almost instantly.
@@ -352,29 +365,52 @@ export function AdminPanel({
     setTickets(data.tickets);
   };
 
-  const activeTickets = tickets.filter((ticket) => ticket.status !== "RESOLVED" && ticket.status !== "CLOSED");
-  const staff: Array<Operator | Colleague> = role === "ADMIN"
-    ? operators
-    : colleagues.map((colleague) => ({ ...colleague, max_active_tickets: 5 }));
+  // Perf (2026-11-17): derived lists were recomputed on every render —
+  // with a 3 s poll and hundreds of tickets that is real work per keystroke.
+  const activeTickets = useMemo(
+    () => tickets.filter((ticket) => ticket.status !== "RESOLVED" && ticket.status !== "CLOSED"),
+    [tickets],
+  );
+  const staff: Array<Operator | Colleague> = useMemo(
+    () => role === "ADMIN"
+      ? operators
+      : colleagues.map((colleague) => ({ ...colleague, max_active_tickets: 5 })),
+    [role, operators, colleagues],
+  );
   // Distribution targets active operators only: an offline / on-break
   // colleague is shown grayed out and cannot receive chats.
-  const isReachable = (member: Operator | Colleague) =>
+  const isReachable = useCallback((member: Operator | Colleague) =>
     (member as Operator).is_active !== false &&
-    (member.presence_status ?? "ACTIVE") === "ACTIVE";
-  const distStaff = staff.filter(isReachable);
-  const loadOf = (operatorId: string) =>
-    activeTickets.filter((ticket) => ticket.assignee_id === operatorId).length;
-  const nameOf = (operatorId: string | null) => {
+    (member.presence_status ?? "ACTIVE") === "ACTIVE", []);
+  const distStaff = useMemo(() => staff.filter(isReachable), [staff, isReachable]);
+  const activeByOperator = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ticket of activeTickets)
+      if (ticket.assignee_id)
+        counts.set(ticket.assignee_id, (counts.get(ticket.assignee_id) ?? 0) + 1);
+    return counts;
+  }, [activeTickets]);
+  const loadOf = useCallback(
+    (operatorId: string) => activeByOperator.get(operatorId) ?? 0,
+    [activeByOperator],
+  );
+  const nameOf = useCallback((operatorId: string | null) => {
     if (!operatorId) return null;
     const member = staff.find((item) => item.operator_id === operatorId);
     return member ? member.display_name || member.email : shortId(operatorId);
-  };
-  const operatorTickets = distSelected
-    ? activeTickets.filter((ticket) => ticket.assignee_id === distSelected)
-    : [];
+  }, [staff]);
+  const operatorTickets = useMemo(
+    () => distSelected
+      ? activeTickets.filter((ticket) => ticket.assignee_id === distSelected)
+      : [],
+    [distSelected, activeTickets],
+  );
   // Чаты у ИИ в распределении не нужны.
-  const unassignedTickets = activeTickets.filter(
-    (ticket) => !ticket.assignee_id && ticket.status !== "AI_PROCESSING",
+  const unassignedTickets = useMemo(
+    () => activeTickets.filter(
+      (ticket) => !ticket.assignee_id && ticket.status !== "AI_PROCESSING",
+    ),
+    [activeTickets],
   );
 
   const openAssign = (ticket: Ticket) => {

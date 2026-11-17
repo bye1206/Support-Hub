@@ -47,6 +47,19 @@ class SessionService:
                 raise
             return winner
 
+    async def has_live_session(
+        self, session: AsyncSession, conversation_id: uuid.UUID
+    ) -> bool:
+        """Owner rule (2026-11-17): a dialog with no unexpired ACTIVE session
+        is timed out — routing must close its ticket and start a new one."""
+        active = await self._sessions.get_active(session, conversation_id)
+        if active is None:
+            return False
+        if active.expires_at > datetime.now(UTC):
+            return True
+        await self._sessions.mark(session, active, SessionStatus.EXPIRED, at=datetime.now(UTC))
+        return False
+
     async def expire_due(self, session: AsyncSession) -> int:
         """P-05 worker step: bulk-mark sessions whose time is up (ACTIVE ->
         EXPIRED is an allowed FSM transition, so the bulk update is safe)."""

@@ -407,6 +407,17 @@ export default function App() {
     historySearchRef = useRef<HTMLInputElement>(null),
     selectedRef = useRef<string | null>(null),
     adPhotosRef = useRef<Record<string, string>>({});
+  // Perf round (2026-11-17): WS event bursts coalesce into one sync.
+  const syncInFlight = useRef(false),
+    syncQueued = useRef(false),
+    syncRef = useRef<() => void>(() => {}),
+    syncTimer = useRef(0),
+    // Guards the async AD card against overwriting a switched-away ticket.
+    adUserRef = useRef<string | null>(null);
+  const scheduleSync = useCallback(() => {
+    window.clearTimeout(syncTimer.current);
+    syncTimer.current = window.setTimeout(() => syncRef.current(), 400);
+  }, []);
   const ready = Boolean(auth.token);
   const meEntry = team.find((member) => member.operator_id === operatorId);
   const presence: Presence = meEntry?.presence_status ?? "ACTIVE";
@@ -457,8 +468,11 @@ export default function App() {
   const loadAdInfo = async (userId: string) => {
     // Employee card (P-29): graceful degradation - on any failure the
     // details panel shows the plain user block.
+    // Perf/UX (2026-11-17): a slow answer for the PREVIOUS ticket must not
+    // overwrite the card of the currently selected one.
     try {
       const info = await api<AdInfo>(`/users/${userId}/ad-info`, auth);
+      if (adUserRef.current !== userId) return;
       setAdInfo(info);
       if (info.available && info.photo_url && !adPhotosRef.current[userId]) {
         const response = await fetch(info.photo_url, {
@@ -471,7 +485,7 @@ export default function App() {
         }
       }
     } catch {
-      setAdInfo(null);
+      if (adUserRef.current === userId) setAdInfo(null);
     }
   };
   const loadTicket = useCallback(
@@ -480,6 +494,7 @@ export default function App() {
       setLoading(true);
       try {
         const ticket = await api<Ticket>(`/tickets/${id}`, auth);
+        adUserRef.current = ticket.user_id;
         const [noteData, categoryData, historyData, pastData, tagData] =
           await Promise.all([
             api<{ notes: Note[] }>(
@@ -520,9 +535,27 @@ export default function App() {
     [auth, ready],
   );
   const sync = useCallback(async () => {
-    await loadQueue();
-    if (selectedRef.current) await loadTicket(selectedRef.current);
-  }, [loadQueue, loadTicket]);
+    // Perf (2026-11-17): overlapping syncs (WS bursts + reconnects) used to
+    // fire parallel /tickets?limit=200 storms; serialize and coalesce.
+    if (syncInFlight.current) {
+      syncQueued.current = true;
+      return;
+    }
+    syncInFlight.current = true;
+    try {
+      await loadQueue();
+      if (selectedRef.current) await loadTicket(selectedRef.current);
+    } finally {
+      syncInFlight.current = false;
+      if (syncQueued.current) {
+        syncQueued.current = false;
+        scheduleSync();
+      }
+    }
+  }, [loadQueue, loadTicket, scheduleSync]);
+  useEffect(() => {
+    syncRef.current = () => void sync();
+  }, [sync]);
   useEffect(() => {
     if (ready) void loadQueue();
   }, [ready, loadQueue]);
@@ -614,15 +647,15 @@ export default function App() {
       ws.onmessage = (e) => {
         try {
           const v = JSON.parse(e.data);
-          if (v.type !== "ready" && v.type !== "ping") void sync();
+          if (v.type !== "ready" && v.type !== "ping") scheduleSync();
         } catch {
-          void sync();
+          scheduleSync();
         }
       };
       ws.onclose = () => {
         if (!stopped)
           retry.current = window.setTimeout(() => {
-            void sync();
+            scheduleSync();
             connect();
           }, 2500);
       };

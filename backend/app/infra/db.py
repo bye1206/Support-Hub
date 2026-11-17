@@ -10,11 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 class DatabaseClient:
     def __init__(self, database_url: str) -> None:
+        # Perf round (2026-11-17): the workspace polls + WS fan-out easily
+        # exceed 5+5 connections; exhausted pool == perceived freezes.
         self._engine: AsyncEngine = create_async_engine(
             database_url,
             pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=5,
+            pool_size=10,
+            max_overflow=10,
+            pool_timeout=10,
         )
         self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
 

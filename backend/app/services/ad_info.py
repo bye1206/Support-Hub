@@ -17,6 +17,7 @@ the next request (no negative caching).
 """
 
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -29,6 +30,30 @@ from app.repositories.users import UserRepository
 from app.services._tx import unit_of_work
 
 logger = logging.getLogger(__name__)
+
+# Perf (2026-11-17): /me/photo used to hit LDAP on EVERY workspace render
+# (bind + search + thumbnailPhoto, up to 10 s on a slow AD). Photos change
+# rarely — same policy as the card cache: serve a copy younger than the TTL.
+_PHOTO_CACHE: dict[str, tuple[float, bytes | None]] = {}
+_PHOTO_CACHE_TTL_SECONDS = 3600.0
+_PHOTO_CACHE_MAX_ENTRIES = 512
+
+
+def _cached_photo(login: str) -> tuple[bytes | None, bool]:
+    entry = _PHOTO_CACHE.get(login.lower())
+    if entry is None:
+        return None, False
+    stored_at, photo = entry
+    if time.monotonic() - stored_at > _PHOTO_CACHE_TTL_SECONDS:
+        _PHOTO_CACHE.pop(login.lower(), None)
+        return None, False
+    return photo, True
+
+
+def _store_photo(login: str, photo: bytes | None) -> None:
+    if len(_PHOTO_CACHE) >= _PHOTO_CACHE_MAX_ENTRIES:
+        _PHOTO_CACHE.clear()  # small self-healing cache, no LRU machinery
+    _PHOTO_CACHE[login.lower()] = (time.monotonic(), photo)
 
 
 class AdInfoService:
@@ -120,15 +145,23 @@ class AdInfoService:
         login = login.strip()
         if not login:
             return None
+        photo, hit = _cached_photo(login)
+        if hit:
+            return photo
+        result: bytes | None
         if not self._directory.configured:
             if not get_settings().ad_demo:
-                return None
-            return demo_card(login).get("_photo")
-        try:
-            card = await self._directory.get_user(login)
-        except AdUnavailableError:
-            return None
-        return (card or {}).get("_photo")
+                result = None
+            else:
+                result = demo_card(login).get("_photo")
+        else:
+            try:
+                card = await self._directory.get_user(login)
+            except AdUnavailableError:
+                return None  # AD down: not cached, retried next request
+            result = (card or {}).get("_photo")
+        _store_photo(login, result)
+        return result
 
     async def _refresh(self, session: AsyncSession, user_id: uuid.UUID) -> None:
         """Fetch from AD and store; failures leave the stale copy in place."""

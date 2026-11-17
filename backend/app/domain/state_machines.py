@@ -36,6 +36,10 @@ class TicketTrigger(StrEnum):
     # problem is solved / asked for a human. AI acts, no message is published.
     AI_RESOLVED = "AI_RESOLVED"
     AI_REQUESTED_HANDOFF = "AI_REQUESTED_HANDOFF"
+    # Owner rule (2026-11-17): the 3-hour session timeout closes the ticket —
+    # the dialog cannot outlive its session. No reopen; the user's next
+    # message starts a new ticket.
+    SESSION_TIMEOUT = "SESSION_TIMEOUT"
 
 
 # Target status per trigger. A user message (USER_MESSAGE) never uses this
@@ -51,6 +55,8 @@ _TICKET_TARGET: dict[TicketTrigger, str] = {
     # Gateway trigger codes (D-043): user confirmed solved / asked for human.
     TicketTrigger.AI_RESOLVED: "RESOLVED",
     TicketTrigger.AI_REQUESTED_HANDOFF: "OPEN",
+    # Session timeout (owner 2026-11-17): the dialog is closed wholesale.
+    TicketTrigger.SESSION_TIMEOUT: "CLOSED",
 }
 
 # The user's message target depends on the current status and the dialog
@@ -100,6 +106,11 @@ _TICKET_ALLOWED_SOURCES: dict[TicketTrigger, frozenset[str]] = {
     # Trigger codes arrive while the gateway is processing this dialog.
     TicketTrigger.AI_RESOLVED: frozenset({"AI_PROCESSING"}),
     TicketTrigger.AI_REQUESTED_HANDOFF: frozenset({"AI_PROCESSING"}),
+    # The session timeout reaches any non-terminal ticket (owner 2026-11-17);
+    # RESOLVED/CLOSED are terminal and were closed with their own farewell.
+    TicketTrigger.SESSION_TIMEOUT: frozenset(
+        {"NEW", "AI_PROCESSING", "OPEN", "PENDING_USER"}
+    ),
 }
 
 

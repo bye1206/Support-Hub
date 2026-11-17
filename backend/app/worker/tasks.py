@@ -17,6 +17,7 @@ from app.models import OutboxEvent
 from app.services.ai_runs import AiRunService, build_gateway_from_settings
 from app.services.outbox import OutboxService
 from app.services.sessions import SessionService
+from app.services.tickets import TicketService
 
 logger = logging.getLogger(__name__)
 
@@ -113,11 +114,14 @@ async def process_ai_runs(
 
 
 async def expire_sessions(ctx: dict[str, Any]) -> int:
-    """P-05: mark sessions whose 3 hours are over (does NOT touch tickets)."""
+    """P-05: mark sessions whose 3 hours are over, then close the tickets
+    whose dialogs no longer have a live session (owner rule 2026-11-17:
+    the timeout closes the ticket, the user gets a farewell note in Tag)."""
     factory = _session_factory(ctx)
     async with factory() as session:
         expired = await SessionService().expire_due(session)
         await session.commit()
-    if expired:
-        logger.info("Sessions expired: %s", expired)
+    closed = await TicketService().close_timed_out(factory)
+    if expired or closed:
+        logger.info("Sessions expired: %s; tickets timeout-closed: %s", expired, closed)
     return expired

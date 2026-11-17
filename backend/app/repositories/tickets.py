@@ -3,13 +3,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, case, desc, func, or_, select, update
+from sqlalchemy import String, case, desc, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.exceptions import StateConflict
 from app.models import (
     Conversation,
+    ConversationSession,
     Message,
+    SessionStatus,
     Tag,
     Ticket,
     TicketStatus,
@@ -251,6 +253,36 @@ class TicketRepository:
                 Ticket.status.not_in((TicketStatus.RESOLVED, TicketStatus.CLOSED)),
             )
             .order_by(Ticket.created_at, Ticket.id)
+        )
+        return list((await session.scalars(stmt)).all())
+
+    async def list_timed_out(
+        self, session: AsyncSession, *, now: datetime
+    ) -> list[uuid.UUID]:
+        """Owner rule (2026-11-17): tickets whose dialog has no unexpired
+        ACTIVE session and that are still non-terminal must be closed by the
+        session timeout. Called right after the session expiry sweep."""
+        stmt = (
+            select(Ticket.id)
+            .where(
+                Ticket.status.in_(
+                    [
+                        TicketStatus.NEW,
+                        TicketStatus.AI_PROCESSING,
+                        TicketStatus.OPEN,
+                        TicketStatus.PENDING_USER,
+                    ]
+                ),
+                ~exists(
+                    select(ConversationSession.id).where(
+                        ConversationSession.conversation_id
+                        == Ticket.conversation_id,
+                        ConversationSession.status == SessionStatus.ACTIVE,
+                        ConversationSession.expires_at > now,
+                    )
+                ),
+            )
+            .limit(100)
         )
         return list((await session.scalars(stmt)).all())
 

@@ -61,6 +61,7 @@ class TagDirectSender:
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
+        self._fallback_engine: Any = None  # built once, disposed with the client
         self._client = httpx.AsyncClient(
             base_url=settings.mattermost_base_url.rstrip("/"),
             timeout=DEFAULT_TIMEOUT_SECONDS,
@@ -94,13 +95,21 @@ class TagDirectSender:
             raise TagDirectError("Outbox payload without message_id")
         factory = self._session_factory
         if factory is None:
-            from sqlalchemy.ext.asyncio import (
-                async_sessionmaker,
-                create_async_engine,
-            )
+            # Perf (2026-11-17): build the fallback engine ONCE — a new engine
+            # per message leaked asyncpg connections under load.
+            if self._fallback_engine is None:
+                from sqlalchemy.ext.asyncio import (
+                    async_sessionmaker,
+                    create_async_engine,
+                )
 
-            engine = create_async_engine(self._settings.database_url, pool_pre_ping=True)
-            factory = async_sessionmaker(engine, expire_on_commit=False)
+                self._fallback_engine = create_async_engine(
+                    self._settings.database_url, pool_pre_ping=True
+                )
+                self._session_factory = async_sessionmaker(
+                    self._fallback_engine, expire_on_commit=False
+                )
+            factory = self._session_factory
         async with factory() as session:
             message = await session.get(Message, message_id)
             if message is None:
