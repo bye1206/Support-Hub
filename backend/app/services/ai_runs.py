@@ -16,6 +16,7 @@ published), `operator` hands the dialog to a human (D-014: no way back to
 AI). Unknown code-like answers are rendered as text (see triggers.py).
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Protocol
@@ -152,10 +153,18 @@ class AiRunService:
                 session, limit=limit
             )
             await session.commit()
-        processed = 0
-        for conversation_id in conversation_ids:
-            processed += await self._process_conversation(session_factory, conversation_id)
-        return processed
+        # Perf (2026-11-17): dialogs used to run sequentially — one slow
+        # gateway answer (up to ~130 s) delayed every other dialog by that
+        # much. The HTTP call happens per-dialog outside any DB transaction
+        # (contract §5), so the claims are independent and safe to run
+        # concurrently; each dialog keeps its own session/claim.
+        results = await asyncio.gather(
+            *(
+                self._process_conversation(session_factory, conversation_id)
+                for conversation_id in conversation_ids
+            )
+        )
+        return sum(results)
 
     async def _process_conversation(
         self,
