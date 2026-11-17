@@ -8,34 +8,17 @@ import {
 } from "react";
 import "./App.css";
 import { AdminPanel } from "./AdminPanel";
-type Status =
-  | "NEW"
-  | "OPEN"
-  | "AI_PROCESSING"
-  | "PENDING_USER"
-  | "RESOLVED"
-  | "CLOSED";
-type Ticket = {
-  ticket_id: string;
-  conversation_id: string;
-  user_id: string;
-  status: Status;
-  priority: string;
-  assignee_id: string | null;
-  category_id: string | null;
-  tags: string[];
-  created_at: string;
-  updated_at: string;
-  messages?: Message[];
-  session?: { started_at: string; expires_at: string } | null;
-};
-type Message = {
-  message_id: string;
-  sequence_no: number;
-  author_type: string;
-  text: string;
-  created_at: string;
-};
+import { Composer } from "./Composer";
+import { TicketRow } from "./TicketRow";
+import { Timeline } from "./Timeline";
+import {
+  ago,
+  initials,
+  messageHeading,
+  shortId,
+  statusName,
+  type Ticket,
+} from "./workspace-model";
 type Note = {
   note_id: string;
   conversation_id: string;
@@ -248,14 +231,6 @@ const priorityName: Record<string, string> = {
   HIGH: "Высокий",
   URGENT: "Срочный",
 };
-const statusName: Record<Status, string> = {
-  NEW: "Без назначения",
-  OPEN: "В работе",
-  AI_PROCESSING: "Обработка ИИ",
-  PENDING_USER: "Ждём пользователя",
-  RESOLVED: "Решён",
-  CLOSED: "Закрыт",
-};
 const readCredentials = (): Credentials => {
   try {
     const parsed = JSON.parse(sessionStorage.getItem("support-hub-operator") || "null");
@@ -264,43 +239,11 @@ const readCredentials = (): Credentials => {
     return { token: "" };
   }
 };
-const initials = (value: string) =>
-  value
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((x) => x[0].toUpperCase())
-    .join("") || "SH";
-const shortId = (value: string) => value.slice(0, 8).toUpperCase();
-const authorLabels: Record<string, string> = {
-  USER: "Пользователь",
-  OPERATOR: "Оператор",
-  AI: "ИИ",
-  SYSTEM: "Система",
-};
-const messageHeading = (authorType: string) =>
-  authorLabels[authorType] || authorType;
 const fmtDuration = (ms: number) => {
   const total = Math.floor(ms / 60000);
   const hours = Math.floor(total / 60);
   const minutes = total % 60;
   return hours > 0 ? `${hours} ч ${minutes} мин` : `${minutes} мин`;
-};
-const ago = (value: string) => {
-  const n = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(value).getTime()) / 60000),
-  );
-  return n < 1
-    ? "только что"
-    : n < 60
-      ? `${n} мин назад`
-      : n < 1440
-        ? `${Math.floor(n / 60)} ч назад`
-        : new Intl.DateTimeFormat("ru-RU", {
-            day: "numeric",
-            month: "short",
-          }).format(new Date(value));
 };
 async function api<T>(
   path: string,
@@ -371,8 +314,6 @@ export default function App() {
     [adPhotos, setAdPhotos] = useState<Record<string, string>>({}),
     [opPhoto, setOpPhoto] = useState<string | null>(null),
     [notes, setNotes] = useState<Note[]>([]),
-    [mode, setMode] = useState<"reply" | "note">("reply"),
-    [text, setText] = useState(""),
     [historyPage, setHistoryPage] = useState(false),
     [historyFilters, setHistoryFilters] = useState<HistoryFilters>(emptyHistoryFilters),
     [historyResults, setHistoryResults] = useState<Ticket[]>([]),
@@ -394,7 +335,6 @@ export default function App() {
     [adSearching, setAdSearching] = useState(false),
     [adSearched, setAdSearched] = useState(false),
     [loading, setLoading] = useState(false),
-    [sending, setSending] = useState(false),
     [error, setError] = useState(""),
     [toast, setToast] = useState(""),
     [mobile, setMobile] = useState<"queue" | "conversation" | "details">(
@@ -802,32 +742,32 @@ export default function App() {
       setSigningIn(false);
     }
   };
-  const send = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!current || !text.trim() || sending) return;
-    setSending(true);
-    try {
-      if (mode === "reply") {
-        await api(`/tickets/${current.ticket_id}/replies`, auth, {
-          method: "POST",
-          body: JSON.stringify({ text: text.trim() }),
-        });
-        setToast("Ответ отправлен в очередь доставки");
-      } else {
-        await api(`/conversations/${current.conversation_id}/notes`, auth, {
-          method: "POST",
-          body: JSON.stringify({ body: text.trim() }),
-        });
-        setToast("Внутренняя заметка сохранена");
+  const send = useCallback(
+    async (mode: "reply" | "note", body: string): Promise<boolean> => {
+      if (!current) return false;
+      try {
+        if (mode === "reply") {
+          await api(`/tickets/${current.ticket_id}/replies`, auth, {
+            method: "POST",
+            body: JSON.stringify({ text: body }),
+          });
+          setToast("Ответ отправлен в очередь доставки");
+        } else {
+          await api(`/conversations/${current.conversation_id}/notes`, auth, {
+            method: "POST",
+            body: JSON.stringify({ body }),
+          });
+          setToast("Внутренняя заметка сохранена");
+        }
+        await sync();
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Отправка не удалась");
+        return false;
       }
-      setText("");
-      await sync();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Отправка не удалась");
-    } finally {
-      setSending(false);
-    }
-  };
+    },
+    [current, auth, sync],
+  );
   const updateCategory = async (categoryId: string) => {
     if (!current) return;
     try {
@@ -1012,30 +952,6 @@ export default function App() {
     );
     return colleague?.display_name || colleague?.email || shortId(operatorId);
   };
-  const renderTicketRow = (t: Ticket, groupLabel?: string) => (
-    <button
-      key={t.ticket_id}
-      className={`ticket-row ${selectedId === t.ticket_id ? "active" : ""} ${!t.assignee_id ? "unassigned" : ""}`}
-      onClick={() => {
-        setSelectedId(t.ticket_id);
-        setMobile("conversation");
-      }}
-    >
-      <div className="ticket-topline">
-        <span className="ticket-number">#{shortId(t.ticket_id)}</span>
-        <span className="ticket-time">{ago(t.updated_at)}</span>
-      </div>
-      <div className="ticket-preview">
-        {t.tags.length ? t.tags.join(" · ") : `Пользователь ${shortId(t.user_id)}`}
-      </div>
-      <div className="ticket-meta">
-        <span className={`status-dot ${t.status.toLowerCase()}`} />
-        <span className={`status-text ${t.status.toLowerCase()}`}>
-          {groupLabel ?? statusName[t.status]}
-        </span>
-      </div>
-    </button>
-  );
   return (
     <div
       className={`app-shell ${current ? (details ? "" : "details-collapsed") : "no-ticket"}`}
@@ -1201,12 +1117,20 @@ export default function App() {
                   ))}
                 </div>
                 <div className="ticket-list">
-                  {selected.items.map((ticket) =>
-                    renderTicketRow(
-                      ticket,
-                      selected.key === "all" ? undefined : selected.label,
-                    ),
-                  )}
+                  {selected.items.map((ticket) => (
+                    <TicketRow
+                      key={ticket.ticket_id}
+                      ticket={ticket}
+                      selected={selectedId === ticket.ticket_id}
+                      groupLabel={
+                        selected.key === "all" ? undefined : selected.label
+                      }
+                      onSelect={(ticketId) => {
+                        setSelectedId(ticketId);
+                        setMobile("conversation");
+                      }}
+                    />
+                  ))}
                   {!selected.items.length && (
                     <div className="empty-queue">
                       <span className="empty-shush">🤫</span>
@@ -1420,148 +1344,18 @@ export default function App() {
               {loading ? (
                 <div className="loading-state">Загружаем переписку…</div>
               ) : (
-                <div className="message-list">
-                  {timeline.map((entry) => {
-                    if (entry.kind === "note")
-                      return (
-                        <article className="note-card" key={entry.item.note_id}>
-                          <div className="note-icon">✎</div>
-                          <div>
-                            <div className="message-heading">
-                              <strong>Внутренняя заметка</strong>
-                              <time>
-                                {new Intl.DateTimeFormat("ru-RU", {
-                                  day: "numeric",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }).format(new Date(entry.item.created_at))}
-                              </time>
-                            </div>
-                            <p>{entry.item.body}</p>
-                          </div>
-                        </article>
-                      );
-                    const m = entry.item;
-                    return (
-                      <article
-                        key={m.message_id}
-                        className={
-                          m.author_type.toUpperCase() === "OPERATOR"
-                            ? "message from-operator"
-                            : "message"
-                        }
-                      >
-                        <div
-                          className={
-                            m.author_type.toUpperCase() === "AI"
-                              ? "message-avatar ai"
-                              : "message-avatar user"
-                          }
-                        >
-                          {m.author_type.toUpperCase() === "AI"
-                            ? "✦"
-                            : initials(shortId(current.user_id))}
-                        </div>
-                        <div className="message-content">
-                          <div className="message-heading">
-                            <strong>
-                              {m.author_type.toUpperCase() === "USER"
-                                ? "Пользователь " + shortId(current.user_id)
-                                : m.author_type.toUpperCase() === "AI"
-                                  ? "AI-помощник"
-                                  : profile?.display_name || "Оператор"}
-                            </strong>
-                            <time>
-                              {new Intl.DateTimeFormat("ru-RU", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }).format(new Date(m.created_at))}
-                            </time>
-                          </div>
-                          <div className="message-bubble">{m.text}</div>
-                        </div>
-                      </article>
-                    );
-                  })}
-                  {!current.messages?.length && !notes.length && (
-                    <div className="empty-history">Сообщений пока нет</div>
-                  )}
-                </div>
+                <Timeline
+                  entries={timeline}
+                  userShortId={shortId(current.user_id)}
+                  operatorName={profile?.display_name || "Оператор"}
+                />
               )}
             </div>
-            <section
-              className={`composer ${mode === "note" ? "note-mode" : ""}`}
-            >
-              <div className="composer-tabs" role="tablist">
-                <button
-                  role="tab"
-                  aria-selected={mode === "reply"}
-                  className={mode === "reply" ? "active" : ""}
-                  onClick={() => setMode("reply")}
-                >
-                  <span>↗</span> Публичный ответ
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={mode === "note"}
-                  className={mode === "note" ? "active" : ""}
-                  onClick={() => setMode("note")}
-                >
-                  <span>▤</span> Внутренняя заметка
-                </button>
-              </div>
-              <form onSubmit={send}>
-                <textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  disabled={currentUnassigned}
-                  placeholder={
-                    currentUnassigned
-                      ? "Чат не назначен сотруднику — печатать нельзя"
-                      : mode === "reply"
-                        ? "Напишите ответ пользователю…"
-                        : "Заметка видна только команде поддержки…"
-                  }
-                  rows={3}
-                  maxLength={10000}
-                  aria-label={
-                    mode === "reply" ? "Публичный ответ" : "Внутренняя заметка"
-                  }
-                />
-                <div className="composer-bottom">
-                  <div className="composer-hint">
-                    {currentUnassigned ? (
-                      <>
-                        <span className="private-icon">🔒</span> Сначала назначьте
-                        сотрудника в распределении
-                      </>
-                    ) : mode === "reply" ? (
-                      <>
-                        <span className="public-icon">↗</span> Будет отправлено
-                        пользователю
-                      </>
-                    ) : (
-                      <>
-                        <span className="private-icon">▤</span> Только для
-                        сотрудников
-                      </>
-                    )}
-                    <span className="character-count">{text.length}/10000</span>
-                  </div>
-                  <button
-                    className={mode === "note" ? "note-send" : "send-button"}
-                    disabled={currentUnassigned || !text.trim() || sending}
-                  >
-                    {sending
-                      ? "Сохраняем…"
-                      : mode === "reply"
-                        ? "Отправить ответ ↗"
-                        : "Добавить заметку ↗"}
-                  </button>
-                </div>
-              </form>
-            </section>
+            <Composer
+              key={current.ticket_id}
+              disabled={currentUnassigned}
+              onSend={send}
+            />
           </>
         ) : (
           <div className="welcome-state">
