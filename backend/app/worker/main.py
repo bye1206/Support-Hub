@@ -1,17 +1,65 @@
 """ARQ worker settings: `python -m app.worker` runs it against the live Redis."""
 
+import logging
 from typing import Any
 
 from arq import cron, func
 from arq.connections import RedisSettings
 
 from app.config import get_settings
-from app.worker.tasks import expire_sessions, process_ai_runs, process_outbox
+from app.worker.tasks import (
+    _session_factory,
+    expire_sessions,
+    process_ai_runs,
+    process_outbox,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _redis_settings() -> RedisSettings:
     settings = get_settings()
     return RedisSettings.from_dsn(settings.redis_url)
+
+
+async def _startup(ctx: dict[str, Any]) -> None:
+    """Start the Tag direct WebSocket listener HERE, in the single worker
+    process (2026-11-17). It used to live in the API lifespan — with several
+    uvicorn workers every process would listen and double-process DMs."""
+    ctx["tag_listener"] = None
+    settings = get_settings()
+    if not settings.tag_direct_mode:
+        return
+    from app.integrations.tag.direct import (
+        TagDirectListener,
+        fetch_bot_user_id,
+        ingest_direct_message,
+    )
+
+    factory = _session_factory(ctx)
+    try:
+        me = await fetch_bot_user_id(settings)
+    except Exception:  # noqa: BLE001 - token problems must not stop the worker
+        logger.exception("Tag direct: /users/me failed; listener not started")
+        return
+    if me is None:
+        return
+    listener = TagDirectListener(
+        settings,
+        factory,
+        lambda fields: ingest_direct_message(factory, fields),
+        me_user_id=me,
+    )
+    listener.start()
+    ctx["tag_listener"] = listener
+    logger.info("Tag direct listener started in worker (bot user %s)", me)
+
+
+async def _shutdown(ctx: dict[str, Any]) -> None:
+    listener = ctx.get("tag_listener")
+    if listener is not None:
+        await listener.stop()
+        logger.info("Tag direct listener stopped")
 
 
 class WorkerSettings:
@@ -34,8 +82,8 @@ class WorkerSettings:
         cron(process_outbox, second=set(range(0, 60, 10)), run_at_startup=True),
     ]
 
-    on_startup: Any = None
-    on_shutdown: Any = None
+    on_startup: Any = _startup
+    on_shutdown: Any = _shutdown
     max_jobs = 10
     job_timeout = 60
 
