@@ -122,9 +122,15 @@ class AdInfoService:
             ).total_seconds() < settings.ad_info_ttl_seconds
         )
         live_card: dict[str, Any] | None = None
-        if not fresh and (self._directory.configured or settings.ad_demo):
-            live_card = await self._refresh(session, user_id)
-            user = await self._users.get(session, user_id)
+        refresh_error: str | None = None
+        if not fresh:
+            if not (self._directory.configured or settings.ad_demo):
+                # Owner (2026-11-20): the manual refresh used to fail
+                # silently — the UI now shows WHY nothing changed.
+                refresh_error = "not_configured"
+            else:
+                live_card, refresh_error = await self._refresh(session, user_id)
+                user = await self._users.get(session, user_id)
 
         info = dict(user.ad_info or {}) if user is not None else {}
         if live_card:
@@ -139,6 +145,8 @@ class AdInfoService:
                 }
             )
         info["available"] = bool(info)
+        if refresh_error:
+            info["refresh_error"] = refresh_error
         if info and not self._directory.configured and settings.ad_demo:
             # Canned "Иван Петров" preview (AD_DEMO=true, no service account):
             # mark it so the UI can tell demo data from real AD data.
@@ -222,10 +230,11 @@ class AdInfoService:
 
     async def _refresh(
         self, session: AsyncSession, user_id: uuid.UUID
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any] | None, str | None]:
         """Fetch from AD, persist the SAFE fields, and hand the FULL fresh
         card back to the caller (only organizational data reaches the DB).
-        Failures leave the stale copy in place and return None."""
+        Failures leave the stale copy in place and return (None, reason):
+        unavailable / not_found / no_identity / not_configured."""
         identities = await self._users.list_identities(session, user_id)
         candidates: list[str] = []
         for identity in identities:
@@ -236,7 +245,7 @@ class AdInfoService:
         card: dict[str, Any] | None = None
         if not self._directory.configured:
             if not settings.ad_demo or not candidates:
-                return None
+                return None, "not_configured"
             # UI preview without AD (AD_DEMO=true, dev only). Fake data —
             # no need to strip access fields.
             card = demo_card(candidates[0])
@@ -250,13 +259,15 @@ class AdInfoService:
                 }
                 user.ad_photo = card.get("_photo") or None
                 user.ad_synced_at = datetime.now(UTC)
-            return card
+            return card, None
+        if not candidates:
+            return None, "no_identity"
         for candidate in candidates:
             try:
                 card = await self._directory.get_user(candidate)
             except AdUnavailableError as exc:
                 logger.info("AD card unavailable for %s: %s", candidate, exc)
-                return None
+                return None, "unavailable"
             if card is None:
                 continue
             async with unit_of_work(session):
@@ -265,7 +276,10 @@ class AdInfoService:
                 user.ad_info = _persistable_card(card)
                 user.ad_photo = card.get("_photo") or None
                 user.ad_synced_at = datetime.now(UTC)
-            return card
+            return card, None
         # Not found in AD under any identity: nothing to cache (no negative
         # caching) - the next request may retry after e.g. HR data lands.
-        return None
+        logger.info(
+            "AD card not found for user %s (tried: %s)", user_id, candidates
+        )
+        return None, "not_found"

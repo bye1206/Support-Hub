@@ -2219,11 +2219,12 @@
   background: #fff;
   box-shadow: 0 20px 70px #29324a0e;
 }
-/* Owner (2026-11-20): the brand mark and the wordmark on one line. */
+/* Owner (2026-11-20): the wordmark on one line with the S mark, pressed
+   close to it and sitting at its baseline. */
 .auth-card .brand-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-end;
+  gap: 6px;
   margin-bottom: 25px;
 }
 .auth-card .brand-row .brand-mark {
@@ -2232,7 +2233,7 @@
   color: #17191d;
 }
 .auth-card .brand-row .eyebrow {
-  margin: 0;
+  margin: 0 0 5px;
 }
 .auth-card .brand-mark {
   display: inline-block;
@@ -3836,4 +3837,13 @@ button.team-row.clickable:hover {
 .modal-arrow:hover {
   border-color: rgba(226, 0, 26, 0.25);
   background: #fdecec;
+}
+
+/* Owner (2026-11-20): the stats dialog reads like the history page — wide. */
+.dialog-modal {
+  width: min(860px, 94vw);
+}
+.dialog-modal .history-messages {
+  max-height: 64vh;
+  overflow: auto;
 }

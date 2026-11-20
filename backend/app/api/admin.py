@@ -829,6 +829,9 @@ async def operator_stats_presence(
     still-running interval from operators.presence_since. Seconds; the
     period parameter clips the intervals to a day / month (owner,
     2026-11-20: "за смену или за всё время?")."""
+    from datetime import date as date_type
+    from datetime import timedelta
+
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         operator = await session.get(Operator, operator_id)
@@ -861,7 +864,26 @@ async def operator_stats_presence(
             durations[str(operator.presence_status)] = durations.get(
                 str(operator.presence_status), 0.0
             ) + max(0.0, (hi - lo).total_seconds())
-    return {key: round(value) for key, value in durations.items()}
+        # Owner (2026-11-20): "в среднем или как?" — the UI shows the sum
+        # per period plus an average per working day; days = calendar days
+        # covered by the (clipped) intervals.
+        days: set[date_type] = set()
+
+        def track(lo: datetime, hi: datetime) -> None:
+            day = lo.date()
+            last = hi.date()
+            while day <= last:
+                days.add(day)
+                day += timedelta(days=1)
+
+        for _status, started, ended in rows:
+            lo, hi = clip(started, ended)
+            if hi > lo:
+                track(lo, hi)
+    return {
+        **{key: round(value) for key, value in durations.items()},
+        "days": len(days),
+    }
 
 
 def _period_range(period: str, date: str, month: str) -> tuple[datetime, datetime] | None:

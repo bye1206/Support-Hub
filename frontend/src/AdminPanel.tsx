@@ -928,6 +928,11 @@ export function AdminPanel({
                           <div className="presence-row"><span>На перерыве</span><strong>{fmtSeconds(presenceData?.BREAK)}</strong></div>
                           <div className="presence-row"><span>Офлайн</span><strong>{fmtSeconds(presenceData?.OFFLINE)}</strong></div>
                         </div>
+                        {/* Owner (2026-11-20): sum per period + the average
+                            per working day, so a month reads sensibly. */}
+                        {presencePeriod.mode !== "day" && (presenceData?.days ?? 0) > 1 && (
+                          <span className="stat-card-sub">≈ {fmtSeconds((presenceData?.ACTIVE ?? 0) / (presenceData?.days ?? 1))} активной работы в день</span>
+                        )}
                       </article>
                       <p className="admin-intro">Последние чаты</p>
                       <div className="stats-dialog-filters">
@@ -1010,7 +1015,7 @@ export function AdminPanel({
           role="presentation"
         >
           <div
-            className="modal"
+            className="modal dialog-modal"
             role="dialog"
             aria-label="История диалога"
             onClick={(event) => event.stopPropagation()}

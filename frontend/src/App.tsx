@@ -95,6 +95,16 @@ type AdInfo = {
   photo_url?: string;
   synced_at?: string | null;
   demo?: boolean;
+  // Owner (2026-11-20): why a manual refresh produced nothing — the button
+  // used to report success even when AD returned no card.
+  refresh_error?: "not_configured" | "no_identity" | "not_found" | "unavailable";
+};
+
+const adRefreshErrors: Record<string, string> = {
+  not_configured: "AD не подключён: нет сервисной учётки",
+  no_identity: "Нет логина для поиска в AD",
+  not_found: "Не найден в AD — проверьте логин в Тэге",
+  unavailable: "AD недоступен, попробуйте позже",
 };
 type TeamMember = {
   operator_id: string;
@@ -612,7 +622,14 @@ export default function App() {
       );
       if (adUserRef.current !== userId) return;
       setAdInfo(info);
-      setToast("Данные обновлены из AD");
+      // Owner (2026-11-20): success only when AD actually returned a card;
+      // otherwise say WHY nothing changed.
+      setToast(
+        info.available
+          ? "Данные обновлены из AD"
+          : adRefreshErrors[info.refresh_error ?? ""] ??
+              "AD не вернул данные",
+      );
       if (info.available && info.photo_url && !adPhotosRef.current[userId]) {
         const response = await fetch(info.photo_url, {
           headers: { Authorization: `Bearer ${auth.token}` },

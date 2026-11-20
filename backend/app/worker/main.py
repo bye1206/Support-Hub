@@ -13,6 +13,7 @@ from app.worker.tasks import (
     expire_sessions,
     process_ai_runs,
     process_outbox,
+    refresh_ad_info_backfill,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,9 @@ class WorkerSettings:
         # instant (owner 2026-11-18: queue/chat updates must feel live);
         # processing is at-least-once and idempotent by idempotency_key.
         cron(process_outbox, second=set(range(0, 60, 2)), run_at_startup=True),
+        # Owner report (2026-11-20): prefetch AD cards for new users so the
+        # queue shows the full profile without a manual "Обновить из AD".
+        cron(refresh_ad_info_backfill, minute=set(range(0, 60, 5))),
     ]
 
     on_startup: Any = _startup

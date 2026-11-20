@@ -135,3 +135,40 @@ async def check_sla_breaches(ctx: dict[str, Any]) -> int:
     if breached:
         logger.info("SLA breached: %s", breached)
     return breached
+
+
+async def refresh_ad_info_backfill(ctx: dict[str, Any], batch_size: int = 5) -> int:
+    """Owner report (2026-11-20): a brand-new user sits in the queue with
+    only the Tag name — AD data appears only after an operator opens the
+    card manually. This sweep prefetches AD cards for users that have none
+    yet (newest first), so the queue is complete without manual clicks.
+    Failures are logged with the reason and retried on the next tick."""
+    from sqlalchemy import desc, select
+
+    from app.models import User
+    from app.services.ad_info import AdInfoService
+
+    settings = get_settings()
+    if not settings.ldap_service_user_dn or not settings.ldap_service_password:
+        return 0
+    factory = _session_factory(ctx)
+    refreshed = 0
+    async with factory() as session:
+        ids = (
+            await session.scalars(
+                select(User.id)
+                .where(User.ad_synced_at.is_(None))
+                .order_by(desc(User.created_at))
+                .limit(batch_size)
+            )
+        ).all()
+        for user_id in ids:
+            try:
+                info = await AdInfoService().get_for_user(session, user_id)
+            except LookupError:
+                continue
+            if info.get("available"):
+                refreshed += 1
+    if refreshed:
+        logger.info("AD backfill: refreshed %s user card(s)", refreshed)
+    return refreshed
