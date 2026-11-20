@@ -22,6 +22,9 @@ type Props = {
   entries: TimelineEntry[];
   userLabel: string;
   operatorName: string;
+  // Owner report (2026-11-20): the user's messages carry his real avatar
+  // (AD, then Tag) instead of initials, like the header cards.
+  userAvatarUrl?: string | null;
   // Owner (2026-11-19): downloads need the auth header, so the parent does
   // the fetch; the timeline only renders the cards.
   onDownloadAttachment: (attachment: MessageAttachmentInfo) => void;
@@ -251,6 +254,7 @@ function TimelineImpl({
   entries,
   userLabel,
   operatorName,
+  userAvatarUrl,
   onDownloadAttachment,
   fetchAttachment,
 }: Props) {
@@ -311,11 +315,19 @@ function TimelineImpl({
                       : "message-avatar user"
                 }
               >
-                {author === "AI"
-                  ? "✦"
-                  : author === "OPERATOR"
-                    ? initials(operatorName)
-                    : initials(userLabel)}
+                {author === "AI" ? (
+                  "✦"
+                ) : author === "OPERATOR" ? (
+                  initials(operatorName)
+                ) : userAvatarUrl ? (
+                  <img
+                    className="message-avatar-photo"
+                    src={userAvatarUrl}
+                    alt=""
+                  />
+                ) : (
+                  initials(userLabel)
+                )}
               </div>
             )}
             <div className="message-content">

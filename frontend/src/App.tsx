@@ -1780,6 +1780,11 @@ export default function App() {
                         : "Пользователь"
                   }
                   operatorName={profile?.display_name || "Оператор"}
+                  userAvatarUrl={
+                    adPhotos[current.user_id] ||
+                    tagAvatars[current.user_id] ||
+                    null
+                  }
                   fetchAttachment={async (attachment) => {
                     // Owner (2026-11-19): image previews and downloads both
                     // go through the authorized fetch.

@@ -3847,3 +3847,11 @@ button.team-row.clickable:hover {
   max-height: 64vh;
   overflow: auto;
 }
+
+/* Owner (2026-11-20): the user avatar in the message list — round photo. */
+.message-avatar-photo {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
