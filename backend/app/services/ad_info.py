@@ -262,9 +262,12 @@ class AdInfoService:
             return card, None
         if not candidates:
             return None, "no_identity"
+        user = await self._users.get(session, user_id)
         for candidate in candidates:
             try:
-                card = await self._directory.get_user(candidate)
+                card = await self._directory.get_user(
+                    candidate, prefer_email=(user.email if user else None)
+                )
             except AdUnavailableError as exc:
                 logger.info("AD card unavailable for %s: %s", candidate, exc)
                 return None, "unavailable"

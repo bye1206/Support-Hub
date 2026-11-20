@@ -158,11 +158,15 @@ class AdDirectory:
             and bool(self._settings.ldap_service_password)
         )
 
-    async def get_user(self, login: str) -> dict[str, Any] | None:
+    async def get_user(
+        self, login: str, *, prefer_email: str | None = None
+    ) -> dict[str, Any] | None:
         """Employee card by login (sAMAccountName or e-mail). Worker thread."""
         import anyio.to_thread
 
-        return await anyio.to_thread.run_sync(self.get_user_sync, login)
+        return await anyio.to_thread.run_sync(
+            lambda: self.get_user_sync(login, prefer_email=prefer_email)
+        )
 
     async def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
         """People search (GetGroupBoxMember FastSearch analogue): login, name
@@ -228,15 +232,24 @@ class AdDirectory:
             except Exception:  # noqa: BLE001 - best effort cleanup
                 pass
 
-    def get_user_sync(self, login: str) -> dict[str, Any] | None:
-        """Blocking lookup; returns None when the user is not in AD."""
+    def get_user_sync(
+        self, login: str, *, prefer_email: str | None = None
+    ) -> dict[str, Any] | None:
+        """Blocking lookup; returns None when the user is not in AD.
+
+        ``prefer_email`` (the channel e-mail, owner question 2026-11-20:
+        "а если пользователи с одинаковым ФИО?") is tried first as an exact
+        mail match and breaks ties between same-named people."""
         if not self.configured:
             raise AdUnavailableError("AD directory is not configured")
         conn = self._connect()
         try:
+            candidates: list[str] = []
+            if prefer_email:
+                candidates.append(f"(mail={prefer_email})")
             escaped = ldap3.utils.conv.escape_filter_chars(login)
             if "@" in login:
-                candidates = [f"(mail={escaped})"]
+                candidates.append(f"(mail={escaped})")
             else:
                 # Owner diagnostic (2026-11-20): Tag usernames are NOT logins
                 # in this corp — the webhook carries the display name
@@ -245,7 +258,7 @@ class AdDirectory:
                 # displayName, then surname+given name in both orders (Tag
                 # says "Имя Фамилия", AD usually "Фамилия Имя Отчество").
                 domain = self._settings.ldap_domain
-                candidates = [
+                candidates += [
                     f"(sAMAccountName={escaped})",
                     f"(userPrincipalName={escaped}@{domain})",
                     f"(mail={escaped}@{domain})",
@@ -262,19 +275,32 @@ class AdDirectory:
                         f"(&(sn={first})(givenName={last}*))",
                     ]
             matched_by = ""
-            entry = None
+            entry: Any = None
             for filter_expr in candidates:
                 conn.search(
                     self._settings.ldap_base_dn,
                     f"(&(objectClass=user)(objectCategory=user){filter_expr})",
                     attributes=_USER_ATTRIBUTES,
                     search_scope="SUBTREE",
-                    size_limit=1,
+                    size_limit=5,
                 )
-                if conn.entries:
-                    entry = conn.entries[0]
-                    matched_by = filter_expr
-                    break
+                if not conn.entries:
+                    continue
+                entry = conn.entries[0]
+                if len(conn.entries) > 1 and prefer_email:
+                    # Same full name twice in AD: trust the e-mail.
+                    for candidate in conn.entries:
+                        if _attr_str(candidate, "mail").lower() == prefer_email.lower():
+                            entry = candidate
+                            break
+                    logger.info(
+                        "AD lookup for %r matched %s entries via %s",
+                        login,
+                        len(conn.entries),
+                        filter_expr,
+                    )
+                matched_by = filter_expr
+                break
             if entry is None:
                 logger.info(
                     "AD lookup missed for login %r (tried %s)",

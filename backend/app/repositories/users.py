@@ -33,23 +33,46 @@ class UserRepository:
         channel_type: str,
         external_user_id: str,
         external_user_name: str | None,
+        display_name: str | None = None,
+        email: str | None = None,
     ) -> User:
-        """P-06: create user + identity on first sight (race-safe via savepoint)."""
+        """P-06: create user + identity on first sight (race-safe via savepoint).
+
+        Owner diagnostic (2026-11-20): the Tag profile name ("Артемий
+        Пономарев") is NOT a login. ``external_user_name`` therefore stores
+        the channel handle (MM username), ``display_name`` — the human name,
+        ``email`` — the channel e-mail (exact AD match key)."""
         existing = await self.get_by_identity(session, channel_type, external_user_id)
         if existing is not None:
             # Refresh display name when a better (fuller) name arrives and the
             # current one is a bare external id (owner 2026-11-13, kvasha_sn).
             if (
-                external_user_name
-                and existing.display_name
-                and external_user_name != existing.display_name
-                and " " in external_user_name
-                and " " not in existing.display_name
+                display_name
+                and " " in display_name
+                and existing.display_name != display_name
+                and (" " not in existing.display_name or existing.display_name == external_user_id)
             ):
-                existing.display_name = external_user_name
+                existing.display_name = display_name
+            if email and not existing.email:
+                existing.email = email
+            if external_user_name:
+                identity = await session.scalar(
+                    select(UserIdentity).where(
+                        UserIdentity.channel_type == channel_type,
+                        UserIdentity.external_user_id == external_user_id,
+                    )
+                )
+                if identity is not None and identity.external_user_name != external_user_name:
+                    identity.external_user_name = external_user_name
+                    # The stored AD card may belong to a differently-named
+                    # person — force a re-check on the next read.
+                    existing.ad_synced_at = None
             return existing
 
-        user = User(display_name=external_user_name or external_user_id)
+        user = User(
+            display_name=display_name or external_user_name or external_user_id,
+            email=email or None,
+        )
         try:
             async with session.begin_nested():
                 session.add(user)

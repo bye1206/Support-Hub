@@ -20,7 +20,9 @@ class FakeDirectory:
         self.calls: list[str] = []
         self.configured = True
 
-    async def get_user(self, login: str) -> dict | None:
+    async def get_user(
+        self, login: str, *, prefer_email: str | None = None
+    ) -> dict | None:
         self.calls.append(login)
         return self.cards.get(login)
 

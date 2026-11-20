@@ -109,6 +109,8 @@ class MessageService:
         external_user_id: str,
         text: str,
         external_user_name: str | None = None,
+        display_name: str | None = None,
+        email: str | None = None,
         external_post_id: str | None = None,
         source_created_at: datetime | None = None,
         channel_id: uuid.UUID | None = None,
@@ -130,6 +132,8 @@ class MessageService:
                 channel_type=channel_type,
                 external_user_id=external_user_id,
                 external_user_name=external_user_name,
+                display_name=display_name,
+                email=email,
             )
             # Owner request (2026-11-19): the rating flow — after the
             # farewell a bare digit is the score, a free text on a low

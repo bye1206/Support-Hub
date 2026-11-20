@@ -278,7 +278,7 @@ class TagDirectListener:
         self._ingest = ingest
         self._me_user_id = me_user_id
         self._ws_factory = ws_factory
-        self._user_names: dict[str, str] = {}
+        self._user_names: dict[str, dict[str, str]] = {}
         self._task: asyncio.Task[None] | None = None
 
     async def run(self) -> None:
@@ -355,7 +355,10 @@ class TagDirectListener:
         fields = parse_posted_event(frame.get("data") or {}, self._me_user_id or "")
         if fields is None:
             return
-        fields["user_name"] = await self._user_name(fields["user_id"])
+        profile = await self._user_profile(fields["user_id"])
+        fields["user_name"] = profile["username"] or profile["display"]
+        fields["user_display_name"] = profile["display"]
+        fields["user_email"] = profile["email"]
         # Owner request (2026-11-19): download the user's files from
         # Mattermost so the workspace can show them.
         fields["files"] = await self._download_files(fields)
@@ -395,9 +398,13 @@ class TagDirectListener:
             )
         return out
 
-    async def _user_name(self, user_id: str) -> str:
-        if user_id in self._user_names:
-            return self._user_names[user_id]
+    async def _user_profile(self, user_id: str) -> dict[str, str]:
+        """Tag profile: display name, handle and e-mail (owner diagnostic
+        2026-11-20: the handle — not the pretty name — is the AD match key;
+        the e-mail is the exact one)."""
+        cached = self._user_names.get(user_id)
+        if cached is not None:
+            return cached
         try:
             base = self._settings.mattermost_base_url.rstrip("/")
             async with httpx.AsyncClient(
@@ -413,11 +420,15 @@ class TagDirectListener:
             first = (body.get("first_name") or "").strip()
             last = (body.get("last_name") or "").strip()
             full = f"{first} {last}".strip()
-            name = full or body.get("username") or body.get("email") or user_id
-        except Exception:  # noqa: BLE001 - name is cosmetic
-            name = user_id
-        self._user_names[user_id] = str(name)
-        return self._user_names[user_id]
+            profile = {
+                "display": full or body.get("username") or body.get("email") or user_id,
+                "username": (body.get("username") or "").strip(),
+                "email": (body.get("email") or "").strip(),
+            }
+        except Exception:  # noqa: BLE001 - profile is cosmetic
+            profile = {"display": user_id, "username": "", "email": ""}
+        self._user_names[user_id] = profile
+        return profile
 
 
 def _connect_websocket(url: str, headers: dict[str, str]) -> Any:
@@ -452,6 +463,8 @@ async def ingest_direct_message(session_factory: Any, fields: dict[str, Any]) ->
             channel_type="tag",
             external_user_id=fields["user_id"],
             external_user_name=fields.get("user_name"),
+            display_name=fields.get("user_display_name"),
+            email=fields.get("user_email") or None,
             text=fields["text"],
             external_post_id=fields["post_id"] or None,
             source_created_at=fields.get("source_created_at"),

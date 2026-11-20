@@ -14,6 +14,9 @@ class User(UuidPkMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Channel e-mail (e.g. the corp address from the Tag profile, 0022):
+    # the exact key for the AD lookup when full names collide.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Cached AD employee card (P-29): JSON snapshot + photo bytes. Refreshed
     # lazily when older than ad_info_ttl_seconds; photo updates in AD reach
