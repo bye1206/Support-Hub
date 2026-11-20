@@ -223,7 +223,9 @@ export function AdminPanel({
   const [chatsData, setChatsData] = useState<OperatorDetail | null>(null);
   const [ratingsData, setRatingsData] = useState<OperatorDetail | null>(null);
   const [slaData, setSlaData] = useState<OperatorDetail | null>(null);
-  // Owner (2026-11-20): the ACTIVE/LUNCH/BREAK/OFFLINE durations card.
+  // Owner (2026-11-20): the ACTIVE/LUNCH/BREAK/OFFLINE durations card,
+  // also with its own day / month / all switcher.
+  const [presencePeriod, setPresencePeriod] = useState<{ mode: string; value: string }>({ mode: "all", value: "" });
   const [presenceData, setPresenceData] = useState<Record<string, number> | null>(null);
   const [statDialogs, setStatDialogs] = useState<StatDialog[]>([]);
   const [statDialogDay, setStatDialogDay] = useState("");
@@ -295,7 +297,7 @@ export function AdminPanel({
       adminApi<OperatorDetail>(`${base}?${build(chatsPeriod)}`, auth),
       adminApi<OperatorDetail>(`${base}?${build(ratingsPeriod)}`, auth),
       adminApi<OperatorDetail>(`${base}?${build(slaPeriod)}`, auth),
-      adminApi<Record<string, number>>(`${base}/presence`, auth),
+      adminApi<Record<string, number>>(`${base}/presence?${build(presencePeriod)}`, auth),
     ])
       .then(([chats, ratings, sla, presence]) => {
         if (!active) return;
@@ -308,7 +310,7 @@ export function AdminPanel({
         active && setError(cause instanceof Error ? cause.message : "Не удалось загрузить карточки"),
       );
     return () => { active = false; };
-  }, [auth, section, statSelected, chatsPeriod, ratingsPeriod, slaPeriod]);
+  }, [auth, section, statSelected, chatsPeriod, ratingsPeriod, slaPeriod, presencePeriod]);
 
   // Owner (2026-11-20): the dialogs mini-table for the selected operator.
   useEffect(() => {
@@ -909,9 +911,17 @@ export function AdminPanel({
                         )}
                       </article>
                       {/* Owner (2026-11-20): how long the operator was
-                          ACTIVE / on LUNCH / on BREAK / OFFLINE. */}
+                          ACTIVE / on LUNCH / on BREAK / OFFLINE — day /
+                          month / all time, like the other cards. */}
                       <article className="stat-card presence-card">
                         <span className="stat-card-title">Активность</span>
+                        <div className="stat-card-periods">
+                          {([["day", "За день"], ["month", "За месяц"], ["all", "За всё время"]] as const).map(([mode, label]) => (
+                            <button key={mode} className={presencePeriod.mode === mode ? "active" : ""} onClick={() => setPresencePeriod({ mode, value: "" })}>{label}</button>
+                          ))}
+                        </div>
+                        {presencePeriod.mode === "day" && <input type="date" value={presencePeriod.value} onChange={(event) => setPresencePeriod({ mode: "day", value: event.target.value })} />}
+                        {presencePeriod.mode === "month" && <input type="month" value={presencePeriod.value} onChange={(event) => setPresencePeriod({ mode: "month", value: event.target.value })} />}
                         <div className="presence-rows">
                           <div className="presence-row"><span>Активен</span><strong>{fmtSeconds(presenceData?.ACTIVE)}</strong></div>
                           <div className="presence-row"><span>На обеде</span><strong>{fmtSeconds(presenceData?.LUNCH)}</strong></div>

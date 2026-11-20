@@ -1233,10 +1233,12 @@ export default function App() {
     return (
       <main className="auth-screen">
         <section className="auth-card">
-          <div className="brand-mark">
-            S<span>•</span>
+          <div className="brand-row">
+            <div className="brand-mark">
+              S<span>•</span>
+            </div>
+            <p className="eyebrow">UPPORT HUB · OPERATOR</p>
           </div>
-          <p className="eyebrow">UPPORT HUB · OPERATOR</p>
           <h1>Рабочее место оператора</h1>
           <p className="auth-copy">
             Войдите доменным логином и паролем. Данные доступны только в
@@ -2535,8 +2537,8 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  {/* Owner (2026-11-20): back is a small arrow in the
-                      top-left corner of the member view. */}
+                  {/* Owner (2026-11-20): the arrow sits right above the
+                      title, not in the far corner of the window. */}
                   <button
                     className="modal-arrow"
                     aria-label="К команде"

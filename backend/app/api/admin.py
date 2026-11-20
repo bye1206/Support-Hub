@@ -820,10 +820,15 @@ async def operator_stats_presence(
     _actor: Annotated[
         Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
     ],
+    period: str = "all",
+    date: str = "",
+    month: str = "",
 ) -> dict[str, float]:
     """How long the operator was ACTIVE / LUNCH / BREAK / OFFLINE (owner
     request, 2026-11-20): closed intervals from the presence log plus the
-    still-running interval from operators.presence_since. Seconds."""
+    still-running interval from operators.presence_since. Seconds; the
+    period parameter clips the intervals to a day / month (owner,
+    2026-11-20: "за смену или за всё время?")."""
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         operator = await session.get(Operator, operator_id)
@@ -831,6 +836,8 @@ async def operator_stats_presence(
             raise ApiError(
                 code="NOT_FOUND", message="Оператор не найден", status_code=404
             )
+        rng = _period_range(period, date, month)
+        now = datetime.now(UTC)
         rows = await session.execute(
             select(
                 OperatorPresenceLog.status,
@@ -839,18 +846,21 @@ async def operator_stats_presence(
             ).where(OperatorPresenceLog.operator_id == operator_id)
         )
         durations = {"ACTIVE": 0.0, "LUNCH": 0.0, "BREAK": 0.0, "OFFLINE": 0.0}
+
+        def clip(started: datetime, ended: datetime) -> tuple[datetime, datetime]:
+            low, high = rng if rng is not None else (started, ended)
+            return max(started, low), min(ended, high)
+
         for status, started, ended in rows:
+            lo, hi = clip(started, ended)
             durations[status] = durations.get(status, 0.0) + max(
-                0.0, (ended - started).total_seconds()
+                0.0, (hi - lo).total_seconds()
             )
-        durations[str(operator.presence_status)] = durations.get(
-            str(operator.presence_status), 0.0
-        ) + max(
-            0.0,
-            (
-                datetime.now(UTC) - operator.presence_since
-            ).total_seconds(),
-        )
+        if operator.presence_since is not None:
+            lo, hi = clip(operator.presence_since, now)
+            durations[str(operator.presence_status)] = durations.get(
+                str(operator.presence_status), 0.0
+            ) + max(0.0, (hi - lo).total_seconds())
     return {key: round(value) for key, value in durations.items()}
 
 
@@ -1003,11 +1013,11 @@ async def operator_stats_dialogs(
         user_logins = await _user_login_map(
             session,
             list(
-                
-                    await session.scalars(
-                        select(Ticket.user_id).where(Ticket.assignee_id == operator_id)
-                    ).distinct()
-                
+                await session.scalars(
+                    select(Ticket.user_id)
+                    .where(Ticket.assignee_id == operator_id)
+                    .distinct()
+                )
             ),
         )
         rows = (
