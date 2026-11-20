@@ -238,15 +238,29 @@ class AdDirectory:
             if "@" in login:
                 candidates = [f"(mail={escaped})"]
             else:
-                # Owner report (2026-11-20): Tag usernames do not always
-                # equal the AD sAMAccountName — try the UPN and the corp
-                # e-mail built from the same name before giving up.
+                # Owner diagnostic (2026-11-20): Tag usernames are NOT logins
+                # in this corp — the webhook carries the display name
+                # ("Артемий Пономарев") or the Mattermost id. Try the account
+                # name formats first, then the person's name: exact
+                # displayName, then surname+given name in both orders (Tag
+                # says "Имя Фамилия", AD usually "Фамилия Имя Отчество").
                 domain = self._settings.ldap_domain
                 candidates = [
                     f"(sAMAccountName={escaped})",
                     f"(userPrincipalName={escaped}@{domain})",
                     f"(mail={escaped}@{domain})",
+                    f"(displayName={escaped})",
                 ]
+                words = [w for w in login.split() if w]
+                if len(words) == 2:
+                    first, last = (
+                        ldap3.utils.conv.escape_filter_chars(w) for w in words
+                    )
+                    candidates += [
+                        f"(displayName={last} {first}*)",
+                        f"(&(sn={last})(givenName={first}*))",
+                        f"(&(sn={first})(givenName={last}*))",
+                    ]
             matched_by = ""
             entry = None
             for filter_expr in candidates:
