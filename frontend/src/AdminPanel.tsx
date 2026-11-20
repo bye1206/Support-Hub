@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { HistoryMessages } from "./Timeline";
+import type { Message, MessageAttachmentInfo } from "./workspace-model";
 import "./AdminPanel.css";
 
 type Role = "OPERATOR" | "SUPERVISOR" | "ADMIN";
@@ -28,12 +30,35 @@ type StatRating = { score: number; review: string | null; created_at: string };
 type OperatorStat = {
   operator_id: string;
   name: string;
+  email: string;
   dialogs_total: number;
   dialogs_day: number;
   avg_rating: number | null;
   ratings_count: number;
   sla_breached: number;
   ratings: StatRating[];
+};
+type OperatorDetail = {
+  chats: number;
+  avg_rating: number | null;
+  ratings_count: number;
+  ratings: StatRating[];
+  sla_breached: number;
+  breach_events: string[];
+};
+type StatDialog = {
+  ticket_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  score: number | null;
+  review: string | null;
+};
+type StatDialogTicket = {
+  ticket_id: string;
+  status: string;
+  created_at: string;
+  messages?: Message[];
 };
 type AiStat = {
   avg_rating: number | null;
@@ -174,8 +199,21 @@ export function AdminPanel({
   // Owner (2026-11-20): stats block, loaded lazily when the tab opens.
   const [statOps, setStatOps] = useState<OperatorStat[]>([]);
   const [statAi, setStatAi] = useState<AiStat | null>(null);
-  const [statDate, setStatDate] = useState("");
-  const [statExpanded, setStatExpanded] = useState<string | null>(null);
+  const [statDate] = useState("");
+  // Owner (2026-11-20): the two-column stats — operator picker, per-card
+  // periods (day / month / all), SLA breaches and the dialogs mini-table.
+  const [statSearch, setStatSearch] = useState("");
+  const [statSelected, setStatSelected] = useState<OperatorStat | null>(null);
+  const [chatsPeriod, setChatsPeriod] = useState<{ mode: string; value: string }>({ mode: "all", value: "" });
+  const [ratingsPeriod, setRatingsPeriod] = useState<{ mode: string; value: string }>({ mode: "all", value: "" });
+  const [slaPeriod, setSlaPeriod] = useState<{ mode: string; value: string }>({ mode: "all", value: "" });
+  const [chatsData, setChatsData] = useState<OperatorDetail | null>(null);
+  const [ratingsData, setRatingsData] = useState<OperatorDetail | null>(null);
+  const [slaData, setSlaData] = useState<OperatorDetail | null>(null);
+  const [statDialogs, setStatDialogs] = useState<StatDialog[]>([]);
+  const [statDialogDay, setStatDialogDay] = useState("");
+  const [statDialogScore, setStatDialogScore] = useState("");
+  const [statTicket, setStatTicket] = useState<StatDialogTicket | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [categoryName, setCategoryName] = useState("");
@@ -227,6 +265,75 @@ export function AdminPanel({
       );
     return () => { active = false; };
   }, [auth, section, statDate]);
+
+  // Owner (2026-11-20): per-card counters for the selected operator.
+  useEffect(() => {
+    if (section !== "stats" || !statSelected) return;
+    let active = true;
+    const build = (period: { mode: string; value: string }) => {
+      if (period.mode === "day") return `period=day&date=${encodeURIComponent(period.value)}`;
+      if (period.mode === "month") return `period=month&month=${encodeURIComponent(period.value)}`;
+      return "period=all";
+    };
+    const base = `/stats/operator/${statSelected.operator_id}`;
+    void Promise.all([
+      adminApi<OperatorDetail>(`${base}?${build(chatsPeriod)}`, auth),
+      adminApi<OperatorDetail>(`${base}?${build(ratingsPeriod)}`, auth),
+      adminApi<OperatorDetail>(`${base}?${build(slaPeriod)}`, auth),
+    ])
+      .then(([chats, ratings, sla]) => {
+        if (!active) return;
+        setChatsData(chats);
+        setRatingsData(ratings);
+        setSlaData(sla);
+      })
+      .catch((cause: unknown) =>
+        active && setError(cause instanceof Error ? cause.message : "Не удалось загрузить карточки"),
+      );
+    return () => { active = false; };
+  }, [auth, section, statSelected, chatsPeriod, ratingsPeriod, slaPeriod]);
+
+  // Owner (2026-11-20): the dialogs mini-table for the selected operator.
+  useEffect(() => {
+    if (section !== "stats" || !statSelected) return;
+    let active = true;
+    const params = new URLSearchParams({ limit: "10" });
+    if (statDialogDay) params.set("date", statDialogDay);
+    if (statDialogScore) params.set("min_score", statDialogScore);
+    void adminApi<{ dialogs: StatDialog[] }>(
+      `/stats/operator/${statSelected.operator_id}/dialogs?${params.toString()}`,
+      auth,
+    )
+      .then((data) => active && setStatDialogs(data.dialogs))
+      .catch(() => active && setStatDialogs([]));
+    return () => { active = false; };
+  }, [auth, section, statSelected, statDialogDay, statDialogScore]);
+
+  // Owner (2026-11-20): open a dialog's full history from the mini table.
+  const openStatTicket = useCallback(
+    async (ticketId: string) => {
+      try {
+        const card = await opApi<StatDialogTicket>(`/tickets/${ticketId}`, auth);
+        setStatTicket(card);
+      } catch {
+        setError("Не удалось открыть обращение");
+      }
+    },
+    [auth],
+  );
+  const downloadStatAttachment = useCallback(async (attachment: MessageAttachmentInfo) => {
+    const response = await fetch(`/api/v1/operator/attachments/${attachment.id}/file`, {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = attachment.file_name;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [auth.token]);
 
   // Presence changes constantly; refresh staff statuses quietly.
   // Perf (2026-11-17): guard against overlapping polls (a slow answer used
@@ -721,62 +828,133 @@ export function AdminPanel({
                 {editingTag?.tag_id === tag.tag_id ? <form className="directory-edit" onSubmit={(event) => void updateTag(event)}><input required maxLength={100} value={editingTag.name} onChange={(event) => setEditingTag({ ...editingTag, name: event.target.value })} /><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingTag(null)}>Отмена</button></form> : <><span>{tag.name}</span><span>{tag.is_active ? "Активен" : "Отключён"}</span><div className="directory-actions">{tag.is_active && <button onClick={() => setEditingTag(tag)}>Изменить</button>}<button onClick={() => void setDirectoryActive("tags", tag.tag_id, !tag.is_active)}>{tag.is_active ? "Отключить" : "Включить"}</button></div></>}
               </div>)}</div>
             </>}
-            {section === "stats" && <>
-              <p className="admin-intro">Работа и оценки · по каждому сотруднику и ИИ-боту</p>
-              <div className="stats-toolbar">
-                <label>За день <input type="date" value={statDate} onChange={(event) => setStatDate(event.target.value)} /></label>
-                {statDate && <button className="quiet-action" onClick={() => setStatDate("")}>Показать всё время</button>}
-              </div>
-              <div className="admin-stats">
-                <article><span>Средняя оценка ИИ</span><strong>{statAi?.avg_rating ?? "—"}</strong></article>
-                <article><span>Чатов закрыто без перевода</span><strong>{statAi?.chats_no_handoff ?? "—"}</strong></article>
-                <article><span>Переводов на оператора</span><strong>{statAi?.handoffs ?? "—"}</strong></article>
-              </div>
-              <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Всего</th><th>За день</th><th>Ср. оценка</th><th>Оценок</th><th>SLA пропущено</th><th></th></tr></thead><tbody>
-                {statOps.map((stat) => <>
-                  <tr key={stat.operator_id} className="stats-row" onClick={() => setStatExpanded(statExpanded === stat.operator_id ? null : stat.operator_id)}>
-                    <td><strong>{stat.name}</strong></td>
-                    <td>{stat.dialogs_total}</td>
-                    <td>{stat.dialogs_day}</td>
-                    <td>{stat.avg_rating ?? "—"}</td>
-                    <td>{stat.ratings_count}</td>
-                    <td>{stat.sla_breached}</td>
-                    <td>{stat.ratings_count ? (statExpanded === stat.operator_id ? "Свернуть ▲" : "Оценки ▼") : ""}</td>
-                  </tr>
-                  {statExpanded === stat.operator_id && (
-                    <tr key={`${stat.operator_id}-details`} className="stats-details">
-                      <td colSpan={7}>
-                        {stat.ratings.length ? (
+            {section === "stats" && (
+              <div className="stats-layout">
+                {/* Left: employees. */}
+                <div className="stats-people">
+                  <p className="admin-intro">Сотрудники</p>
+                  <input
+                    className="stats-search"
+                    placeholder="Поиск: ФИО, логин или почта"
+                    value={statSearch}
+                    onChange={(event) => setStatSearch(event.target.value)}
+                  />
+                  {statSelected ? (
+                    <>
+                      <button className="quiet-action" onClick={() => { setStatSelected(null); setChatsData(null); setRatingsData(null); setSlaData(null); }}>
+                        ← К списку сотрудников
+                      </button>
+                      <div className="stats-cards">
+                        <article className="stat-card">
+                          <span className="stat-card-title">Чаты</span>
+                          <strong className="stat-card-value">{chatsData?.chats ?? "—"}</strong>
+                          <div className="stat-card-periods">
+                            {([["day", "За день"], ["month", "За месяц"], ["all", "За всё время"]] as const).map(([mode, label]) => (
+                              <button key={mode} className={chatsPeriod.mode === mode ? "active" : ""} onClick={() => setChatsPeriod({ mode, value: "" })}>{label}</button>
+                            ))}
+                          </div>
+                          {chatsPeriod.mode === "day" && <input type="date" value={chatsPeriod.value} onChange={(event) => setChatsPeriod({ mode: "day", value: event.target.value })} />}
+                          {chatsPeriod.mode === "month" && <input type="month" value={chatsPeriod.value} onChange={(event) => setChatsPeriod({ mode: "month", value: event.target.value })} />}
+                        </article>
+                        <article className="stat-card">
+                          <span className="stat-card-title">Оценки</span>
+                          <strong className="stat-card-value">{ratingsData?.avg_rating ?? "—"}</strong>
+                          <span className="stat-card-sub">{ratingsData?.ratings_count ?? 0} оценок</span>
+                          <div className="stat-card-periods">
+                            {([["day", "За день"], ["month", "За месяц"], ["all", "За всё время"]] as const).map(([mode, label]) => (
+                              <button key={mode} className={ratingsPeriod.mode === mode ? "active" : ""} onClick={() => setRatingsPeriod({ mode, value: "" })}>{label}</button>
+                            ))}
+                          </div>
+                          {ratingsPeriod.mode === "day" && <input type="date" value={ratingsPeriod.value} onChange={(event) => setRatingsPeriod({ mode: "day", value: event.target.value })} />}
+                          {ratingsPeriod.mode === "month" && <input type="month" value={ratingsPeriod.value} onChange={(event) => setRatingsPeriod({ mode: "month", value: event.target.value })} />}
+                        </article>
+                      </div>
+                      <article className="stat-card sla-card-stat">
+                        <span className="stat-card-title">SLA</span>
+                        <strong className="stat-card-value">{slaData?.sla_breached ?? "—"}</strong>
+                        <span className="stat-card-sub">просрочек</span>
+                        <div className="stat-card-periods">
+                          {([["day", "За день"], ["month", "За месяц"], ["all", "За всё время"]] as const).map(([mode, label]) => (
+                            <button key={mode} className={slaPeriod.mode === mode ? "active" : ""} onClick={() => setSlaPeriod({ mode, value: "" })}>{label}</button>
+                          ))}
+                        </div>
+                        {slaPeriod.mode === "day" && <input type="date" value={slaPeriod.value} onChange={(event) => setSlaPeriod({ mode: "day", value: event.target.value })} />}
+                        {slaPeriod.mode === "month" && <input type="month" value={slaPeriod.value} onChange={(event) => setSlaPeriod({ mode: "month", value: event.target.value })} />}
+                        {slaData && slaData.breach_events.length > 0 && (
                           <div className="stats-reviews">
-                            {stat.ratings.map((rating, index) => (
-                              <div className="stats-review" key={`${stat.operator_id}-${index}`}>
-                                <span className={`stats-score ${rating.score >= 4 ? "good" : rating.score === 3 ? "mid" : "bad"}`}>{rating.score}</span>
-                                <p>{rating.review || "Без отзыва"}</p>
-                                <time>{new Date(rating.created_at).toLocaleString("ru-RU")}</time>
+                            {slaData.breach_events.slice(0, 10).map((event) => (
+                              <div className="stats-review" key={event}>
+                                <span className="stats-score bad">!</span>
+                                <p>SLA просрочен</p>
+                                <time>{new Date(event).toLocaleString("ru-RU")}</time>
                               </div>
                             ))}
                           </div>
-                        ) : (
-                          <p className="admin-muted">Оценок пока нет</p>
                         )}
-                      </td>
-                    </tr>
-                  )}
-                </>)}
-                {!statOps.length && <tr><td colSpan={7}>Операторов пока нет</td></tr>}
-              </tbody></table></div>
-              {statAi && statAi.ratings.length > 0 && (
-                <div className="stats-reviews ai-reviews">
-                  {statAi.ratings.map((rating, index) => (
-                    <div className="stats-review" key={`ai-${index}`}>
-                      <span className={`stats-score ${rating.score >= 4 ? "good" : rating.score === 3 ? "mid" : "bad"}`}>{rating.score}</span>
-                      <p>{rating.review || "Без отзыва"}</p>
-                      <time>{new Date(rating.created_at).toLocaleString("ru-RU")}</time>
+                      </article>
+                      <p className="admin-intro">Последние чаты</p>
+                      <div className="stats-dialog-filters">
+                        <input type="date" value={statDialogDay} onChange={(event) => setStatDialogDay(event.target.value)} />
+                        <select value={statDialogScore} onChange={(event) => setStatDialogScore(event.target.value)}>
+                          <option value="">Все оценки</option>
+                          {[5, 4, 3, 2, 1].map((score) => <option key={score} value={score}>{score}</option>)}
+                        </select>
+                      </div>
+                      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Чат</th><th>Статус</th><th>Обновлён</th><th>Оценка</th></tr></thead><tbody>
+                        {statDialogs.map((dialog) => (
+                          <tr key={dialog.ticket_id} className="stats-row" onClick={() => void openStatTicket(dialog.ticket_id)}>
+                            <td><strong>{dialog.ticket_id.slice(0, 8)}</strong>{dialog.review ? <span className="stats-cell-review"> · {dialog.review.slice(0, 40)}</span> : ""}</td>
+                            <td>{dialog.status}</td>
+                            <td>{new Date(dialog.updated_at).toLocaleString("ru-RU")}</td>
+                            <td>{dialog.score ?? "—"}</td>
+                          </tr>
+                        ))}
+                        {!statDialogs.length && <tr><td colSpan={4}>Чатов не найдено</td></tr>}
+                      </tbody></table></div>
+                    </>
+                  ) : (
+                    <div className="stats-people-list">
+                      {statOps
+                        .filter((operator) => {
+                          const needle = statSearch.trim().toLowerCase();
+                          if (!needle) return true;
+                          return (
+                            operator.name.toLowerCase().includes(needle) ||
+                            operator.email.toLowerCase().includes(needle)
+                          );
+                        })
+                        .map((operator) => (
+                          <button key={operator.operator_id} className="stats-person" onClick={() => setStatSelected(operator)}>
+                            <strong>{operator.name}</strong>
+                            <span>{operator.email}</span>
+                          </button>
+                        ))}
+                      {!statOps.length && <p className="admin-muted">Операторов пока нет</p>}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </>}
+                {/* Right: the AI bot. */}
+                <div className="stats-ai">
+                  <p className="admin-intro">ИИ-бот</p>
+                  <div className="admin-stats">
+                    <article><span>Средняя оценка</span><strong>{statAi?.avg_rating ?? "—"}</strong></article>
+                    <article><span>Чатов без перевода</span><strong>{statAi?.chats_no_handoff ?? "—"}</strong></article>
+                    <article><span>Переводов на оператора</span><strong>{statAi?.handoffs ?? "—"}</strong></article>
+                  </div>
+                  {statAi && statAi.ratings.length > 0 && (
+                    <div className="stats-reviews">
+                      {statAi.ratings.map((rating, index) => (
+                        <div className="stats-review" key={`ai-${index}`}>
+                          <span className={`stats-score ${rating.score >= 4 ? "good" : rating.score === 3 ? "mid" : "bad"}`}>{rating.score}</span>
+                          <p>{rating.review || "Без отзыва"}</p>
+                          <time>{new Date(rating.created_at).toLocaleString("ru-RU")}</time>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {section === "audit" && <>
               <p className="admin-intro">Последние действия · показаны только метаданные</p>
               <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Действие</th><th>Объект</th><th>Время</th></tr></thead><tbody>
@@ -787,6 +965,36 @@ export function AdminPanel({
           </>
         )}
       </div>
+      {statTicket && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setStatTicket(null)}
+          role="presentation"
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-label="История диалога"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button className="modal-close" aria-label="Закрыть" onClick={() => setStatTicket(null)}>
+              ×
+            </button>
+            <div className="modal-title">
+              Диалог · #{statTicket.ticket_id.slice(0, 8)}
+            </div>
+            <div className="history-messages">
+              <HistoryMessages
+                messages={statTicket.messages ?? []}
+                onDownload={(attachment) => void downloadStatAttachment(attachment)}
+              />
+              {!(statTicket.messages ?? []).length && (
+                <p className="admin-muted">Сообщений нет</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {staffModal && !distSelected && (
         <div
           className="modal-backdrop"

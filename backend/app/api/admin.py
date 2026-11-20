@@ -781,6 +781,7 @@ async def operator_stats(
                 {
                     "operator_id": str(operator.id),
                     "name": operator.display_name or operator.email,
+                    "email": operator.email,
                     "dialogs_total": dialogs_total,
                     "dialogs_day": dialogs_day,
                     "avg_rating": round(avg, 2) if avg is not None else None,
@@ -797,6 +798,173 @@ async def operator_stats(
                 }
             )
     return {"operators": rows}
+
+
+def _period_range(period: str, date: str, month: str) -> tuple[datetime, datetime] | None:
+    """[start, end) for the card periods: day / month / all time."""
+    from datetime import date as date_type
+    from datetime import timedelta
+
+    try:
+        if period == "day" and date:
+            day = date_type.fromisoformat(date)
+            start = datetime(day.year, day.month, day.day, tzinfo=UTC)
+            return start, start + timedelta(days=1)
+        if period == "month" and month:
+            year, mon = (int(part) for part in month.split("-"))
+            start = datetime(year, mon, 1, tzinfo=UTC)
+            nxt_year, nxt_mon = (year + 1, 1) if mon == 12 else (year, mon + 1)
+            return start, datetime(nxt_year, nxt_mon, 1, tzinfo=UTC)
+    except ValueError:
+        raise ApiError(
+            code="VALIDATION_ERROR", message="Bad period parameters"
+        ) from None
+    return None
+
+
+@router.get("/stats/operator/{operator_id}")
+async def operator_stats_detail(
+    request: Request,
+    operator_id: uuid.UUID,
+    _actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+    period: str = "all",
+    date: str = "",
+    month: str = "",
+) -> dict[str, object]:
+    """One operator's counters for a card period (owner request, 2026-11-20):
+    chats closed, average rating + the rating list, SLA breach events."""
+    from sqlalchemy import Date, cast
+
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        operator = await session.get(Operator, operator_id)
+        if operator is None:
+            raise ApiError(
+                code="NOT_FOUND", message="Оператор не найден", status_code=404
+            )
+        rng = _period_range(period, date, month)
+        terminal = [TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value]
+        chat_base = select(func.count()).select_from(Ticket).where(
+            Ticket.assignee_id == operator.id,
+            Ticket.status.in_(terminal),
+        )
+        if rng is not None:
+            chat_base = chat_base.where(cast(Ticket.updated_at, Date) >= rng[0].date())
+            chat_base = chat_base.where(cast(Ticket.updated_at, Date) < rng[1].date())
+        chats = await session.scalar(chat_base) or 0
+        rating_query = select(TicketRating).where(
+            TicketRating.operator_id == operator.id
+        )
+        if rng is not None:
+            rating_query = rating_query.where(
+                TicketRating.created_at >= rng[0],
+                TicketRating.created_at < rng[1],
+            )
+        rating_rows = (
+            await session.scalars(rating_query.order_by(desc(TicketRating.created_at)))
+        ).all()
+        avg = (
+            sum(r.score for r in rating_rows) / len(rating_rows)
+            if rating_rows
+            else None
+        )
+        sla_query = (
+            select(TicketStatusHistory)
+            .join(Ticket, Ticket.id == TicketStatusHistory.ticket_id)
+            .where(
+                Ticket.assignee_id == operator.id,
+                TicketStatusHistory.kind == TicketHistoryKind.SLA_BREACHED.value,
+            )
+        )
+        if rng is not None:
+            sla_query = sla_query.where(
+                TicketStatusHistory.changed_at >= rng[0],
+                TicketStatusHistory.changed_at < rng[1],
+            )
+        sla_rows = (
+            await session.scalars(sla_query.order_by(desc(TicketStatusHistory.changed_at)))
+        ).all()
+    return {
+        "chats": chats,
+        "avg_rating": round(avg, 2) if avg is not None else None,
+        "ratings_count": len(rating_rows),
+        "ratings": [
+            {
+                "score": r.score,
+                "review": r.review_text,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rating_rows
+        ],
+        "sla_breached": len(sla_rows),
+        "breach_events": [r.changed_at.isoformat() for r in sla_rows],
+    }
+
+
+@router.get("/stats/operator/{operator_id}/dialogs")
+async def operator_stats_dialogs(
+    request: Request,
+    operator_id: uuid.UUID,
+    _actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+    limit: int = 10,
+    date: str = "",
+    min_score: int | None = None,
+    max_score: int | None = None,
+) -> dict[str, list[dict[str, object]]]:
+    """The operator's closed dialogs for the mini history table (owner,
+    2026-11-20): filters by day and by score range, newest first."""
+    from datetime import date as date_type
+
+    from sqlalchemy import Date, cast
+
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        day: date_type | None = None
+        if date:
+            try:
+                day = date_type.fromisoformat(date)
+            except ValueError:
+                raise ApiError(
+                    code="VALIDATION_ERROR", message="date must be YYYY-MM-DD"
+                ) from None
+        query = (
+            select(Ticket)
+            .outerjoin(TicketRating, TicketRating.ticket_id == Ticket.id)
+            .where(
+                Ticket.assignee_id == operator_id,
+                Ticket.status.in_([TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value]),
+            )
+        )
+        if day is not None:
+            query = query.where(cast(Ticket.updated_at, Date) == day)
+        if min_score is not None:
+            query = query.where(TicketRating.score >= min_score)
+        if max_score is not None:
+            query = query.where(TicketRating.score <= max_score)
+        rows = (
+            await session.execute(
+                query.add_columns(
+                    TicketRating.score, TicketRating.review_text
+                ).order_by(desc(Ticket.updated_at)).limit(min(max(limit, 1), 100))
+            )
+        ).all()
+    return {
+        "dialogs": [
+            {
+                "ticket_id": str(ticket.id),
+                "status": str(getattr(ticket.status, "value", ticket.status)),
+                "created_at": ticket.created_at.isoformat(),
+                "updated_at": ticket.updated_at.isoformat(),
+                "score": score,
+                "review": review,
+            }
+            for ticket, score, review in rows
+        ]
+    }
 
 
 @router.get("/stats/ai")

@@ -930,8 +930,12 @@
   flex: none;
 }
 .message-avatar.operator {
-  background: #e8e4ff;
-  color: #454e5c;
+  /* Owner (2026-11-20): same look as the profile avatar — dark circle
+     with bold white initials, everywhere an operator avatar appears. */
+  background: #2b2f36;
+  color: #ffffff;
+  border-radius: 50%;
+  font-weight: 700;
 }
 .message-avatar.ai {
   background: #eef0f3;
@@ -2805,7 +2809,7 @@ select:focus-visible {
 }
 .app-shell[data-theme="dark"] .message-bubble { color: #d9dee8; }
 .app-shell[data-theme="dark"] .message-avatar { background: #2a3140; color: #a8b1c2; }
-.app-shell[data-theme="dark"] .message-avatar.operator { background: #37325c; color: #cfc7ff; }
+.app-shell[data-theme="dark"] .message-avatar.operator { background: #2b2f36; color: #ffffff; }
 .app-shell[data-theme="dark"] .section-label,
 .app-shell[data-theme="dark"] .detail-section,
 .app-shell[data-theme="dark"] .customer-card { border-color: #333a49; }

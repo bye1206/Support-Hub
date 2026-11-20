@@ -645,3 +645,130 @@
 .stats-score.good { background: #1f9d55; }
 .stats-score.mid { background: #d99a26; }
 .stats-score.bad { background: #e2001a; }
+
+/* Owner (2026-11-20): the two-column stats — people left, AI right. */
+.stats-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(240px, 3fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .stats-layout { grid-template-columns: 1fr; }
+}
+.stats-search {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.stats-people-list {
+  display: grid;
+  gap: 8px;
+}
+.stats-person {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.stats-person:hover {
+  background: #f1f2f4;
+  border-color: #d9dbe0;
+}
+.stats-person strong {
+  font-size: 13.5px;
+  color: #344052;
+}
+.stats-person span {
+  font-size: 11.5px;
+  color: #8a93a2;
+}
+.stats-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0;
+}
+.stat-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.stat-card-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #6b7486;
+}
+.stat-card-value {
+  font-size: 30px;
+  font-weight: 800;
+  color: #17191d;
+  line-height: 1;
+}
+.stat-card-sub {
+  font-size: 11.5px;
+  color: #8a93a2;
+}
+.stat-card-periods {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.stat-card-periods button {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  color: #333c4c;
+}
+.stat-card-periods button:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.stat-card-periods button.active {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+  font-weight: 700;
+}
+.stat-card input[type='date'],
+.stat-card input[type='month'] {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+.sla-card-stat {
+  margin-bottom: 14px;
+}
+.stats-dialog-filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.stats-dialog-filters input,
+.stats-dialog-filters select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 12.5px;
+}
+.stats-cell-review {
+  color: #8a93a2;
+  font-weight: 400;
+}
