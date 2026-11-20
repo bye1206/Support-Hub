@@ -45,7 +45,12 @@ class TicketTrigger(StrEnum):
 # Target status per trigger. A user message (USER_MESSAGE) never uses this
 # dict: its target is source-dependent (_TICKET_USER_MESSAGE_TARGET).
 _TICKET_TARGET: dict[TicketTrigger, str] = {
-    TicketTrigger.AI_REPLY: "OPEN",
+    # Owner rule (2026-11-19, final FSM): the WHOLE AI stage is one status —
+    # "Обработка ИИ" (AI_PROCESSING). The AI answering does NOT move the
+    # ticket to OPEN: an unassigned "OPEN" used to fall into "Без назначения"
+    # after every AI answer (the recurring queue headache). The ticket stays
+    # AI_PROCESSING until an operator claims it or the gateway hands it off.
+    TicketTrigger.AI_REPLY: "AI_PROCESSING",
     TicketTrigger.OPERATOR_REPLY: "PENDING_USER",
     TicketTrigger.OPERATOR_RESOLVED: "RESOLVED",
     TicketTrigger.OPERATOR_CLOSED: "CLOSED",
@@ -61,8 +66,8 @@ _TICKET_TARGET: dict[TicketTrigger, str] = {
 
 # The user's message target depends on the current status and the dialog
 # mode (D-039, stage 9 round 4):
-# - AI dialog (AI_ACTIVE): the message awaits the AI answer ->
-#   AI_PROCESSING ("Обработка ИИ"), the answer completes processing;
+# - AI dialog (AI_ACTIVE): the whole AI stage is AI_PROCESSING ("Обработка
+#   ИИ") — user message and AI answer alike (owner rule 2026-11-19);
 # - human dialog (HUMAN_ACTIVE / HUMAN_PENDING): the AI is out of the loop,
 #   any user message targets OPEN ("В работе");
 # - a message on a RESOLVED ticket never reaches the FSM: routing starts a
@@ -84,9 +89,9 @@ _TICKET_USER_MESSAGE_TARGET_HUMAN: dict[str, str] = {
 # every trigger; a message after CLOSED creates a new ticket (routing, P-04).
 _TICKET_ALLOWED_SOURCES: dict[TicketTrigger, frozenset[str]] = {
     TicketTrigger.USER_MESSAGE: frozenset(_TICKET_USER_MESSAGE_TARGET),
-    # An AI reply is only possible in the AI dialog: the ticket is either
-    # already processing or open awaiting the user's next move. AI never
-    # answers NEW (nobody asked yet) / human-mode / resolved tickets.
+    # An AI reply is only possible in the AI dialog. The owner's final FSM
+    # (2026-11-19): the AI stage is AI_PROCESSING end-to-end — an AI answer
+    # keeps (or returns a legacy OPEN ticket to) AI_PROCESSING.
     TicketTrigger.AI_REPLY: frozenset({"AI_PROCESSING", "OPEN"}),
     # Operator reply straight to PENDING_USER (D-011); the operator may also
     # preempt the AI while it is processing. RESOLVED is terminal (D-010

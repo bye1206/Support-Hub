@@ -74,6 +74,13 @@ class Message(UuidPkMixin, TimestampMixin, Base):
     author_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
+    # Owner request (2026-11-19): which operator wrote an operator message
+    # (the history shows the name). NULL for user/AI/system messages.
+    author_operator_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("operators.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     delivery_state: Mapped[MessageDeliveryState] = mapped_column(
         Enum(MessageDeliveryState, native_enum=False, length=20),
         nullable=False,

@@ -31,6 +31,23 @@ from app.services._tx import unit_of_work
 
 logger = logging.getLogger(__name__)
 
+# Owner (2026-11-17): only ORGANIZATIONAL data is persisted in the DB —
+# title, department, phones, manager. Access-related fields (groups,
+# disabled/locked, password dates) are sensitive: they are fetched LIVE
+# from AD when the full card is opened and never stored.
+SAFE_AD_FIELDS = frozenset(
+    {"login", "full_name", "email", "title", "department", "company", "phone", "mobile", "manager"}
+)
+
+
+def _persistable_card(card: dict[str, Any]) -> dict[str, Any]:
+    """Strip access-related fields before writing into users.ad_info."""
+    return {
+        k: (v.isoformat() if isinstance(v, datetime) else v)
+        for k, v in card.items()
+        if k in SAFE_AD_FIELDS
+    }
+
 # Perf (2026-11-17): /me/photo used to hit LDAP on EVERY workspace render
 # (bind + search + thumbnailPhoto, up to 10 s on a slow AD). Photos change
 # rarely — same policy as the card cache: serve a copy younger than the TTL.
@@ -85,26 +102,42 @@ class AdInfoService:
         self._users = users or UserRepository()
 
     async def get_for_user(
-        self, session: AsyncSession, user_id: uuid.UUID
+        self, session: AsyncSession, user_id: uuid.UUID, *, force: bool = False
     ) -> dict[str, Any]:
-        """Public card: ``available=False`` when AD is not configured."""
+        """Public card: ``available=False`` when AD is not configured.
+
+        ``force=True`` bypasses the 24h TTL — the operator's manual
+        "Обновить из AD" button (owner 2026-11-17)."""
         user = await self._users.get(session, user_id)
         if user is None:
             raise LookupError(f"User {user_id} not found")
         settings = get_settings()
 
         fresh = (
-            user.ad_info is not None
+            not force
+            and user.ad_info is not None
             and user.ad_synced_at is not None
             and (
                 datetime.now(UTC) - user.ad_synced_at
             ).total_seconds() < settings.ad_info_ttl_seconds
         )
+        live_card: dict[str, Any] | None = None
         if not fresh and (self._directory.configured or settings.ad_demo):
-            await self._refresh(session, user_id)
+            live_card = await self._refresh(session, user_id)
             user = await self._users.get(session, user_id)
 
         info = dict(user.ad_info or {}) if user is not None else {}
+        if live_card:
+            # Owner (2026-11-17): the RESPONSE carries the full fresh card
+            # (groups, account status, password dates) — but only the safe
+            # organizational fields were persisted by _refresh.
+            info.update(
+                {
+                    k: (v.isoformat() if isinstance(v, datetime) else v)
+                    for k, v in live_card.items()
+                    if k != "_photo"
+                }
+            )
         info["available"] = bool(info)
         if info and not self._directory.configured and settings.ad_demo:
             # Canned "Иван Петров" preview (AD_DEMO=true, no service account):
@@ -187,8 +220,12 @@ class AdInfoService:
         _store_photo(login, result)
         return result
 
-    async def _refresh(self, session: AsyncSession, user_id: uuid.UUID) -> None:
-        """Fetch from AD and store; failures leave the stale copy in place."""
+    async def _refresh(
+        self, session: AsyncSession, user_id: uuid.UUID
+    ) -> dict[str, Any] | None:
+        """Fetch from AD, persist the SAFE fields, and hand the FULL fresh
+        card back to the caller (only organizational data reaches the DB).
+        Failures leave the stale copy in place and return None."""
         identities = await self._users.list_identities(session, user_id)
         candidates: list[str] = []
         for identity in identities:
@@ -199,8 +236,9 @@ class AdInfoService:
         card: dict[str, Any] | None = None
         if not self._directory.configured:
             if not settings.ad_demo or not candidates:
-                return
-            # UI preview without AD (AD_DEMO=true, dev only).
+                return None
+            # UI preview without AD (AD_DEMO=true, dev only). Fake data —
+            # no need to strip access fields.
             card = demo_card(candidates[0])
             async with unit_of_work(session):
                 user = await self._users.get(session, user_id)
@@ -212,26 +250,22 @@ class AdInfoService:
                 }
                 user.ad_photo = card.get("_photo") or None
                 user.ad_synced_at = datetime.now(UTC)
-            return
+            return card
         for candidate in candidates:
             try:
                 card = await self._directory.get_user(candidate)
             except AdUnavailableError as exc:
                 logger.info("AD card unavailable for %s: %s", candidate, exc)
-                return
+                return None
             if card is None:
                 continue
             async with unit_of_work(session):
                 user = await self._users.get(session, user_id)
                 assert user is not None  # checked by the caller
-                user.ad_info = {
-                    # jsonb cannot hold bytes/datetimes: flatten to primitives.
-                    k: (v.isoformat() if isinstance(v, datetime) else v)
-                    for k, v in card.items()
-                    if k != "_photo"
-                }
+                user.ad_info = _persistable_card(card)
                 user.ad_photo = card.get("_photo") or None
                 user.ad_synced_at = datetime.now(UTC)
-            return
+            return card
         # Not found in AD under any identity: nothing to cache (no negative
         # caching) - the next request may retry after e.g. HR data lands.
+        return None

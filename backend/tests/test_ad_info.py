@@ -73,9 +73,19 @@ async def test_card_fetched_cached_and_photo_stored(session_factory, monkeypatch
         card = await service.get_for_user(session, user_id)
         assert card["available"] is True
         assert card["full_name"] == "Иван Петров"
+        # Owner (2026-11-17): the response carries the full fresh card
+        # (access fields included), but the DB cache stores only the safe
+        # organizational subset.
         assert card["groups"] == ["1C-Users", "VPN-Access"]
         photo = await service.get_photo(session, user_id)
         assert photo == b"jpeg-bytes"
+
+    async with session_factory() as check:
+        stored = await check.get(User, user_id)
+        assert stored is not None and stored.ad_info is not None
+        assert "groups" not in stored.ad_info
+        assert "password_changed_at" not in stored.ad_info
+        assert "disabled" not in stored.ad_info
 
     # Cache hit: the second read does not touch AD.
     async with session_factory() as session:
@@ -153,6 +163,8 @@ async def test_demo_mode_serves_preview_card(session_factory, monkeypatch) -> No
             card = await service.get_for_user(session, user_id)
             assert card["available"] is True
             assert card["full_name"]
+            # Demo preview keeps the card whole (nothing persisted is
+            # sensitive: AD_DEMO is dev-only fake data).
             assert card["groups"]
             photo = await service.get_photo(session, user_id)
             assert photo and photo.startswith(b"\x89PNG")

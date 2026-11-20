@@ -38,3 +38,10 @@ logs/
 postgres-data/
 redis-data/
 minio-data/
+
+backend/data/
+deploy/*.dump
+deploy/*.sql
+deploy/wheels/
+deploy/*.tar.gz
+frontend/shot.cjs

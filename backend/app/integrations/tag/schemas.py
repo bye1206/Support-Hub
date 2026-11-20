@@ -50,6 +50,19 @@ def parse_source_timestamp(raw: Any) -> datetime | None:
     return parsed
 
 
+class TagFileIn(BaseModel):
+    """One file the user attached (owner request, 2026-11-19).
+
+    `content_b64` carries the bytes (the bot already downloaded them from
+    Tag); `url` is an alternative for large files (Support Hub fetches it).
+    """
+
+    file_name: str = Field(min_length=1, max_length=255)
+    mime_type: str = Field(default="", max_length=100)
+    content_b64: str | None = None
+    url: str | None = None
+
+
 class TagMessageIn(BaseModel):
     """Normalized user-message callback from the existing bot."""
 
@@ -63,11 +76,14 @@ class TagMessageIn(BaseModel):
     user_id: str
     user_name: str | None = None
     post_id: str | None = None
-    text: str = Field(min_length=1)
+    # Owner request (2026-11-19): a message may be attachment-only, so the
+    # text is empty unless there are no files either (checked by the caller).
+    text: str = ""
     # The Tag bot sends a comma-separated string ("file1,file2"), not a JSON
     # array (official OutgoingWebhook payload, owner 2026-11-11). Both forms
     # are normalized to a list.
     file_ids: list[str] | str = Field(default_factory=list)
+    files: list[TagFileIn] = Field(default_factory=list)
 
     @field_validator("file_ids", mode="before")
     @classmethod

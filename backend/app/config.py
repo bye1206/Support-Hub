@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "support-hub-files"
 
+    # Attachments (owner request 2026-11-19): local-disk storage for message
+    # files. The directory is created lazily on the first save. MinIO remains
+    # the target for a clustered deployment (settings above are reserved).
+    files_dir: str = Field(
+        default="./data/files", validation_alias=AliasChoices("FILES_DIR")
+    )
+    max_attachment_mb: int = Field(
+        default=25, validation_alias=AliasChoices("MAX_ATTACHMENT_MB")
+    )
+
     # Maximum time one readiness probe may take before the dependency counts as down.
     # Generous default: first connection on a cold machine can be slow (IPv6 fallback).
     readiness_timeout_seconds: float = 5.0

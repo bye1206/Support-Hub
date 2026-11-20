@@ -3,7 +3,7 @@
   --ink: #202b3c;
   --muted: #8993a3;
   --line: #e9edf2;
-  --purple: #6558d3;
+  --purple: #e2001a;
   display: grid;
   grid-template-columns: 68px 300px minmax(420px, 1fr) 310px;
   height: 100vh;
@@ -13,7 +13,8 @@
   color: var(--ink);
 }
 .rail {
-  background: #202939;
+  /* Magnit Tech (2026-11-18): the rail is black — the brand anchor. */
+  background: #17191d;
   display: flex;
   align-items: center;
   flex-direction: column;
@@ -31,7 +32,7 @@
   margin-bottom: 20px;
 }
 .brand-mark span {
-  color: #b6a7ff;
+  color: #e2001a;
   font-size: 20px;
   vertical-align: top;
 }
@@ -51,6 +52,14 @@
 .rail-button.active {
   color: #fff;
   background: #ffffff19;
+  /* Owner (2026-11-18): the active rail icon gets a red frame. */
+  box-shadow: inset 0 0 0 1.5px #e2001a;
+}
+.rail-button:hover:not(:disabled):not(.active) {
+  /* Owner (2026-11-18): the same red hover language, adapted to black. */
+  color: #fff;
+  background: rgba(226, 0, 26, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.4);
 }
 .rail-button:disabled {
   opacity: 0.45;
@@ -65,8 +74,8 @@
   place-items: center;
   border: 0;
   border-radius: 50%;
-  background: #c5b8ff;
-  color: #493b9c;
+  background: #2b2f36;
+  color: #ffffff;
   font-weight: 700;
 }
 .queue-panel {
@@ -95,6 +104,12 @@
   font-weight: 600;
   cursor: pointer;
 }
+.queue-tabs button:hover {
+  /* Owner (2026-11-18): unified red hover for inactive tabs too. */
+  color: #17191d;
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
 .tab-count {
   padding: 0 7px;
   border-radius: 9px;
@@ -104,19 +119,32 @@
   font-weight: 700;
 }
 .queue-tabs button.active .tab-count {
-  background: #e6e1fb;
+  background: #fdeaea;
   color: var(--purple);
 }
 .queue-tabs button.active {
-  color: var(--purple);
-  border-bottom-color: var(--purple);
-  background: #faf9ff;
+  /* Owner (2026-11-18): pale red tint, barely-there frame, and a bottom
+     red line that gently fades out to the sides. */
+  color: #17191d;
+  border: 1px solid rgba(226, 0, 26, 0.22);
+  border-bottom: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(226, 0, 26, 0) 0%,
+      rgba(226, 0, 26, 0.7) 50%,
+      rgba(226, 0, 26, 0) 100%
+    )
+    left bottom / 100% 2px no-repeat,
+    #fdecec;
 }
 .queue-tab-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 10px 12px;
+  /* Owner (2026-11-18): rows span the full container width — side padding
+     lives on the chips row, not on the content. */
+  padding: 0 0 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -125,7 +153,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 10px 2px 2px;
+  padding: 10px 10px 2px;
 }
 .group-chip {
   display: inline-flex;
@@ -141,12 +169,16 @@
   cursor: pointer;
 }
 .group-chip:hover {
-  border-color: #c9c2f0;
+  /* Owner (2026-11-18): unified red hover for inactive chips too. */
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+  color: #17191d;
 }
 .group-chip.active {
-  background: #f5f4ff;
-  border-color: #c9c2f0;
-  color: var(--purple);
+  /* Owner (2026-11-18): pale red tint + barely-there red frame. */
+  background: #fdecec;
+  border-color: rgba(226, 0, 26, 0.28);
+  color: #17191d;
 }
 .chip-count {
   background: #f0f2f5;
@@ -156,7 +188,7 @@
   color: #8a93a2;
 }
 .group-chip.active .chip-count {
-  background: #e6e1fb;
+  background: #fdeaea;
   color: var(--purple);
 }
 .history-page {
@@ -209,7 +241,7 @@
 .history-filters button[type="submit"] {
   border: 0;
   border-radius: 7px;
-  background: #6558d3;
+  background: #17191d;
   color: #fff;
   padding: 9px 18px;
   font-weight: 600;
@@ -245,12 +277,23 @@
   cursor: pointer;
 }
 .history-table tbody tr:hover {
-  background: #f5f4ff;
+  background: #f1f2f4;
 }
 .ad-search-row {
   display: flex;
   gap: 8px;
   margin: 10px 0 6px;
+}
+/* Owner (2026-11-17): magnifier + filter input inside the AD card modal. */
+.ad-search-row .ad-search-icon {
+  align-self: center;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: #8a93a5;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 .ad-search-row input {
   flex: 1;
@@ -259,10 +302,27 @@
   padding: 9px 11px;
   font-size: 13px;
 }
+/* Owner (2026-11-17): rounded scrollbar so the modal keeps its rounded
+   corners on the right side too. */
+.modal::-webkit-scrollbar,
+.ad-modal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.modal::-webkit-scrollbar-thumb,
+.ad-modal-scroll::-webkit-scrollbar-thumb {
+  background: #c9cfda;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.modal::-webkit-scrollbar-track,
+.ad-modal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
 .ad-search-row button {
   border: 0;
   border-radius: 7px;
-  background: #6558d3;
+  background: #17191d;
   color: #fff;
   padding: 9px 16px;
   font-weight: 600;
@@ -286,9 +346,9 @@
 .eyebrow {
   margin: 0 0 7px;
   color: #939bab;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 1.4px;
+  letter-spacing: 1.6px;
 }
 .queue-header h1 {
   display: flex;
@@ -296,14 +356,14 @@
   gap: 9px;
   margin: 0;
   font:
-    700 19px Manrope,
+    700 24px Manrope,
     sans-serif;
   letter-spacing: -0.45px;
 }
 .count-pill {
   border-radius: 20px;
-  background: #f0efff;
-  color: #695cda;
+  background: #f1f2f4;
+  color: #17191d;
   padding: 3px 8px;
   font:
     600 11px "DM Sans",
@@ -321,8 +381,11 @@
   font-size: 18px;
 }
 .icon-button:hover {
-  background: #f3f4f7;
-  color: #30394a;
+  /* Owner (2026-11-18): every button on hover = pale red background +
+     a barely-there red frame (Magnit Tech hover language). */
+  background: #fdecec;
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.25);
+  color: #17191d;
 }
 .queue-search {
   margin: 0 15px 19px;
@@ -377,8 +440,8 @@
   font-size: 12px;
 }
 .nav-item.selected {
-  color: #5146b6;
-  background: #f0efff;
+  color: #17191d;
+  background: #f1f2f4;
   font-weight: 600;
 }
 .nav-icon {
@@ -388,7 +451,7 @@
   color: #8e98a8;
 }
 .nav-item.selected .nav-icon {
-  color: #6659d3;
+  color: #17191d;
 }
 .nav-count {
   margin-left: auto;
@@ -421,7 +484,8 @@
 .ticket-list {
   flex: 1;
   overflow: auto;
-  padding: 4px 9px 12px;
+  /* Owner (2026-11-18): rows span the full column width — no side padding. */
+  padding: 0 0 12px;
 }
 .queue-more {
   padding: 10px 4px;
@@ -432,20 +496,32 @@
 .ticket-row {
   display: block;
   width: 100%;
-  padding: 12px 11px 11px;
-  margin-bottom: 3px;
+  padding: 8px 12px 7px;
+  margin: 0;
   text-align: left;
-  border: 1px solid transparent;
-  border-radius: 9px;
+  border: 0;
+  border-bottom: 1px solid #eef0f4;
+  border-radius: 0;
   background: transparent;
   color: inherit;
 }
 .ticket-row:hover {
-  background: #fafaff;
+  /* Owner (2026-11-18): unified red hover for rows too. */
+  background: #fdecec;
 }
 .ticket-row.active {
-  background: #f7f6ff;
-  border-color: #ebe8ff;
+  /* Owner (2026-11-18): the selected dialog = pale red background + thin
+     red frame + black text. */
+  background: #fdecec;
+  border-color: rgba(226, 0, 26, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.22);
+  color: #17191d;
+}
+.ticket-row.active .ticket-number,
+.ticket-row.active .ticket-time,
+.ticket-row.active .ticket-preview,
+.ticket-row.active .status-text {
+  color: #17191d;
 }
 /* Owner request 2026-11-13: unassigned rows are gray until someone takes them. */
 .ticket-row.unassigned .ticket-preview {
@@ -487,15 +563,35 @@
 }
 .ticket-preview {
   overflow: hidden;
-  margin-top: 4px;
+  margin-top: 2px;
   color: #8c95a4;
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.ticket-preview-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Owner (2026-11-18): per-chat counter of fresh user messages in the
+   queue — resets as soon as the operator replies; pinned to the card's
+   bottom-right corner. */
+.unread-badge {
+  margin-left: auto;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #17191d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
 .ticket-meta {
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 3px;
 }
 .status-dot {
   width: 7px;
@@ -508,7 +604,7 @@
   background: #e5a450;
 }
 .status-dot.ai_processing {
-  background: #8072e8;
+  background: #3a4149;
 }
 .status-dot.pending_user {
   background: #58a8d2;
@@ -527,7 +623,7 @@
   color: #c58631;
 }
 .status-text.ai_processing {
-  color: #7466d5;
+  color: #3a4149;
 }
 .empty-queue {
   display: flex;
@@ -575,8 +671,8 @@
   font-size: 11px;
 }
 .profile-avatar.purple {
-  background: #eeeaff;
-  color: #685bc9;
+  background: #eceef1;
+  color: #454e5c;
 }
 .profile-copy {
   display: grid;
@@ -639,8 +735,8 @@
   white-space: nowrap;
 }
 .status-badge.ai_processing {
-  background: #f0edff;
-  color: #786bd7;
+  background: #eef0f3;
+  color: #3a4149;
 }
 .status-badge.pending_user {
   background: #eaf6fb;
@@ -723,8 +819,8 @@
   width: 39px;
   height: 39px;
   border-radius: 14px;
-  background: #e9e6ff;
-  color: #6558c8;
+  background: #eceef1;
+  color: #454e5c;
   font-size: 12px;
   font-weight: 700;
 }
@@ -784,6 +880,43 @@
   gap: 10px;
   margin-bottom: 21px;
 }
+.message.system {
+  /* Owner (2026-11-18): system phrases are neither user nor operator —
+     centered, gray, no bubble, no avatar. */
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.message.system .message-content {
+  text-align: center;
+}
+.message.system .message-heading strong {
+  display: none;
+}
+.message.system .message-heading time {
+  display: block;
+  margin-bottom: 3px;
+}
+.message.system .message-bubble {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #8a93a2;
+  font-size: 10.5px;
+  font-style: italic;
+}
+/* Owner (2026-11-19): read-only history lists — AI messages are centered
+   so they never read as user text. */
+.message.history-ai {
+  justify-content: center;
+}
+.message.history-ai .message-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.message.history-ai .message-bubble {
+  max-width: 650px;
+}
 .message-avatar {
   display: grid;
   place-items: center;
@@ -798,11 +931,11 @@
 }
 .message-avatar.operator {
   background: #e8e4ff;
-  color: #6558c8;
+  color: #454e5c;
 }
 .message-avatar.ai {
-  background: #f1eaff;
-  color: #8b64bd;
+  background: #eef0f3;
+  color: #3a4149;
   font-size: 14px;
 }
 .message-content {
@@ -845,16 +978,19 @@
   justify-content: flex-end;
 }
 .from-operator .message-bubble {
-  border-color: #e8e4ff;
+  /* Owner (2026-11-18): operator messages are black with white text;
+     user messages stay white. */
+  border-color: #17191d;
   border-radius: 11px 3px 11px 11px;
-  background: #f3f1ff;
+  background: #17191d;
+  color: #fff;
   text-align: left;
 }
 .ai-label {
   padding: 2px 5px;
   border-radius: 4px;
-  background: #f1eaff;
-  color: #8866b3;
+  background: #eef0f3;
+  color: #3a4149;
   font-size: 8px;
   font-weight: 700;
 }
@@ -862,12 +998,14 @@
   display: flex;
   gap: 9px;
   max-width: 650px;
-  margin: 20px auto;
+  /* Owner (2026-11-18): notes sit on the operator's side of the timeline,
+     and the operator's side is the right one — align right. */
+  margin: 20px 0 20px auto;
   padding: 11px 12px;
-  border: 1px solid #f2dfb4;
+  border: 1px solid rgba(226, 0, 26, 0.2);
   border-radius: 9px;
-  background: #fffaf0;
-  color: #79623b;
+  background: #fdecec;
+  color: #17191d;
 }
 .note-icon {
   display: grid;
@@ -875,7 +1013,8 @@
   width: 25px;
   height: 25px;
   border-radius: 7px;
-  background: #f8edcf;
+  background: rgba(226, 0, 26, 0.1);
+  color: #e2001a;
   font-size: 13px;
   flex: none;
 }
@@ -884,13 +1023,20 @@
   flex: 1;
 }
 .note-card .message-heading strong {
-  color: #866c3f;
+  color: #17191d;
 }
 .note-card p {
   margin: 0;
   font-size: 11px;
   line-height: 1.55;
   white-space: pre-wrap;
+}
+.note-card .note-author {
+  /* Owner (2026-11-18): which operator wrote the note. */
+  margin-top: 6px;
+  color: #e2001a;
+  font-size: 10px;
+  font-weight: 700;
 }
 .empty-history,
 .loading-state {
@@ -903,17 +1049,13 @@
   padding: 0 24px 20px;
   background: #fbfcfd;
 }
-/* Owner request 2026-11-13: unassigned chats are read-only and gray. */
-.conversation-panel.chat-locked .conversation-scroll,
-.conversation-panel.chat-locked .message-list {
-  opacity: 0.55;
-  filter: grayscale(0.35);
-}
+/* Owner (2026-11-18): unassigned / AI-stage chats are read-only, but the
+   message history stays fully readable — only the composer is muted. */
 .conversation-panel.chat-locked .composer {
   background: #f3f4f6;
 }
 .conversation-panel.chat-locked .composer textarea {
-  background: #eceef1;
+  background: transparent;
   color: #8c95a3;
   cursor: not-allowed;
 }
@@ -923,63 +1065,302 @@
 .conversation-panel.chat-locked .composer-hint {
   color: #98a0ad;
 }
-.app-shell[data-theme="dark"] .conversation-panel.chat-locked .conversation-scroll,
-.app-shell[data-theme="dark"] .conversation-panel.chat-locked .message-list {
-  filter: grayscale(0.35) brightness(0.82);
+/* Owner (2026-11-17): a disabled composer must look uniformly muted, not
+   half-gray. Buttons too. */
+.composer textarea:disabled {
+  background: transparent;
+  color: #98a0ad;
+  cursor: not-allowed;
+}
+.composer .send-button:disabled,
+.composer .note-send:disabled {
+  background: #e7eaef;
+  color: #9aa2b0;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 .app-shell[data-theme="dark"] .conversation-panel.chat-locked .composer {
   background: #1c212b;
 }
 .app-shell[data-theme="dark"] .conversation-panel.chat-locked .composer textarea {
-  background: #242b38;
+  background: transparent;
   color: #77808f;
 }
-.composer-tabs {
+/* Owner (2026-11-18): Telegram-style composer — icon mode buttons on the
+   LEFT, a rounded pill input that grows upward while typing (JS caps the
+   height at ~45% of the viewport, then the text scrolls inside). */
+.composer form {
+  padding: 9px 10px;
+  border: 1px solid #e9ecf1;
+  border-radius: 12px;
+  background: #fff;
+}
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.composer-modes {
   display: flex;
   gap: 5px;
-  padding: 4px;
-  border: 1px solid #e9ecf1;
-  border-radius: 9px 9px 0 0;
-  background: #f5f6f8;
+  padding-bottom: 6px;
 }
-.composer-tabs button {
+.composer-mode-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #e4e7ee;
+  border-radius: 50%;
+  background: #f5f6f8;
+  color: #8c95a3;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms, color 140ms, border-color 140ms;
+}
+.composer-mode-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.composer-mode-btn:hover {
+  /* Owner (2026-11-18): unified red hover. */
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+  color: #17191d;
+}
+.composer-file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px 42px;
+}
+.composer-file-chip {
+  /* Owner (2026-11-19): a file picked in the composer, before sending. */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  border: 1px solid rgba(226, 0, 26, 0.25);
+  border-radius: 8px;
+  background: #fdecec;
+  font-size: 10.5px;
+}
+.message-image-link {
+  display: block;
+  max-width: 320px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: zoom-in;
+}
+/* Owner (2026-11-19): full-screen photo viewer — zoom, reset, download. */
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: rgba(23, 25, 29, 0.92);
+  animation: viewer-enter 0.18s ease both;
+}
+@keyframes viewer-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.image-viewer-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+}
+.image-viewer-toolbar button,
+.image-viewer-toolbar a {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 9px;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+.image-viewer-toolbar button:hover,
+.image-viewer-toolbar a:hover {
+  background: rgba(226, 0, 26, 0.25);
+  border-color: rgba(226, 0, 26, 0.5);
+}
+.image-viewer-toolbar svg {
+  width: 16px;
+  height: 16px;
+  stroke: #fff;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.image-viewer-stage {
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 0 18px 18px;
+}
+.image-viewer-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 6px;
+  transition: transform 0.15s ease;
+  transform-origin: center center;
+}
+.image-viewer-loading {
+  color: #c3c8d0;
+  font-size: 12px;
+}
+.message-image {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 0, 26, 0.25);
+}
+.message-image-loading {
+  padding: 18px 22px;
+  color: #8a93a2;
+  font-size: 10.5px;
+}
+.conversation-panel {
+  /* Owner (2026-11-19): the drag-over highlight fades in, not snaps. */
+  transition:
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
+}
+.conversation-panel.drag-over {
+  /* Owner (2026-11-19): the whole dialog window is a dropzone — pale red
+     history background (the button-hover tint) + a soft red frame. */
+  background: #fdecec;
+  box-shadow: inset 0 0 0 2px rgba(226, 0, 26, 0.35);
+}
+.app-shell[data-theme="dark"] .message-image {
+  border-color: rgba(226, 0, 26, 0.4);
+}
+.composer.drag-over .composer textarea {
+  /* Owner (2026-11-19): drop hint while dragging files over the composer. */
+  border-color: #e2001a;
+  box-shadow: 0 0 0 2px rgba(226, 0, 26, 0.15);
+}
+.drag-hint {
+  display: none;
+}
+.composer-file-name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #17191d;
+}
+.composer-file-size {
+  color: #8a93a2;
+  font-size: 9.5px;
+}
+.composer-file-remove {
+  border: 0;
+  background: transparent;
+  color: #e2001a;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.message-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 7px;
+}
+.message-file {
+  /* Owner (2026-11-19): a downloadable file card inside the bubble. */
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #8c95a3;
-  font-size: 12.5px;
+  padding: 7px 10px;
+  border: 1px solid rgba(226, 0, 26, 0.25);
+  border-radius: 8px;
+  background: #fdecec;
+  color: #17191d;
+  font-size: 10.5px;
+  cursor: pointer;
+  text-align: left;
 }
-.composer-tabs button.active {
-  background: #fff;
-  color: #5c50c3;
-  box-shadow: 0 1px 3px #1720330d;
-  font-weight: 600;
+.message-file svg {
+  width: 14px;
+  height: 14px;
+  stroke: #e2001a;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
 }
-.composer-tabs button span {
-  font-size: 13px;
+.message-file-name {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
 }
-.composer form {
-  padding: 11px 12px 10px;
-  border: 1px solid #e9ecf1;
-  border-top: 0;
-  border-radius: 0 0 9px 9px;
-  background: #fff;
+.message-file-size {
+  color: #8a93a2;
+  font-size: 9.5px;
+  flex: none;
+}
+.app-shell[data-theme="dark"] .message-file,
+.app-shell[data-theme="dark"] .composer-file-chip {
+  background: rgba(226, 0, 26, 0.14);
+  border-color: rgba(226, 0, 26, 0.4);
+  color: #e6e9f0;
+}
+.app-shell[data-theme="dark"] .message.from-operator .message-file {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.composer-mode-btn.active {
+  background: #17191d;
+  border-color: #17191d;
+  color: #fff;
+}
+.note-mode .composer-mode-btn.active {
+  /* Owner (2026-11-18): active note button = pale red background + thin
+     red frame + red icon, same language as the tabs. */
+  background: #fdecec;
+  border-color: rgba(226, 0, 26, 0.28);
+  color: #e2001a;
 }
 .composer textarea {
+  flex: 1;
   display: block;
-  width: 100%;
-  resize: vertical;
-  min-height: 58px;
-  border: 0;
+  resize: none;
+  min-height: 42px;
+  max-height: 45vh;
+  border: 1px solid #e9ecf1;
+  border-radius: 21px;
+  padding: 10px 14px;
   outline: 0;
   color: #3d485a;
   font-size: 14px;
   line-height: 1.5;
-  background: transparent;
+  background: #f6f7f9;
+  overflow-y: hidden;
 }
 .composer textarea::placeholder {
   color: #adb4bf;
@@ -999,10 +1380,7 @@
   font-size: 9px;
 }
 .public-icon {
-  color: #7568d5;
-}
-.private-icon {
-  color: #ca9944;
+  color: #e2001a;
 }
 .character-count {
   margin-left: 5px;
@@ -1013,14 +1391,31 @@
 .primary-button {
   border: 0;
   border-radius: 7px;
-  background: #6659d2;
+  background: #17191d;
   color: #fff;
   font-size: 10px;
   font-weight: 600;
 }
 .send-button,
 .note-send {
-  padding: 9px 12px;
+  /* Owner (2026-11-18): Telegram-style round paper-plane button. */
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+}
+.send-button svg,
+.note-send svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .send-button:disabled,
 .note-send:disabled,
@@ -1028,18 +1423,16 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
-.note-mode .composer-tabs button.active {
-  color: #a4772c;
-}
 .note-mode .composer form {
-  border-color: #f0dfbb;
-  background: #fffdf8;
+  border-color: rgba(226, 0, 26, 0.22);
+  background: #fff5f5;
 }
 .note-mode .composer textarea {
   background: transparent;
 }
 .note-send {
-  background: #b38336;
+  /* Owner (2026-11-18): the note send button matches the red note theme. */
+  background: #e2001a;
 }
 .welcome-state {
   display: flex;
@@ -1057,18 +1450,18 @@
   width: 92px;
   height: 92px;
   margin-bottom: 24px;
-  border: 1px solid #e9e6ff;
+  border: 1px solid #eceef1;
   border-radius: 30px;
-  background: linear-gradient(145deg, #fff 15%, #f3f1ff);
-  color: #7569da;
+  background: linear-gradient(145deg, #fff 15%, #f4f5f7);
+  color: #2b3138;
   font-size: 36px;
-  box-shadow: 0 16px 35px #5247b30c;
+  box-shadow: 0 16px 35px #17191d14;
 }
 .welcome-art i {
   position: absolute;
   top: 11px;
   right: 14px;
-  color: #b7aef0;
+  color: #c3c7cd;
   font-size: 17px;
   font-style: normal;
 }
@@ -1076,7 +1469,7 @@
   position: absolute;
   right: 9px;
   bottom: 10px;
-  color: #b39aeb;
+  color: #d3d6db;
   font-size: 15px;
 }
 .welcome-state .eyebrow {
@@ -1119,6 +1512,7 @@
   pointer-events: none;
 }
 .details-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1127,10 +1521,14 @@
   border-bottom: 1px solid var(--line);
 }
 .details-header h3 {
+  /* Owner (2026-11-19): "Детали обращения" is bigger and centered. */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   margin: 0;
-  color: #344054;
+  color: #17191d;
   font:
-    700 12px Manrope,
+    700 15px Manrope,
     sans-serif;
 }
 .details-scroll {
@@ -1147,7 +1545,9 @@
 .customer-card h3 {
   margin: 9px 0 3px;
   color: #344054;
-  font-size: 12px;
+  /* Owner (2026-11-17): the person's name is the card's headline. */
+  font-size: 15.5px;
+  font-weight: 700;
 }
 .customer-card p {
   margin: 0;
@@ -1158,7 +1558,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #6c60d0;
+  color: #17191d;
   font-size: 9px;
   font-weight: 600;
 }
@@ -1176,6 +1576,214 @@
   gap: 3px;
   margin-top: 9px;
   align-self: stretch;
+}
+
+/* Owner (2026-11-17): modern AD employee card — header with photo and
+   status chips, then a clean two-column table. */
+.ad-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 2px 10px;
+}
+.ad-card-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+.ad-status-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+/* Owner (2026-11-17): refresh = compact icon in the card's top-right corner. */
+.customer-card {
+  position: relative;
+}
+.ad-refresh-corner {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d6dce6;
+  border-radius: 8px;
+  background: #fff;
+  color: #5b6577;
+  cursor: pointer;
+  transition: border-color 140ms, box-shadow 140ms, color 140ms;
+}
+.ad-refresh-corner svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ad-refresh-corner:hover:not(:disabled) {
+  /* Owner (2026-11-18): unified red hover. */
+  color: #e2001a;
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+  box-shadow: 0 3px 10px rgba(23, 25, 29, 0.14);
+}
+.ad-refresh-corner:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.ad-refresh-corner .spin,
+.ad-refresh-corner svg.spin {
+  animation: ad-spin 900ms linear infinite;
+}
+/* Owner (2026-11-17): full-info button centered in the card. */
+.ad-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  align-self: stretch;
+}
+.ad-refresh-button:hover:not(:disabled) {
+  border-color: #9fb0d8;
+  box-shadow: 0 3px 10px rgba(23, 25, 29, 0.12);
+}
+.ad-refresh-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.ad-refresh-button .spin {
+  display: inline-block;
+  animation: ad-spin 900ms linear infinite;
+}
+@keyframes ad-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ad-groups-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+/* Owner (2026-11-17): groups one per line — name left, description right
+   (GetGroupBox layout). */
+.ad-groups-title .ad-table-label {
+  grid-column: 1 / -1;
+  padding-top: 4px;
+}
+.ad-group-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #2d3748;
+  word-break: break-word;
+  align-self: center;
+}
+.ad-group-desc {
+  font-size: 12px;
+  color: #6b7484;
+}
+.ad-status-ok {
+  color: #1f7a44;
+  font-weight: 600;
+}
+.ad-status-bad {
+  color: #c23b3b;
+  font-weight: 600;
+}
+.app-shell[data-theme="dark"] .ad-group-name {
+  color: #d5dae4;
+}
+.app-shell[data-theme="dark"] .ad-status-ok {
+  color: #6fd39a;
+}
+.app-shell[data-theme="dark"] .ad-status-bad {
+  color: #ff9d9d;
+}
+.ad-loading {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 8px;
+  color: #7d8698;
+  font-size: 13.5px;
+}
+.ad-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid #e3e8f0;
+  border-top-color: #5b7cfa;
+  border-radius: 50%;
+  animation: ad-spin 800ms linear infinite;
+}
+.app-shell[data-theme="dark"] .ad-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #eef1f6;
+  color: #5b6577;
+  font-size: 11px;
+  font-weight: 600;
+}
+.ad-chip.ok {
+  background: #e5f6ec;
+  color: #1f7a44;
+}
+.ad-chip.bad {
+  background: #ffe9e9;
+  color: #c23b3b;
+}
+.ad-table {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ad-table-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.ad-table-row:nth-child(odd) {
+  background: #f7f8fb;
+}
+.ad-table-label {
+  color: #7d8698;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  align-self: center;
+}
+.ad-table-value {
+  color: #2d3748;
+  word-break: break-word;
+}
+.app-shell[data-theme="dark"] .ad-table {
+  border-color: #3a4251;
+}
+.app-shell[data-theme="dark"] .ad-table-row:nth-child(odd) {
+  background: #232a36;
+}
+.app-shell[data-theme="dark"] .ad-table-value {
+  color: #d5dae4;
+}
+.app-shell[data-theme="dark"] .ad-chip {
+  background: #2c3444;
+  color: #9aa5b8;
+}
+.app-shell[data-theme="dark"] .ad-chip.ok {
+  background: #1d3328;
+  color: #6fd39a;
+}
+.app-shell[data-theme="dark"] .ad-chip.bad {
+  background: #3d2727;
+  color: #ff9d9d;
 }
 .ad-rows div {
   display: flex;
@@ -1218,27 +1826,35 @@
 }
 .ad-full-button {
   margin-top: 10px;
-  border: 1px solid #d9d3f6;
+  border: 1px solid #d9dbe0;
   border-radius: 7px;
-  background: #f5f4ff;
-  color: #5a4fc0;
+  background: #f1f2f4;
+  /* Owner (2026-11-18): a neutral gray button — the violet accent is gone. */
+  color: #17191d;
   padding: 7px 16px;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
 }
 .ad-full-button:hover {
-  background: #ece9ff;
+  /* Owner (2026-11-18): the standard red hover. */
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+  color: #17191d;
 }
 .detail-section {
   padding: 16px;
   border-bottom: 1px solid #f0f2f5;
 }
 .detail-label {
-  color: #a0a8b5;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
+  /* Owner (2026-11-19): section titles (СТАТУС/SLA/ПЕРЕМЕЩЕНИЯ/ТЕГИ) are
+     centered, black — a step smaller than v1. */
+  color: #17191d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-align: center;
+  margin-bottom: 8px;
 }
 .detail-value {
   display: flex;
@@ -1247,6 +1863,98 @@
   margin-top: 9px;
   color: #4d5869;
   font-size: 10px;
+}
+/* Owner (2026-11-19): a modern status card — one tinted capsule per status
+   (semantic colors of the app), a breathing dot, and a human hint below. */
+.status-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin: 2px auto 0;
+  max-width: 260px;
+  padding: 11px 18px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+.status-card-name {
+  font:
+    800 13px Manrope,
+    sans-serif;
+  letter-spacing: 0.2px;
+}
+.status-card-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+.status-hint {
+  margin-top: 7px;
+  text-align: center;
+  color: #8a93a2;
+  font-size: 10px;
+}
+/* Per-status tints follow the app's semantic dot colors. */
+.status-card.ai_processing {
+  background: #f4f5f7;
+  border-color: #e4e6ea;
+  color: #17191d;
+}
+.status-card.ai_processing .status-card-dot {
+  background: #3a4149;
+  animation: status-breathe 2.2s ease-in-out infinite;
+}
+.status-card.open {
+  background: #fdf3e7;
+  color: #9a6a1f;
+  border-color: #f3e2c6;
+}
+.status-card.open .status-card-dot {
+  background: #e5a450;
+}
+.status-card.pending_user {
+  background: #eaf4fb;
+  color: #2e7196;
+  border-color: #cfe6f3;
+}
+.status-card.pending_user .status-card-dot {
+  background: #58a8d2;
+}
+.status-card.resolved {
+  background: #ebf6f1;
+  color: #2e7d57;
+  border-color: #cdeadd;
+}
+.status-card.resolved .status-card-dot {
+  background: #50b38b;
+}
+.status-card.closed,
+.status-card.new {
+  background: #f1f2f4;
+  color: #5c6675;
+  border-color: #e4e6ea;
+}
+.status-card.closed .status-card-dot,
+.status-card.new .status-card-dot {
+  background: #a3aab5;
+}
+@keyframes status-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(23, 25, 29, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(23, 25, 29, 0);
+  }
+}
+.app-shell[data-theme="dark"] .status-card.ai_processing {
+  background: #262b33;
+  border-color: #3a4149;
+  color: #e6e9f0;
+}
+.app-shell[data-theme="dark"] .status-hint {
+  color: #a8b1c2;
 }
 .muted {
   color: #a0a8b5;
@@ -1263,9 +1971,35 @@
   border: 1px solid #edf0f4;
   border-radius: 8px;
   background: #fafbfc;
+  /* Owner (2026-11-19): the card is clickable — it opens the SLA history. */
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+.sla-card:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.sla-card.counting .sla-placeholder {
+  color: #2e7d57;
+  font-weight: 700;
+}
+/* Owner (2026-11-19): the 15-minute reply clock ran out. */
+.sla-card.breached {
+  background: #fdecec;
+  border-color: #e2001a;
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.35);
+}
+.sla-card.breached .sla-clock {
+  color: #e2001a;
+}
+.sla-card.breached .sla-placeholder {
+  color: #e2001a;
+  font-weight: 800;
 }
 .sla-clock {
-  color: #9588d7;
+  color: #9aa2ad;
   font-size: 17px;
 }
 .sla-card > div {
@@ -1284,6 +2018,76 @@
 .sla-card .sla-placeholder {
   color: #aab0bc;
   font-size: 12px;
+}
+/* Owner (2026-11-19): the SLA modal — durations per status + events. */
+.sla-modal {
+  max-height: 80vh;
+  overflow: auto;
+}
+.sla-modal-summary {
+  text-align: center;
+  margin-bottom: 12px;
+}
+.sla-breach-banner,
+.sla-ok-banner,
+.sla-idle-banner {
+  display: inline-block;
+  padding: 7px 14px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sla-breach-banner {
+  background: #fdecec;
+  color: #e2001a;
+  border: 1px solid rgba(226, 0, 26, 0.4);
+}
+.sla-ok-banner {
+  background: #ebf6f1;
+  color: #2e7d57;
+  border: 1px solid #cdeadd;
+}
+.sla-idle-banner {
+  background: #f1f2f4;
+  color: #5c6675;
+  border: 1px solid #e4e6ea;
+}
+.sla-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #f0f2f5;
+  font-size: 11px;
+}
+.sla-duration-row strong {
+  flex: 1;
+  color: #17191d;
+}
+.sla-duration-value {
+  color: #5c6675;
+  font-weight: 700;
+}
+.sla-events-title {
+  margin: 14px 0 6px;
+  text-align: center;
+  color: #17191d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.sla-event {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 4px;
+  border-bottom: 1px solid #f0f2f5;
+  font-size: 10.5px;
+  color: #4d5869;
+}
+.sla-event time {
+  color: #9aa2ad;
+  flex: none;
 }
 .detail-heading {
   display: flex;
@@ -1314,8 +2118,8 @@
 .tag {
   padding: 4px 7px;
   border-radius: 5px;
-  background: #f1efff;
-  color: #7063cd;
+  background: #f1f2f4;
+  color: #454e5c;
   font-size: 9px;
 }
 .past-empty {
@@ -1340,17 +2144,20 @@
   cursor: pointer;
 }
 .quiet-action:hover {
-  border-color: #c9c2f0;
-  color: #5b4fc0;
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+  color: #17191d;
 }
 .detail-section .quiet-action {
-  margin-top: 10px;
+  /* Owner (2026-11-19): "Посмотреть полностью" is centered in its block. */
+  display: block;
+  margin: 10px auto 0;
 }
 .action-section button {
   min-height: 34px;
   border: 0;
   border-radius: 7px;
-  background: #6558d3;
+  background: #17191d;
   color: #fff;
   font-size: 10px;
   font-weight: 600;
@@ -1398,7 +2205,7 @@
   min-height: 100vh;
   padding: 22px;
   background:
-    radial-gradient(ellipse at 50% 15%, #eeebff 0, transparent 43%), #f7f8fb;
+    radial-gradient(ellipse at 50% 15%, #f4f5f7 0, transparent 43%), #f7f8fb;
 }
 .auth-card {
   width: min(100%, 420px);
@@ -1411,10 +2218,10 @@
 .auth-card .brand-mark {
   display: inline-block;
   margin-bottom: 25px;
-  color: #5549bd;
+  color: #17191d;
 }
 .auth-card .brand-mark span {
-  color: #b3a8f2;
+  color: #e2001a;
 }
 .auth-card h1 {
   margin: 0;
@@ -1452,8 +2259,8 @@
   font-size: 11px;
 }
 .auth-form input:focus {
-  border-color: #a8a0e8;
-  box-shadow: 0 0 0 3px #7468d214;
+  border-color: #b9bec7;
+  box-shadow: 0 0 0 3px #17191d14;
 }
 .auth-form input::placeholder {
   color: #b3bac5;
@@ -1717,14 +2524,14 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid #7d70e44a;
+  outline: 3px solid #17191d4d;
   outline-offset: 2px;
 }
 .app-shell {
   --ink: #202738;
   --muted: #7e8796;
   --line: #e8ebf0;
-  --purple: #6154c8;
+  --purple: #e2001a;
   background: #f5f6f8;
 }
 /* No ticket selected: three columns, the conversation area spans the rest. */
@@ -1732,7 +2539,7 @@ select:focus-visible {
   grid-template-columns: 68px 300px minmax(420px, 1fr);
 }
 .rail {
-  background: #202735;
+  background: #17191d;
 }
 .queue-panel,
 .conversation-panel,
@@ -1752,29 +2559,34 @@ select:focus-visible {
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 .queue-search:focus-within {
-  border-color: #a79fe4;
-  box-shadow: 0 0 0 3px #7164d31a;
+  border-color: #b9bec7;
+  box-shadow: 0 0 0 3px #17191d14;
 }
 .nav-item {
   min-height: 38px;
   border-radius: 7px;
 }
 .nav-item.selected {
-  background: #f0effa;
-  color: #4d43a4;
+  background: #f1f2f4;
+  color: #17191d;
 }
 .ticket-row {
-  border-radius: 8px;
-  margin: 2px 8px;
-  width: calc(100% - 16px);
-  border-bottom-color: transparent;
+  /* Owner (2026-11-18): table-like rows — full column width, straight
+     edges, a divider between rows. */
+  border-radius: 0;
+  margin: 0;
+  width: 100%;
 }
 .ticket-row:hover {
-  background: #f7f7fb;
+  background: #f4f5f7;
 }
 .ticket-row.active {
-  background: #f1f0fb;
-  box-shadow: inset 2px 0 #6659cd;
+  /* Owner (2026-11-18): the selected dialog = pale red background + thin
+     red frame + black text. */
+  background: #fdecec;
+  border-color: rgba(226, 0, 26, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.22);
+  color: #17191d;
 }
 .conversation-panel {
   background: #f7f8fa;
@@ -1803,12 +2615,12 @@ select:focus-visible {
 }
 .send-button,
 .primary-button {
-  background: #5d51c4;
+  background: #17191d;
 }
 .send-button:hover,
 .primary-button:hover {
-  background: #4e43b3;
-  box-shadow: 0 3px 10px #5145b329;
+  background: #000000;
+  box-shadow: 0 3px 10px #17191d26;
 }
 .details-panel {
   background: #fff;
@@ -1886,13 +2698,14 @@ select:focus-visible {
   height: 16px;
 }
 .theme-toggle {
-  color: #8f97ff;
+  color: #9aa2ad;
 }
 .rail-button.theme-toggle {
-  color: #8f97ff;
+  /* Owner (2026-11-18): the theme icon is white on the black rail. */
+  color: #fff;
 }
 .rail-button.theme-toggle:hover {
-  color: #c3c8ff;
+  color: #fff;
 }
 .theme-toggle svg {
   width: 19px;
@@ -1909,7 +2722,7 @@ select:focus-visible {
 .ticket-row:nth-child(4) { animation-delay: 45ms; }
 .message,
 .note-card {
-  animation: message-enter 180ms ease both;
+  animation: message-enter 260ms cubic-bezier(0.22, 0.9, 0.3, 1) both;
 }
 @keyframes panel-enter {
   from { opacity: 0; transform: translateX(8px); }
@@ -1954,9 +2767,14 @@ select:focus-visible {
 .app-shell[data-theme="dark"] .queue-search kbd { border-color: #424958; color: #aeb6c4; }
 .app-shell[data-theme="dark"] .nav-item { color: #b0b8c7; }
 .app-shell[data-theme="dark"] .nav-item:hover,
-.app-shell[data-theme="dark"] .ticket-row:hover { background: #282f3d; }
+.app-shell[data-theme="dark"] .ticket-row { border-bottom-color: #2b3240; }
+.app-shell[data-theme="dark"] .ticket-row:hover { background: rgba(226, 0, 26, 0.14); box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.4); }
 .app-shell[data-theme="dark"] .nav-item.selected,
-.app-shell[data-theme="dark"] .ticket-row.active { background: #302d48; color: #d5d0ff; border-color: #454064; }
+.app-shell[data-theme="dark"] .ticket-row.active { background: #2c2124; border-color: rgba(226, 0, 26, 0.4); box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.4); color: #e6e9f0; }
+.app-shell[data-theme="dark"] .ticket-row.active .ticket-number,
+.app-shell[data-theme="dark"] .ticket-row.active .ticket-time,
+.app-shell[data-theme="dark"] .ticket-row.active .ticket-preview,
+.app-shell[data-theme="dark"] .ticket-row.active .status-text { color: #e6e9f0; }
 .app-shell[data-theme="dark"] .ticket-preview,
 .app-shell[data-theme="dark"] .ticket-number,
 .app-shell[data-theme="dark"] .ticket-time,
@@ -1964,17 +2782,27 @@ select:focus-visible {
 .app-shell[data-theme="dark"] .conversation-start p,
 .app-shell[data-theme="dark"] .profile-copy span { color: #a0a8b8; }
 .app-shell[data-theme="dark"] .message-bubble { background: #242b38; border-color: #343c4b; }
-.app-shell[data-theme="dark"] .message.from-operator .message-bubble { background: #302d48; border-color: #454064; color: #e5e2ff; }
-.app-shell[data-theme="dark"] .note-card { background: #322d22; border-color: #51452d; color: #e8d9b5; }
-.app-shell[data-theme="dark"] .note-card .message-heading strong { color: #f0dfb9; }
+.app-shell[data-theme="dark"] .message.from-operator .message-bubble { background: #f2f3f5; border-color: #f2f3f5; color: #17191d; }
+.app-shell[data-theme="dark"] .note-card { background: #2c2124; border-color: rgba(226, 0, 26, 0.35); color: #e6e9f0; }
+.app-shell[data-theme="dark"] .note-card .message-heading strong { color: #e6e9f0; }
+.app-shell[data-theme="dark"] .note-card .note-author { color: #ff5c6e; }
+.app-shell[data-theme="dark"] .note-icon { background: rgba(226, 0, 26, 0.2); color: #ff5c6e; }
 .app-shell[data-theme="dark"] .composer { background: linear-gradient(transparent, #171b24 16px); }
-.app-shell[data-theme="dark"] .composer-tabs { background: #1b202b; border-color: #333a49; }
-.app-shell[data-theme="dark"] .composer-tabs button { color: #aeb6c4; }
-.app-shell[data-theme="dark"] .composer-tabs button.active {
-  background: #302d48;
-  box-shadow: none;
+.app-shell[data-theme="dark"] .composer-mode-btn {
+  background: #232a36;
+  border-color: #3a4251;
+  color: #aeb6c4;
 }
-.app-shell[data-theme="dark"] .composer textarea { background: transparent; }
+.app-shell[data-theme="dark"] .composer-mode-btn.active {
+  background: #262b33;
+  border-color: #3a4149;
+  color: #e6e9f0;
+}
+.app-shell[data-theme="dark"] .composer textarea {
+  background: #232a36;
+  border-color: #3a4251;
+  color: #e6e9f0;
+}
 .app-shell[data-theme="dark"] .message-bubble { color: #d9dee8; }
 .app-shell[data-theme="dark"] .message-avatar { background: #2a3140; color: #a8b1c2; }
 .app-shell[data-theme="dark"] .message-avatar.operator { background: #37325c; color: #cfc7ff; }
@@ -1986,23 +2814,32 @@ select:focus-visible {
 .app-shell[data-theme="dark"] .ad-rows div span { color: #8b93a3; }
 .app-shell[data-theme="dark"] .ad-warning { background: #4a2f30; color: #f0b9b3; }
 .app-shell[data-theme="dark"] .ad-full-button {
-  background: #302d48;
-  border-color: #454064;
-  color: #d5d0ff;
+  background: #262b33;
+  border-color: #3a4149;
+  color: #e6e9f0;
 }
 .app-shell[data-theme="dark"] .ad-full-button:hover { background: #3a3560; }
 .app-shell[data-theme="dark"] .queue-section-title { background: #1e2430; }
 .app-shell[data-theme="dark"] .queue-tabs button.active {
-  background: #302d48;
-  color: #d5d0ff;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(226, 0, 26, 0) 0%,
+      rgba(226, 0, 26, 0.65) 50%,
+      rgba(226, 0, 26, 0) 100%
+    )
+    left bottom / 100% 2px no-repeat,
+    #262b33;
+  color: #e6e9f0;
+  border-color: rgba(226, 0, 26, 0.35);
 }
 .app-shell[data-theme="dark"] .tab-count {
   background: #3a4251;
   color: #a8b1c2;
 }
 .app-shell[data-theme="dark"] .queue-tabs button.active .tab-count {
-  background: #454064;
-  color: #d5d0ff;
+  background: #3a4149;
+  color: #e6e9f0;
 }
 .app-shell[data-theme="dark"] .group-chip {
   background: #242b38;
@@ -2010,14 +2847,14 @@ select:focus-visible {
   color: #b6bdc9;
 }
 .app-shell[data-theme="dark"] .group-chip.active {
-  background: #302d48;
-  border-color: #454064;
-  color: #d5d0ff;
+  background: #2c2124;
+  border-color: rgba(226, 0, 26, 0.4);
+  color: #e6e9f0;
 }
 .app-shell[data-theme="dark"] .chip-count { background: #3a4251; color: #a8b1c2; }
 .app-shell[data-theme="dark"] .group-chip.active .chip-count {
-  background: #454064;
-  color: #d5d0ff;
+  background: #3a4149;
+  color: #e6e9f0;
 }
 .app-shell[data-theme="dark"] .history-page { background: #171b24; }
 .app-shell[data-theme="dark"] .history-filters input,
@@ -2032,7 +2869,7 @@ select:focus-visible {
 }
 .app-shell[data-theme="dark"] .history-table th,
 .app-shell[data-theme="dark"] .history-table td { border-color: #333a49; }
-.app-shell[data-theme="dark"] .history-table tbody tr:hover { background: #302d48; }
+.app-shell[data-theme="dark"] .history-table tbody tr:hover { background: #262b33; }
 .app-shell[data-theme="dark"] .ad-search-row input {
   background: #242b38;
   border-color: #3a4251;
@@ -2041,7 +2878,7 @@ select:focus-visible {
 .app-shell[data-theme="dark"] .past-ticket { border-color: #333a49; color: #c1c7d2; }
 .app-shell[data-theme="dark"] .icon-button { color: #b3bbca; }
 .app-shell[data-theme="dark"] .theme-toggle { color: #f2ce78; }
-.app-shell[data-theme="dark"] .count-pill { background: #302d48; color: #d5d0ff; }
+.app-shell[data-theme="dark"] .count-pill { background: #262b33; color: #e6e9f0; }
 .app-shell[data-theme="dark"] .empty-queue strong,
 .app-shell[data-theme="dark"] .welcome-state h2 { color: #d9deea; }
 .app-shell[data-theme="dark"] .welcome-state p,
@@ -2077,7 +2914,7 @@ select:focus-visible {
   display: inline-grid;
 }
 .session-wrap .icon-button.open {
-  color: #6558d3;
+  color: #17191d;
 }
 .session-pop {
   position: absolute;
@@ -2154,7 +2991,7 @@ body:has(.app-shell[data-theme="dark"]) {
   padding: 24px;
   /* No backdrop-filter here: Chromium paints seam artifacts (dark lines)
      on the blurred region while the mouse moves over the dim. */
-  background: #2027358f;
+  background: #17191d8f;
 }
 .modal {
   display: grid;
@@ -2170,6 +3007,38 @@ body:has(.app-shell[data-theme="dark"]) {
 }
 .modal.wide {
   width: min(640px, 94vw);
+}
+/* Owner (2026-11-17): explicit close button in the AD card modal's
+   top-right corner (reverted from the floating variant — it blocked
+   scrolling). */
+.ad-modal {
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #7d8698;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms, color 140ms;
+  z-index: 1;
+}
+.modal-close:hover {
+  background: #f1f3f7;
+  color: #3d485a;
+}
+.app-shell[data-theme="dark"] .modal-close:hover {
+  background: #2c3444;
+  color: #d5dae4;
 }
 .modal-title {
   font-size: 15px;
@@ -2187,8 +3056,8 @@ body:has(.app-shell[data-theme="dark"]) {
   text-align: left;
 }
 .colleague-row:hover {
-  background: #f5f4ff;
-  border-color: #d8d3f5;
+  background: #f1f2f4;
+  border-color: #d9dbe0;
 }
 .colleague-name {
   display: grid;
@@ -2245,8 +3114,8 @@ body:has(.app-shell[data-theme="dark"]) {
   border-color: #3a4251;
 }
 .app-shell[data-theme="dark"] .colleague-row:hover {
-  background: #302d48;
-  border-color: #454064;
+  background: #262b33;
+  border-color: #3a4149;
 }
 .app-shell[data-theme="dark"] .colleague-name {
   color: #d9deea;
@@ -2264,7 +3133,9 @@ body:has(.app-shell[data-theme="dark"]) {
   text-align: left;
 }
 .profile-button:hover {
-  background: #f1f3f6;
+  /* Owner (2026-11-18): unified red hover on the profile button. */
+  background: #fdecec;
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.25);
 }
 .profile-button .profile-avatar {
   width: 34px;
@@ -2332,8 +3203,8 @@ body:has(.app-shell[data-theme="dark"]) {
   background: #f3f4f7;
 }
 .profile-menu button.active {
-  background: #f0effa;
-  color: #4d43a4;
+  background: #f1f2f4;
+  color: #17191d;
   font-weight: 600;
 }
 .profile-menu button.logout {
@@ -2351,6 +3222,93 @@ body:has(.app-shell[data-theme="dark"]) {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
+
+/* Owner (2026-11-17): the team modal redesign — wider, card-like rows,
+   modern presence chips and load pills; fits the whole team comfortably. */
+.modal.team-modal {
+  width: min(640px, 94vw);
+  gap: 10px;
+  padding: 22px;
+  border-radius: 16px;
+}
+.team-modal .modal-title {
+  font: 700 17px Manrope, sans-serif;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+.team-modal .team-row {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fbfcfe;
+  transition: border-color 160ms, box-shadow 160ms, transform 160ms;
+}
+.team-modal button.team-row.clickable {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.team-modal button.team-row.clickable:hover {
+  border-color: #b9c4ff;
+  box-shadow: 0 6px 18px rgba(23, 25, 29, 0.1);
+  transform: translateY(-1px);
+}
+.team-modal .colleague-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.team-modal .colleague-name strong,
+.team-modal .colleague-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.team-modal .team-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f3f7;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.team-modal .count-pill {
+  min-width: 44px;
+  text-align: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef1ff;
+  color: #3d4fd0;
+  font-weight: 700;
+  font-size: 12px;
+}
+.team-modal .count-pill.full {
+  background: #ffe9e9;
+  color: #c23b3b;
+}
+.app-shell[data-theme="dark"] .modal.team-modal {
+  background: #1e2430;
+}
+.app-shell[data-theme="dark"] .team-modal .team-row {
+  background: #242b38;
+}
+.app-shell[data-theme="dark"] .team-modal button.team-row.clickable:hover {
+  background: #262b33;
+  border-color: #3a4149;
+}
+.app-shell[data-theme="dark"] .team-modal .team-presence {
+  background: #2c3444;
+}
+.app-shell[data-theme="dark"] .team-modal .count-pill {
+  background: #2b3350;
+  color: #aab6ff;
+}
+.app-shell[data-theme="dark"] .team-modal .count-pill.full {
+  background: #3d2727;
+  color: #ff9d9d;
+}
 button.team-row.clickable {
   width: 100%;
   border: 1px solid var(--line);
@@ -2359,8 +3317,8 @@ button.team-row.clickable {
   cursor: pointer;
 }
 button.team-row.clickable:hover {
-  background: #f5f4ff;
-  border-color: #d8d3f5;
+  background: #f1f2f4;
+  border-color: #d9dbe0;
 }
 .modal-title.small {
   margin-top: 14px;
@@ -2394,7 +3352,8 @@ button.team-row.clickable:hover {
   position: relative;
 }
 .app-shell[data-theme="dark"] .profile-button:hover {
-  background: #282f3d;
+  background: rgba(226, 0, 26, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.4);
 }
 .app-shell[data-theme="dark"] .profile-menu {
   background: #1e2430;
@@ -2405,8 +3364,8 @@ button.team-row.clickable:hover {
   color: #c9d0dc;
 }
 .app-shell[data-theme="dark"] .profile-menu button.active {
-  background: #302d48;
-  color: #d5d0ff;
+  background: #262b33;
+  color: #e6e9f0;
 }
 .app-shell[data-theme="dark"] .team-row {
   background: #242b38;
@@ -2416,8 +3375,8 @@ button.team-row.clickable:hover {
   background: #242b38;
 }
 .app-shell[data-theme="dark"] button.team-row.clickable:hover {
-  background: #302d48;
-  border-color: #454064;
+  background: #262b33;
+  border-color: #3a4149;
 }
 .app-shell[data-theme="dark"] .modal-title.small,
 .app-shell[data-theme="dark"] .team-member-load .muted {
@@ -2455,8 +3414,14 @@ button.team-row.clickable:hover {
   color: #aeb6c4;
 }
 .app-shell[data-theme="dark"] .quiet-action:hover {
-  border-color: #454064;
-  color: #d5d0ff;
+  border-color: rgba(226, 0, 26, 0.4);
+  background: rgba(226, 0, 26, 0.14);
+  color: #e6e9f0;
+}
+.app-shell[data-theme="dark"] .icon-button:hover {
+  background: rgba(226, 0, 26, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(226, 0, 26, 0.4);
+  color: #e6e9f0;
 }
 .app-shell[data-theme="dark"] .self-photo {
   border-radius: inherit;
@@ -2476,8 +3441,8 @@ button.team-row.clickable:hover {
   position: relative;
 }
 .history-tool .active-icon {
-  border-color: #c9c2f0;
-  color: #5b4fc0;
+  border-color: #d9dbe0;
+  color: #17191d;
 }
 .tool-dot {
   position: absolute;
@@ -2486,7 +3451,7 @@ button.team-row.clickable:hover {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #6558d3;
+  background: #17191d;
 }
 .history-popover {
   position: absolute;
@@ -2521,11 +3486,73 @@ button.team-row.clickable:hover {
   font-size: 12px;
 }
 .history-detail {
+  /* Owner (2026-11-19): the back button row sits above the columns. */
+  display: block;
+  width: 100%;
+}
+.history-back {
+  /* Owner (2026-11-19): bold, full-width, label centered. */
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e4e6ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #17191d;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: center;
+}
+.history-back:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.history-detail-columns {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(240px, 3fr);
   gap: 14px;
   align-items: start;
-  width: 100%;
+}
+.history-fact {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 2px;
+  border-bottom: 1px solid #f0f2f5;
+  font-size: 10.5px;
+}
+.history-fact span {
+  color: #8a93a2;
+}
+.history-fact strong {
+  color: #17191d;
+  text-align: right;
+}
+/* Owner (2026-11-19): compact fact blocks (user / operator / chat). */
+.history-fact-block {
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: #fafbfc;
+}
+.history-fact-block:last-child {
+  margin-bottom: 0;
+}
+.history-fact-title {
+  font-size: 10px;
+  font-weight: 800;
+  color: #17191d;
+  margin-bottom: 4px;
+}
+.history-fact-block .history-fact {
+  border-bottom-color: #eef1f5;
+}
+.history-fact-block .history-fact:last-child {
+  border-bottom: none;
 }
 .history-detail-chat {
   display: grid;
@@ -2539,6 +3566,17 @@ button.team-row.clickable:hover {
 .history-detail-chat .history-messages {
   overflow-y: auto;
   max-height: calc(100vh - 300px);
+}
+/* Owner (2026-11-19): the details column scrolls like the chat one. */
+.history-detail-info {
+  overflow-y: auto;
+  max-height: calc(100vh - 300px);
+}
+/* Owner (2026-11-19): the SLA card is centered with a label above. */
+.history-sla-card {
+  width: 100%;
+  justify-content: center;
+  margin-top: 6px;
 }
 .history-detail-info {
   display: grid;
@@ -2565,7 +3603,7 @@ button.team-row.clickable:hover {
   border-color: #3a4251;
   color: #e4e7ee;
 }
-.app-shell[data-theme="dark"] .history-tool .active-icon { border-color: #454064; color: #d5d0ff; }
+.app-shell[data-theme="dark"] .history-tool .active-icon { border-color: #3a4149; color: #e6e9f0; }
 .app-shell[data-theme="dark"] .history-inline-search select,
 .app-shell[data-theme="dark"] .history-inline-search input { background: #242b38; border-color: #3a4251; color: #e4e7ee; }
 .app-shell[data-theme="dark"] .history-detail-chat,
@@ -2590,7 +3628,7 @@ button.team-row.clickable:hover {
   min-height: 34px;
   border: 0;
   border-radius: 7px;
-  background: #6558d3;
+  background: #17191d;
   color: #fff;
   font-size: 11px;
   font-weight: 600;
@@ -2628,7 +3666,7 @@ button.team-row.clickable:hover {
   color: #6a7688;
   cursor: pointer;
 }
-.range-head button:hover { border-color: #c9c2f0; color: #5b4fc0; }
+.range-head button:hover { border-color: #d9dbe0; color: #17191d; }
 .range-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -2649,11 +3687,11 @@ button.team-row.clickable:hover {
   font-size: 11.5px;
   cursor: pointer;
 }
-.range-day:hover { background: #f1efff; }
-.range-day.in-range { background: #efedff; color: #5b4fc0; font-weight: 600; }
+.range-day:hover { background: #f1f2f4; }
+.range-day.in-range { background: #eceef1; color: #17191d; font-weight: 600; }
 .range-day.range-start,
 .range-day.range-end {
-  background: #6558d3;
+  background: #17191d;
   color: #fff;
   font-weight: 700;
 }
@@ -2673,7 +3711,7 @@ button.team-row.clickable:hover {
   padding: 0 18px;
   border: 0;
   border-radius: 8px;
-  background: #6558d3;
+  background: #17191d;
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -2722,15 +3760,26 @@ button.team-row.clickable:hover {
 .history-inline-search input:focus,
 .history-inline-search select:focus {
   outline: none;
-  border-color: #a99fe8;
+  border-color: #b9bec7;
 }
 
 .app-shell[data-theme="dark"] .resolve-label select { background: #242b38; border-color: #3a4251; color: #e4e7ee; }
 .app-shell[data-theme="dark"] .range-head strong { color: #d9deea; }
 .app-shell[data-theme="dark"] .range-head button { background: #242b38; border-color: #3a4251; color: #aeb6c4; }
 .app-shell[data-theme="dark"] .range-day { color: #c1c7d2; }
-.app-shell[data-theme="dark"] .range-day:hover { background: #302d48; }
-.app-shell[data-theme="dark"] .range-day.in-range { background: #302d48; color: #d5d0ff; }
+.app-shell[data-theme="dark"] .range-day:hover { background: #262b33; }
+.app-shell[data-theme="dark"] .range-day.in-range { background: #262b33; color: #e6e9f0; }
 .app-shell[data-theme="dark"] .range-day.range-start,
-.app-shell[data-theme="dark"] .range-day.range-end { background: #6558d3; color: #fff; }
+.app-shell[data-theme="dark"] .range-day.range-end { background: #17191d; color: #fff; }
 .app-shell[data-theme="dark"] .range-hint { color: #8a93a2; }
+
+.app-shell[data-theme="dark"] .ad-refresh-corner {
+  background: #242b38;
+  border-color: #3a4251;
+  color: #9aa5b8;
+}
+.app-shell[data-theme="dark"] .ad-refresh-corner:hover:not(:disabled) {
+  color: #e2001a;
+  border-color: rgba(226, 0, 26, 0.4);
+  background: rgba(226, 0, 26, 0.14);
+}

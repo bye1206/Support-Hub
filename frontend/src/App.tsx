@@ -10,22 +10,66 @@ import "./App.css";
 import { AdminPanel } from "./AdminPanel";
 import { Composer } from "./Composer";
 import { TicketRow } from "./TicketRow";
-import { Timeline } from "./Timeline";
+import { HistoryMessages, Timeline } from "./Timeline";
 import {
   ago,
   initials,
-  messageHeading,
+  shortFio,
   shortId,
   statusName,
+  type MessageAttachmentInfo,
+  type SlaHistoryEvent,
   type Ticket,
 } from "./workspace-model";
 type Note = {
   note_id: string;
   conversation_id: string;
   author_id: string;
+  author_name?: string | null;
   body: string;
   created_at: string;
 };
+
+// Owner (2026-11-19): the status card carries a one-line human hint so the
+// state of the dialog is obvious without decoding the status name.
+
+// Owner (2026-11-19): per-status durations for the SLA modal — computed
+// from the transition history; the last interval is open while the ticket
+// is not terminal.
+const slaDurationRows = (events: SlaHistoryEvent[], currentStatus: string) => {
+  const statusEvents = events
+    .filter((event) => event.kind === "status")
+    .sort(
+      (a, b) =>
+        new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime(),
+    );
+  const durations = new Map<string, number>();
+  const push = (status: string, from: number, to: number) => {
+    if (to <= from) return;
+    durations.set(status, (durations.get(status) ?? 0) + (to - from));
+  };
+  statusEvents.forEach((event, index) => {
+    const from = new Date(event.changed_at).getTime();
+    const next = statusEvents[index + 1];
+    const to = next
+      ? new Date(next.changed_at).getTime()
+      : ["RESOLVED", "CLOSED"].includes(event.to_status ?? "")
+        ? from
+        : Date.now();
+    push(event.to_status ?? "", from, to);
+  });
+  if (!statusEvents.length && currentStatus) {
+    // A ticket may have no transitions yet (NEW): count from creation —
+    // not available here, so show zero state via empty rows list.
+    return [];
+  }
+  return [...durations.entries()]
+    .map(([status, ms]) => ({ status, duration: fmtDuration(ms) }))
+    .sort((a, b) => b.duration.localeCompare(a.duration));
+};
+
+// Owner (2026-11-19): shared download for read-only history lists — the
+// auth header is required, so the blob is fetched here.
 type Colleague = {
   operator_id: string;
   display_name: string | null;
@@ -47,7 +91,7 @@ type AdInfo = {
   locked?: boolean;
   password_changed_at?: string | null;
   password_expires_at?: string | null;
-  groups?: string[];
+  groups?: AdGroup[];
   photo_url?: string;
   synced_at?: string | null;
   demo?: boolean;
@@ -78,7 +122,9 @@ type Category = {
 type AssignmentEvent = {
   action: string;
   actor_id: string | null;
+  actor_name?: string | null;
   assignee_id: string | null;
+  assignee_name?: string | null;
   created_at: string;
 };
 type TicketTag = { tag_id: string; name: string };
@@ -89,6 +135,7 @@ type OperatorProfile = {
   role: string;
 };
 type Theme = "light" | "dark";
+type AdGroup = { name: string; description?: string };
 type AdSearchResult = {
   login: string;
   full_name: string;
@@ -101,10 +148,11 @@ type AdSearchResult = {
   manager?: string;
   disabled: boolean;
   locked?: boolean;
-  groups: string[];
+  groups: AdGroup[];
   password_changed_at: string | null;
   password_expires_at: string | null;
   demo?: boolean;
+  photo?: string;
 };
 type HistorySearchType = "name" | "login" | "email" | "text" | "id";
 type HistoryFilters = {
@@ -231,6 +279,40 @@ const priorityName: Record<string, string> = {
   HIGH: "Высокий",
   URGENT: "Срочный",
 };
+// Owner (2026-11-17): audible ping for incoming user messages — WebAudio,
+// no binary asset needed.
+// Owner (2026-11-18): softer two-note "ding" (G5 -> C6, triangle) instead of
+// the shrill sines — pleasant for frequent use, still noticeable.
+const playPing = () => {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const play = (freq: number, at: number, dur: number, vol: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, at);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(vol, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(at);
+      osc.stop(at + dur + 0.05);
+      osc.onended = () => void ctx.close();
+    };
+    const t0 = ctx.currentTime;
+    play(784, t0, 0.35, 0.05);
+    play(1046.5, t0 + 0.11, 0.5, 0.04);
+  } catch {
+    // sound is a nicety, never a failure
+  }
+};
+
 const readCredentials = (): Credentials => {
   try {
     const parsed = JSON.parse(sessionStorage.getItem("support-hub-operator") || "null");
@@ -253,7 +335,10 @@ async function api<T>(
   const response = await fetch(`/api/v1/operator${path}`, {
     ...init,
     headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      // FormData sets its own multipart boundary — never pre-set JSON.
+      ...(init?.body && !(init.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
       Authorization: `Bearer ${auth.token}`,
       ...init?.headers,
     },
@@ -296,6 +381,11 @@ export default function App() {
     [transferOpen, setTransferOpen] = useState(false),
     [transferConfirm, setTransferConfirm] = useState<Colleague | null>(null),
     [movesOpen, setMovesOpen] = useState(false),
+    // Owner (2026-11-19): the SLA modal — status history + per-status
+    // durations, opened by clicking the SLA card.
+    // Owner (2026-11-19): the SLA modal works for any ticket (history too).
+    [slaTicket, setSlaTicket] = useState<Ticket | null>(null),
+    [slaEvents, setSlaEvents] = useState<SlaHistoryEvent[]>([]),
     [historyOpen, setHistoryOpen] = useState(false),
     [historyDetail, setHistoryDetail] = useState<Ticket | null>(null),
     [sessionOpen, setSessionOpen] = useState(false),
@@ -308,9 +398,18 @@ export default function App() {
     [profile, setProfile] = useState<OperatorProfile | null>(null),
     [categories, setCategories] = useState<Category[]>([]),
     [assignmentHistory, setAssignmentHistory] = useState<AssignmentEvent[]>([]),
+    // Owner (2026-11-19): moves for the history page details aside.
+    [historyMoves, setHistoryMoves] = useState<AssignmentEvent[]>([]),
+    [historyMovesExpanded, setHistoryMovesExpanded] = useState(false),
     [previousTickets, setPreviousTickets] = useState<Ticket[]>([]),
     [ticketTags, setTicketTags] = useState<TicketTag[]>([]),
     [adInfo, setAdInfo] = useState<AdInfo | null>(null),
+    // Owner (2026-11-18): until the AD card for the CURRENT ticket arrives,
+    // the header shows a skeleton instead of flashing the short queue name.
+    [adInfoReadyFor, setAdInfoReadyFor] = useState<string | null>(null),
+    // Owner (2026-11-18): while a freshly selected ticket is loading, the
+    // details panel shows "Загрузка…" instead of the PREVIOUS ticket's data.
+    [detailsStale, setDetailsStale] = useState(false),
     [adPhotos, setAdPhotos] = useState<Record<string, string>>({}),
     [opPhoto, setOpPhoto] = useState<string | null>(null),
     [notes, setNotes] = useState<Note[]>([]),
@@ -322,6 +421,10 @@ export default function App() {
     >(null),
     [historyPageTicket, setHistoryPageTicket] = useState<Ticket | null>(null),
     [resolveOpen, setResolveOpen] = useState(false),
+    // Owner (2026-11-19): files dropped anywhere on the dialog window are
+    // forwarded to the composer via this queue.
+    [droppedFiles, setDroppedFiles] = useState<File[]>([]),
+    [dragOverConversation, setDragOverConversation] = useState(false),
     [resolveCategoryId, setResolveCategoryId] = useState(""),
     [resolveThemeId, setResolveThemeId] = useState(""),
     [historyLoading, setHistoryLoading] = useState(false),
@@ -330,11 +433,10 @@ export default function App() {
     [queueGroup, setQueueGroup] = useState("all"),
     [visibleCount, setVisibleCount] = useState(100),
     [adOpen, setAdOpen] = useState(false),
-    [adQuery, setAdQuery] = useState(""),
-    [adResults, setAdResults] = useState<AdSearchResult[]>([]),
     [adDetail, setAdDetail] = useState<AdSearchResult | null>(null),
     [adSearching, setAdSearching] = useState(false),
-    [adSearched, setAdSearched] = useState(false),
+    [adRefreshing, setAdRefreshing] = useState(false),
+    [adGroupQuery, setAdGroupQuery] = useState(""),
     [loading, setLoading] = useState(false),
     [error, setError] = useState(""),
     [toast, setToast] = useState(""),
@@ -354,7 +456,19 @@ export default function App() {
     syncRef = useRef<() => void>(() => {}),
     syncTimer = useRef(0),
     // Guards the async AD card against overwriting a switched-away ticket.
-    adUserRef = useRef<string | null>(null);
+    adUserRef = useRef<string | null>(null),
+    adInfoReadyRef = useRef<string | null>(null),
+    detailsTicketRef = useRef<string | null>(null),
+    // Mirror of the queue for WS handlers (toasts need ticket names).
+    ticketsRef = useRef<Ticket[]>([]),
+    // Owner (2026-11-18): the queue view hides chats that got assigned to
+    // someone else (AI handoff, auto-route, another operator's claim) —
+    // the open dialog must close in that case too.
+    operatorIdRef = useRef<string | null>(null),
+    // History scroll behavior (owner 2026-11-17): keep the viewport pinned
+    // to the bottom while reading the tail; never reset it mid-read.
+    currentIdRef = useRef<string | null>(null),
+    stickToBottom = useRef(true);
   const scheduleSync = useCallback(() => {
     window.clearTimeout(syncTimer.current);
     syncTimer.current = window.setTimeout(() => syncRef.current(), 400);
@@ -391,17 +505,46 @@ export default function App() {
   useEffect(() => {
     selectedRef.current = selectedId;
   }, [selectedId]);
+  useEffect(() => {
+    currentIdRef.current = current?.ticket_id ?? null;
+  }, [current]);
+  useEffect(() => {
+    operatorIdRef.current = operatorId;
+  }, [operatorId]);
   const loadQueue = useCallback(async () => {
     if (!ready) return;
     try {
       const data = await api<{ tickets: Ticket[] }>("/tickets?limit=200", auth);
+      ticketsRef.current = data.tickets;
       setTickets(data.tickets);
       setError("");
-      if (
-        selectedRef.current &&
-        !data.tickets.some((t) => t.ticket_id === selectedRef.current)
-      )
+      const selected = selectedRef.current
+        ? data.tickets.find((t) => t.ticket_id === selectedRef.current)
+        : null;
+      if (selectedRef.current && !selected) {
+        // Owner (2026-11-18): when the chat leaves the queue (e.g. the
+        // operator went on lunch), the open dialog and the details panel
+        // must close too. Clear the ref synchronously, otherwise the
+        // trailing sync() reloads the released ticket and re-opens it.
+        selectedRef.current = null;
         setSelectedId(null);
+        setCurrent(null);
+        setNotes([]);
+      } else if (
+        selected &&
+        selected.assignee_id &&
+        operatorIdRef.current &&
+        selected.assignee_id !== operatorIdRef.current
+      ) {
+        // Owner (2026-11-18): the AI handed the chat off and it was routed
+        // to another operator (or another operator claimed the unassigned
+        // chat). The chat left MY visible queue — close dialog + details.
+        selectedRef.current = null;
+        setSelectedId(null);
+        setCurrent(null);
+        setNotes([]);
+        setToast("Обращение взял другой оператор");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить очередь");
     }
@@ -412,9 +555,18 @@ export default function App() {
     // Perf/UX (2026-11-17): a slow answer for the PREVIOUS ticket must not
     // overwrite the card of the currently selected one.
     try {
-      const info = await api<AdInfo>(`/users/${userId}/ad-info`, auth);
+      // Owner (2026-11-17): the panel card is fetched FRESH (force bypasses
+      // the 24h cache) — position/department changes show up immediately.
+      // When AD is unreachable the endpoint gracefully returns the cached
+      // organizational copy.
+      const info = await api<AdInfo>(
+        `/users/${userId}/ad-info?force=true`,
+        auth,
+      );
       if (adUserRef.current !== userId) return;
       setAdInfo(info);
+      adInfoReadyRef.current = userId;
+      setAdInfoReadyFor(userId);
       if (info.available && info.photo_url && !adPhotosRef.current[userId]) {
         const response = await fetch(info.photo_url, {
           headers: { Authorization: `Bearer ${auth.token}` },
@@ -426,16 +578,56 @@ export default function App() {
         }
       }
     } catch {
-      if (adUserRef.current === userId) setAdInfo(null);
+      if (adUserRef.current === userId) {
+        setAdInfo(null);
+        adInfoReadyRef.current = userId;
+        setAdInfoReadyFor(userId);
+      }
+    }
+  };
+  // Owner (2026-11-17): manual refresh — bypasses the 24h cache so a
+  // promoted / moved / renamed employee shows up immediately.
+  const refreshAdInfo = async (userId: string) => {
+    if (adRefreshing) return;
+    setAdRefreshing(true);
+    try {
+      const info = await api<AdInfo>(
+        `/users/${userId}/ad-info?force=true`,
+        auth,
+      );
+      if (adUserRef.current !== userId) return;
+      setAdInfo(info);
+      setToast("Данные обновлены из AD");
+      if (info.available && info.photo_url && !adPhotosRef.current[userId]) {
+        const response = await fetch(info.photo_url, {
+          headers: { Authorization: `Bearer ${auth.token}` },
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          adPhotosRef.current[userId] = URL.createObjectURL(blob);
+          setAdPhotos({ ...adPhotosRef.current });
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить из AD");
+    } finally {
+      setAdRefreshing(false);
     }
   };
   const loadTicket = useCallback(
     async (id: string) => {
       if (!ready) return;
-      setLoading(true);
+      // Owner (2026-11-17): a background refresh of the OPEN ticket must not
+      // flash the loading state — that collapsed the history and threw the
+      // scroll to the top on every incoming message.
+      if (currentIdRef.current !== id) setLoading(true);
+      const switching = detailsTicketRef.current !== id;
+      detailsTicketRef.current = id;
+      if (switching) setDetailsStale(true);
       try {
         const ticket = await api<Ticket>(`/tickets/${id}`, auth);
         adUserRef.current = ticket.user_id;
+        if (adInfoReadyRef.current !== ticket.user_id) setAdInfoReadyFor(null);
         const [noteData, categoryData, historyData, pastData, tagData] =
           await Promise.all([
             api<{ notes: Note[] }>(
@@ -463,7 +655,18 @@ export default function App() {
           ),
         );
         setTicketTags(tagData.tags);
-        await loadAdInfo(ticket.user_id);
+        // Owner (2026-11-18): a ticket closed by the session timeout must
+        // leave the OPEN workspace immediately, not on the next refresh.
+        if (ticket.status === "CLOSED") {
+          setSelectedId(null);
+          setToast("Диалог закрыт: время сессии ограничено (3 часа)");
+        }
+        // Owner (2026-11-18): the AD card is fetched once per user (switch /
+        // manual refresh); background syncs skip the LDAP round-trip — it
+        // made every live update feel frozen for a second.
+        if (adInfoReadyRef.current !== ticket.user_id)
+          await loadAdInfo(ticket.user_id);
+        if (switching) setDetailsStale(false);
         setError("");
       } catch (e) {
         setError(
@@ -523,8 +726,12 @@ export default function App() {
       headers: { Authorization: `Bearer ${auth.token}` },
     })
       .then(async (response) => {
-        if (!active || !response.ok) return;
+        // Owner (2026-11-20): AD sometimes serves a broken/placeholder
+        // photo — show the initials avatar (like the Team rows) instead.
+        const type = response.headers.get("content-type") || "";
+        if (!active || !response.ok || !type.startsWith("image/")) return;
         const blob = await response.blob();
+        if (blob.size < 1024) return;
         setOpPhoto(URL.createObjectURL(blob));
       })
       .catch(() => undefined);
@@ -588,7 +795,23 @@ export default function App() {
       ws.onmessage = (e) => {
         try {
           const v = JSON.parse(e.data);
-          if (v.type !== "ready" && v.type !== "ping") scheduleSync();
+          if (v.type !== "ready" && v.type !== "ping") {
+            scheduleSync();
+            // Owner (2026-11-18): toast names the person and only fires for
+            // user messages. The event payload is nested ("payload"), the
+            // flat v.conversation_id never existed.
+            if (v.type === "message.user_received") {
+              playPing();
+              const sender = ticketsRef.current.find(
+                (item) => item.conversation_id === v.payload?.conversation_id,
+              );
+              setToast(
+                sender?.user_name
+                  ? `Новое сообщение: ${shortFio(sender.user_name)}`
+                  : "Новое сообщение от пользователя",
+              );
+            }
+          }
         } catch {
           scheduleSync();
         }
@@ -603,13 +826,17 @@ export default function App() {
       ws.onerror = () => ws.close();
     };
     connect();
+    // Owner (2026-11-18): safety poll — even if the WS silently dies behind
+    // the dev proxy, the workspace self-heals every 15 s.
+    const poll = window.setInterval(() => scheduleSync(), 15000);
     return () => {
       stopped = true;
+      window.clearInterval(poll);
       clearTimeout(retry.current);
       socket.current?.close();
       socket.current = null;
     };
-  }, [auth.token, ready, sync]);
+  }, [auth.token, ready, sync, scheduleSync]);
   // Virtualization-lite (perf round 2026-11-17): render the queue windowed
   // — a full 200-row list is mounted only when the operator actually scrolls.
   useEffect(() => {
@@ -620,25 +847,26 @@ export default function App() {
       (t) => t.status !== "RESOLVED" && t.status !== "CLOSED",
     );
     const mine = active.filter((t) => t.assignee_id === operatorId);
-    const mineWorking = mine.filter((t) => t.status === "OPEN");
+    // Owner (2026-11-18): a ticket claimed from the queue is in work even
+    // before the first reply — status stays NEW until the user writes again,
+    // and it must not fall out of "В работе".
+    const mineWorking = mine.filter(
+      (t) => t.status === "OPEN" || t.status === "NEW",
+    );
     const mineWaiting = mine.filter((t) => t.status === "PENDING_USER");
-    // Owner request 2026-11-13: a ticket assigned to me must never be
-    // invisible — while the AI still holds the dialog it shows in its own
-    // group instead of vanishing between "В работе" and "Ожидают".
-    const mineAI = mine.filter((t) => t.status === "AI_PROCESSING");
-    // "Очередь" = everything no operator has taken (any active status) plus
-    // the dialogs still being processed by the AI.
+    // Owner (2026-11-18): "Мои обращения" holds exactly two states — "В
+    // работе" and "Ожидают пользователя"; the AI stage is not the
+    // operator's business and never shows here. In the QUEUE the AI group
+    // stays ("Обработка ИИ"), so unassigned must exclude AI_PROCESSING —
+    // otherwise those tickets render twice in "Все обращения".
     const unassigned = active.filter(
       (t) => !t.assignee_id && t.status !== "AI_PROCESSING",
     );
-    const ai = active.filter(
-      (t) => t.status === "AI_PROCESSING" && t.assignee_id !== operatorId,
-    );
+    const ai = active.filter((t) => t.status === "AI_PROCESSING");
     return {
       mineWorking,
       mineWaiting,
-      mineAI,
-      mineAll: [...mineWorking, ...mineWaiting, ...mineAI],
+      mineAll: [...mineWorking, ...mineWaiting],
       queueUnassigned: unassigned,
       queueAI: ai,
       queueAll: [...unassigned, ...ai],
@@ -668,21 +896,31 @@ export default function App() {
       setHistoryLoading(false);
     }
   };
-  const searchAd = async (query: string) => {
-    setAdSearching(true);
-    setAdDetail(null);
-    setAdSearched(true);
+  // Owner (2026-11-17): the groups table is filterable (magnifier input).
+  const adGroupsFiltered = useMemo(() => {
+    const groups = adDetail?.groups ?? [];
+    const query = adGroupQuery.trim().toLowerCase();
+    if (!query) return groups;
+    return groups.filter(
+      (group) =>
+        group.name.toLowerCase().includes(query) ||
+        (group.description || "").toLowerCase().includes(query),
+    );
+  }, [adDetail, adGroupQuery]);
+  const openSlaHistory = async (ticket?: Ticket) => {
+    const target = ticket ?? current;
+    if (!target) return;
     try {
-      const data = await api<{ results: AdSearchResult[] }>(
-        `/ad/search?q=${encodeURIComponent(query)}`,
+      const data = await api<{ events: SlaHistoryEvent[] }>(
+        `/tickets/${target.ticket_id}/sla-history`,
         auth,
       );
-      setAdResults(data.results);
+      setSlaEvents(data.events ?? []);
+      setSlaTicket(target);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Поиск по AD недоступен");
-      setAdResults([]);
-    } finally {
-      setAdSearching(false);
+      setError(
+        e instanceof Error ? e.message : "Не удалось загрузить историю SLA",
+      );
     }
   };
   const openAdDetail = async (login: string) => {
@@ -720,6 +958,16 @@ export default function App() {
     ),
     [current?.messages, notes],
   );
+  // Owner (2026-11-17): when reading the tail of the history, a new message
+  // scrolls the view down; opening a ticket always lands at the bottom.
+  useEffect(() => {
+    const el = history.current;
+    if (!el || typeof el.scrollTo !== "function") return;
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: stickToBottom.current ? "smooth" : "auto",
+    });
+  }, [timeline.length, current?.ticket_id]);
   const signIn = async (e: FormEvent) => {
     e.preventDefault();
     if (!draftLogin.trim() || !draftPassword || signingIn) return;
@@ -748,16 +996,61 @@ export default function App() {
       setSigningIn(false);
     }
   };
+  // Owner (2026-11-19): shared attachment download (workspace + history).
+  const downloadAttachment = useCallback(
+    async (attachment: MessageAttachmentInfo) => {
+      try {
+        const response = await fetch(
+          `/api/v1/operator/attachments/${attachment.id}/file`,
+          { headers: { Authorization: `Bearer ${auth.token}` } },
+        );
+        if (!response.ok) throw Error("Файл недоступен");
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = attachment.file_name;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Не удалось скачать файл",
+        );
+      }
+    },
+    [auth.token],
+  );
   const send = useCallback(
-    async (mode: "reply" | "note", body: string): Promise<boolean> => {
+    async (
+      mode: "reply" | "note",
+      body: string,
+      files: File[] = [],
+    ): Promise<boolean> => {
       if (!current) return false;
       try {
         if (mode === "reply") {
+          // Owner (2026-11-19): files are uploaded first (pending
+          // attachments), then linked to the sent reply.
+          const attachmentIds: string[] = [];
+          for (const file of files) {
+            const form = new FormData();
+            form.append("file", file);
+            const uploaded = await api<{ id: string }>(
+              `/tickets/${current.ticket_id}/attachments`,
+              auth,
+              { method: "POST", body: form },
+            );
+            attachmentIds.push(uploaded.id);
+          }
           await api(`/tickets/${current.ticket_id}/replies`, auth, {
             method: "POST",
-            body: JSON.stringify({ text: body }),
+            body: JSON.stringify({ text: body, attachment_ids: attachmentIds }),
           });
-          setToast("Ответ отправлен в очередь доставки");
+          setToast(
+            attachmentIds.length
+              ? `Ответ отправлен (${attachmentIds.length} влож.)`
+              : "Ответ отправлен в очередь доставки",
+          );
         } else {
           await api(`/conversations/${current.conversation_id}/notes`, auth, {
             method: "POST",
@@ -849,6 +1142,12 @@ export default function App() {
     try {
       const card = await api<Ticket>(`/tickets/${ticketId}`, auth);
       setHistoryPageTicket(card);
+      // Owner (2026-11-19): the details-style aside shows the moves too.
+      const moves = await api<{ events: AssignmentEvent[] }>(
+        `/tickets/${ticketId}/assignment-history`,
+        auth,
+      );
+      setHistoryMoves(moves.events ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось открыть обращение");
     }
@@ -883,6 +1182,17 @@ export default function App() {
         method: "POST",
         body: JSON.stringify({ status }),
       });
+      if (status !== "ACTIVE") {
+        // Owner (2026-11-18): leaving ACTIVE releases the operator's chats
+        // back to the queue (backend: release_operator_tickets). The released
+        // dialog must close at once — waiting for the queue guard does not
+        // work: the ticket stays in /tickets (just unassigned), only the
+        // client-side "mine" filter hides it from the list.
+        selectedRef.current = null;
+        setSelectedId(null);
+        setCurrent(null);
+        setNotes([]);
+      }
       const fresh = await api<{ team: TeamMember[] }>("/team", auth);
       setTeam(fresh.team ?? []);
       // Presence change can release/reroute chats: refresh the queue at once.
@@ -1032,26 +1342,28 @@ export default function App() {
             <p className="eyebrow">SUPPORT HUB</p>
             <h1>Обращения</h1>
           </div>
-          <button
-            className="icon-button"
-            title="Обновить"
-            onClick={() => void sync()}
-          >
-            ↻
-          </button>
-          <button
-            className="icon-button"
-            title="Команда: статусы и нагрузка"
-            aria-label="Команда: статусы и нагрузка"
-            onClick={() => setTeamOpen(true)}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="8.5" cy="8" r="3" />
-              <circle cx="16.5" cy="9.5" r="2.4" />
-              <path d="M3 19c.5-3 2.7-4.8 5.5-4.8S13.5 16 14 19" />
-              <path d="M15.5 14.6c2.4.2 4.3 1.7 5 4.4" />
-            </svg>
-          </button>
+          <div className="header-actions">
+            <button
+              className="icon-button"
+              title="Обновить"
+              onClick={() => void sync()}
+            >
+              ↻
+            </button>
+            <button
+              className="icon-button"
+              title="Команда: статусы и нагрузка"
+              aria-label="Команда: статусы и нагрузка"
+              onClick={() => setTeamOpen(true)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="8.5" cy="8" r="3" />
+                <circle cx="16.5" cy="9.5" r="2.4" />
+                <path d="M3 19c.5-3 2.7-4.8 5.5-4.8S13.5 16 14 19" />
+                <path d="M15.5 14.6c2.4.2 4.3 1.7 5 4.4" />
+              </svg>
+            </button>
+          </div>
         </header>
         <div className="queue-tabs" role="tablist" aria-label="Раздел очереди">
           <button
@@ -1088,13 +1400,8 @@ export default function App() {
                     { key: "working", label: "В работе", items: columns.mineWorking },
                     {
                       key: "waiting",
-                      label: "Ожидают пользователя",
+                      label: "Ожидает пользователя",
                       items: columns.mineWaiting,
-                    },
-                    {
-                      key: "mineAI",
-                      label: "У ИИ-помощника",
-                      items: columns.mineAI,
                     },
                   ]
                 : [
@@ -1139,9 +1446,6 @@ export default function App() {
                       key={ticket.ticket_id}
                       ticket={ticket}
                       selected={selectedId === ticket.ticket_id}
-                      groupLabel={
-                        selected.key === "all" ? undefined : selected.label
-                      }
                       onSelect={(ticketId) => {
                         setSelectedId(ticketId);
                         setMobile("conversation");
@@ -1225,7 +1529,27 @@ export default function App() {
         </footer>
       </aside>
       <main
-        className={`conversation-panel ${mobile === "conversation" ? "mobile-visible" : "mobile-hidden"} ${currentUnassigned ? "chat-locked" : ""}`}
+        className={`conversation-panel ${mobile === "conversation" ? "mobile-visible" : "mobile-hidden"} ${currentUnassigned ? "chat-locked" : ""} ${dragOverConversation ? "drag-over" : ""}`}
+        onDragOver={(e) => {
+          // Owner (2026-11-19): files can be dropped anywhere on the dialog
+          // window — not only on the composer.
+          if (!current || currentUnassigned) return;
+          e.preventDefault();
+          setDragOverConversation(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) setDragOverConversation(false);
+        }}
+        onDrop={(e) => {
+          if (!current || currentUnassigned) return;
+          e.preventDefault();
+          setDragOverConversation(false);
+          const dropped = Array.from(e.dataTransfer.files ?? []);
+          if (dropped.length) {
+            setDroppedFiles((prev) => [...prev, ...dropped]);
+            setMobile("conversation");
+          }
+        }}
       >
         {current ? (
           <>
@@ -1287,8 +1611,13 @@ export default function App() {
                 )}
                 <button
                   className="icon-button"
-                  title="Передать сотруднику"
+                  title={
+                    currentUnassigned
+                      ? "Сначала назначьте сотрудника — чат никому не принадлежит"
+                      : "Передать сотруднику"
+                  }
                   aria-label="Передать сотруднику"
+                  disabled={currentUnassigned}
                   onClick={() => setTransferOpen(true)}
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1333,7 +1662,15 @@ export default function App() {
                 <button onClick={() => setError("")}>×</button>
               </div>
             )}
-            <div className="conversation-scroll" ref={history}>
+            <div
+              className="conversation-scroll"
+              ref={history}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                stickToBottom.current =
+                  el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
+              }}
+            >
               <div className="conversation-start">
                 {adPhotos[current.user_id] ? (
                   <img
@@ -1347,9 +1684,14 @@ export default function App() {
                   </div>
                 )}
                 <h3>
-                  {adInfo?.available && adInfo.full_name
+                  {adInfoReadyFor === current.user_id &&
+                  adInfo?.available &&
+                  adInfo.full_name
                     ? adInfo.full_name
-                    : `Пользователь ${shortId(current.user_id)}`}
+                    : adInfoReadyFor === current.user_id
+                      ? current.user_name ||
+                        `Пользователь ${shortId(current.user_id)}`
+                      : "Загрузка карточки…"}
                 </h3>
                 <p>
                   Обращение создано{" "}
@@ -1358,7 +1700,7 @@ export default function App() {
                   }).format(new Date(current.created_at))}
                 </p>
                 <span className="conversation-id">
-                  Диалог · {shortId(current.conversation_id)}
+                  Обращение · #{shortId(current.ticket_id)}
                 </span>
               </div>
               <div className="day-divider">
@@ -1369,8 +1711,52 @@ export default function App() {
               ) : (
                 <Timeline
                   entries={timeline}
-                  userShortId={shortId(current.user_id)}
+                  userLabel={
+                    adInfoReadyFor === current.user_id &&
+                    adInfo?.available &&
+                    adInfo.full_name
+                      ? adInfo.full_name
+                      : adInfoReadyFor === current.user_id
+                        ? current.user_name || "Пользователь"
+                        : "Пользователь"
+                  }
                   operatorName={profile?.display_name || "Оператор"}
+                  fetchAttachment={async (attachment) => {
+                    // Owner (2026-11-19): image previews and downloads both
+                    // go through the authorized fetch.
+                    const response = await fetch(
+                      `/api/v1/operator/attachments/${attachment.id}/file`,
+                      { headers: { Authorization: `Bearer ${auth.token}` } },
+                    );
+                    if (!response.ok) throw Error("Файл недоступен");
+                    return response.blob();
+                  }}
+                  onDownloadAttachment={(attachment) => {
+                    if (!current) return;
+                    // Owner (2026-11-19): the download needs the auth
+                    // header, so the parent fetches and saves the file.
+                    void fetch(
+                      `/api/v1/operator/attachments/${attachment.id}/file`,
+                      { headers: { Authorization: `Bearer ${auth.token}` } },
+                    )
+                      .then(async (response) => {
+                        if (!response.ok) throw Error("Файл недоступен");
+                        const blob = await response.blob();
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = attachment.file_name;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      })
+                      .catch((cause: unknown) =>
+                        setError(
+                          cause instanceof Error
+                            ? cause.message
+                            : "Не удалось скачать файл",
+                        ),
+                      );
+                  }}
                 />
               )}
             </div>
@@ -1378,6 +1764,8 @@ export default function App() {
               key={current.ticket_id}
               disabled={currentUnassigned}
               onSend={send}
+              droppedFiles={droppedFiles}
+              onDroppedFilesConsumed={() => setDroppedFiles([])}
             />
           </>
         ) : (
@@ -1426,6 +1814,20 @@ export default function App() {
           </header>
           <div className="details-scroll">
             <section className="customer-card">
+              <button
+                className="ad-refresh-corner"
+                title={adRefreshing ? "Обновляем из AD…" : "Обновить из AD"}
+                aria-label="Обновить из AD"
+                disabled={adRefreshing}
+                onClick={() => void refreshAdInfo(current.user_id)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" className={adRefreshing ? "spin" : ""}>
+                  <path d="M20 11A8 8 0 0 0 5.6 6.4L4 8" />
+                  <path d="M4 4v4h4" />
+                  <path d="M4 13a8 8 0 0 0 14.4 4.6L20 16" />
+                  <path d="M20 20v-4h-4" />
+                </svg>
+              </button>
               {adPhotos[current.user_id] ? (
                 <img
                   className="user-photo"
@@ -1441,12 +1843,25 @@ export default function App() {
                 <>
                   <h3>{adInfo.full_name || adInfo.login}</h3>
                   {adInfo.demo && <div className="ad-demo-note">Демо-данные: AD не подключён</div>}
-                  <p>
-                    {[adInfo.title, adInfo.department, adInfo.company]
-                      .filter(Boolean)
-                      .join(" · ") || "Сотрудник"}
-                  </p>
                   <div className="ad-rows">
+                    {adInfo.title && (
+                      <div>
+                        <span>Должность</span>
+                        {adInfo.title}
+                      </div>
+                    )}
+                    {adInfo.department && (
+                      <div>
+                        <span>Отдел</span>
+                        {adInfo.department}
+                      </div>
+                    )}
+                    {adInfo.company && (
+                      <div>
+                        <span>Компания</span>
+                        {adInfo.company}
+                      </div>
+                    )}
                     {adInfo.phone && (
                       <div>
                         <span>Тел.</span>
@@ -1481,6 +1896,7 @@ export default function App() {
                       new Date(adInfo.password_expires_at).getTime() > Date.now() && (
                         <div>
                           <span>Пароль истекает</span>
+                          через{" "}
                           {Math.ceil(
                             (new Date(adInfo.password_expires_at).getTime() -
                               Date.now()) /
@@ -1489,6 +1905,22 @@ export default function App() {
                           дн.
                         </div>
                       )}
+                    <div>
+                      <span>Статус УЗ</span>
+                      <b
+                        className={
+                          adInfo.disabled || adInfo.locked
+                            ? "ad-status-bad"
+                            : "ad-status-ok"
+                        }
+                      >
+                        {adInfo.disabled
+                          ? "Отключена"
+                          : adInfo.locked
+                            ? "Заблокирована"
+                            : "Активна"}
+                      </b>
+                    </div>
                   </div>
                   {(adInfo.disabled || adInfo.locked) && (
                     <div className="ad-warning">
@@ -1496,42 +1928,59 @@ export default function App() {
                       AD
                     </div>
                   )}
-                  <button
-                    className="ad-full-button"
-                    onClick={() => {
-                      setAdOpen(true);
-                      setAdDetail(null);
-                      setAdResults([]);
-                      setAdSearched(false);
-                      const initial =
-                        adInfo.login ||
-                        (adInfo.email || "").split("@")[0] ||
-                        (adInfo.full_name || "").split(" ")[0] ||
-                        "";
-                      setAdQuery(initial);
-                      if (initial) void searchAd(initial);
-                    }}
-                  >
-                    Полная информация
-                  </button>
+                  <div className="ad-actions">
+                    <button
+                      className="ad-full-button"
+                      onClick={() => {
+                        // Owner (2026-11-17): the full card shows access data
+                        // (groups, account status, password dates) — it must be
+                        // FRESH from AD, never from the cached copy. The panel
+                        // card keeps the cached organizational info only.
+                        const login =
+                          adInfo?.login || (adInfo?.email || "").split("@")[0] || "";
+                        setAdOpen(true);
+                        if (login) void openAdDetail(login);
+                        else setAdDetail(null);
+                      }}
+                    >
+                      Полная информация
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
-                  <h3>Пользователь {shortId(current.user_id)}</h3>
+                  <h3>
+                    {current.user_name || `Пользователь ${shortId(current.user_id)}`}
+                  </h3>
                   <p>Корпоративный пользователь</p>
                 </>
               )}
             </section>
-            <section className="detail-section">
-              <div className="detail-label">СТАТУС</div>
-              <div className="detail-value">
-                <span
-                  className={`status-dot ${current.status.toLowerCase()}`}
-                />
-                {statusName[current.status]}
+            {detailsStale ? (
+              <div className="ad-loading">
+                <span className="ad-spinner" />
+                Загружаем детали…
               </div>
-              <div className="detail-label spaced">SLA</div>
-              <div className="sla-card">
+            ) : (
+              <>
+            {/* Owner (2026-11-19): status and SLA are separate blocks with
+                a divider line between them. The status card is self-titled —
+                no label needed. */}
+            <section className="detail-section">
+              <div className={`status-card ${current.status.toLowerCase()}`}>
+                <span className="status-card-dot" />
+                <span className="status-card-name">
+                  {statusName[current.status]}
+                </span>
+              </div>
+            </section>
+            <section className="detail-section">
+              <div className="detail-label">SLA</div>
+              <div
+                className={`sla-card ${current.sla?.breached_at ? "breached" : ""} ${current.sla?.deadline && !current.sla?.breached_at ? "counting" : ""}`}
+                onClick={() => void openSlaHistory()}
+                title="История статусов и SLA"
+              >
                 <span className="sla-clock">◷</span>
                 <div>
                   <strong>
@@ -1548,7 +1997,13 @@ export default function App() {
                     {fmtDuration(Date.now() - new Date(current.created_at).getTime())}
                   </span>
                 </div>
-                <span className="sla-placeholder">SLA · этап 10</span>
+                <span className="sla-placeholder">
+                  {current.sla?.breached_at
+                    ? "SLA просрочен"
+                    : current.sla?.deadline
+                      ? `Ответ через ${Math.max(0, Math.ceil((new Date(current.sla.deadline).getTime() - Date.now()) / 60000))} мин`
+                      : "SLA 15 мин"}
+                </span>
               </div>
             </section>
             <section className="detail-section">
@@ -1565,10 +2020,14 @@ export default function App() {
                         ? "Принято у ИИ"
                         : event.action === "ticket.assignment_queued"
                           ? `Отложено: ожидает места у ${
+                              event.assignee_name ||
                               assignmentName(event.assignee_id)
                             }`
                           : event.assignee_id
-                            ? `Назначено оператору ${shortId(event.assignee_id)}`
+                            ? `Назначено оператору ${
+                                event.assignee_name ||
+                                assignmentName(event.assignee_id)
+                              }`
                             : "Снято назначение"}
                       <time>{ago(event.created_at)}</time>
                     </div>
@@ -1613,9 +2072,11 @@ export default function App() {
                     : "Обращение будет завершено; повторное сообщение пользователя создаст новое обращение"
                 }
               >
-                ✓ Решить обращение
+                Закрыть обращение
               </button>
             </section>
+              </>
+            )}
           </div>
         </aside>
       )}
@@ -1637,11 +2098,18 @@ export default function App() {
           role="presentation"
         >
           <div
-            className="modal"
+            className="modal ad-modal"
             role="dialog"
             aria-label="Передать обращение сотруднику"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              className="modal-close"
+              aria-label="Закрыть"
+              onClick={() => setTransferOpen(false)}
+            >
+              ×
+            </button>
             <div className="modal-title">Передать обращение сотруднику</div>
             {(() => {
               const reachable = colleagues.filter(
@@ -1729,10 +2197,14 @@ export default function App() {
                     ? "Принято у ИИ"
                     : event.action === "ticket.assignment_queued"
                       ? `Отложено: ожидает места у ${
+                          event.assignee_name ||
                           assignmentName(event.assignee_id)
                         }`
                       : event.assignee_id
-                        ? `Назначено оператору ${shortId(event.assignee_id)}`
+                        ? `Назначено оператору ${
+                            event.assignee_name ||
+                            assignmentName(event.assignee_id)
+                          }`
                         : "Снято назначение"}
                   <time>
                     {new Date(event.created_at).toLocaleString("ru-RU")}
@@ -1749,6 +2221,90 @@ export default function App() {
           </div>
         </div>
       )}
+      {slaTicket && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setSlaTicket(null)}
+          role="presentation"
+        >
+          <div
+            className="modal sla-modal"
+            role="dialog"
+            aria-label="История статусов и SLA"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="modal-close"
+              aria-label="Закрыть"
+              onClick={() => setSlaTicket(null)}
+            >
+              ×
+            </button>
+            <div className="modal-title">
+              Статусы и SLA · #{shortId(slaTicket.ticket_id)}
+            </div>
+            <div className="sla-modal-summary">
+              {slaTicket.sla?.breached_at ? (
+                <span className="sla-breach-banner">
+                  SLA просрочен — ответ оператора был позже 15 минут
+                </span>
+              ) : slaTicket.sla?.deadline ? (
+                <span className="sla-ok-banner">
+                  Ответ до{" "}
+                  {new Intl.DateTimeFormat("ru-RU", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }).format(new Date(slaTicket.sla.deadline))}
+                </span>
+              ) : (
+                <span className="sla-idle-banner">Часы SLA не идут</span>
+              )}
+            </div>
+            <div className="sla-durations">
+              {slaDurationRows(slaEvents, slaTicket.status).map((row) => (
+                <div className="sla-duration-row" key={row.status}>
+                  <span
+                    className={`status-dot ${row.status.toLowerCase()}`}
+                  />
+                  <strong>{statusName[row.status as Ticket["status"]]}</strong>
+                  <span className="sla-duration-value">{row.duration}</span>
+                </div>
+              ))}
+              {!slaEvents.length && (
+                <div className="past-empty">Переходов пока не было.</div>
+              )}
+            </div>
+            <div className="sla-events-title">События</div>
+            <div className="sla-events">
+              {slaEvents.map((event, index) => (
+                <div className="sla-event" key={`${event.kind}-${index}`}>
+                  <span>
+                    {event.kind === "sla_breached"
+                      ? "SLA просрочен"
+                      : event.kind === "sla_met"
+                        ? "Ответ оператора — SLA выполнен"
+                        : `${statusName[(event.from_status || "") as Ticket["status"]] || event.from_status} → ${statusName[(event.to_status || "") as Ticket["status"]] || event.to_status}`}
+                  </span>
+                  <time>
+                    {new Intl.DateTimeFormat("ru-RU", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }).format(new Date(event.changed_at))}
+                  </time>
+                </div>
+              ))}
+              {!slaEvents.length && (
+                <div className="past-empty">Событий пока нет.</div>
+              )}
+            </div>
+            <button className="quiet-action" onClick={() => setSlaTicket(null)}>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
       {resolveOpen && current && (
         <div
           className="modal-backdrop"
@@ -1756,13 +2312,13 @@ export default function App() {
           role="presentation"
         >
           <div
-            className="modal"
+            className="modal ad-modal"
             role="dialog"
-            aria-label="Решить обращение"
+            aria-label="Закрыть обращение"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-title">
-              Решить обращение · #{shortId(current.ticket_id)}
+              Закрыть обращение · #{shortId(current.ticket_id)}
             </div>
             <label className="resolve-label" htmlFor="resolve-category">
               Категория обращения
@@ -1822,7 +2378,7 @@ export default function App() {
                 })();
               }}
             >
-              ✓ Решить
+              Закрыть
             </button>
             <button
               className="quiet-action"
@@ -1840,11 +2396,18 @@ export default function App() {
           role="presentation"
         >
           <div
-            className="modal wide"
+            className="modal wide ad-modal"
             role="dialog"
             aria-label="Прошлые обращения пользователя"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              className="modal-close"
+              aria-label="Закрыть"
+              onClick={() => setHistoryOpen(false)}
+            >
+              ×
+            </button>
             {historyDetail ? (
               <>
                 <button
@@ -1868,27 +2431,10 @@ export default function App() {
                     : ""}
                 </div>
                 <div className="history-messages">
-                  {(historyDetail.messages ?? []).map((message) => (
-                    <div
-                      key={message.message_id}
-                      className={`message ${message.author_type === "OPERATOR" ? "from-operator" : ""}`}
-                    >
-                      <div className="message-content">
-                        <div className="message-heading">
-                          <strong>
-                            {messageHeading(message.author_type)}
-                          </strong>
-                          <time>
-                            {new Date(message.created_at).toLocaleString(
-                              "ru-RU",
-                              { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" },
-                            )}
-                          </time>
-                        </div>
-                        <div className="message-bubble">{message.text}</div>
-                      </div>
-                    </div>
-                  ))}
+                  <HistoryMessages
+                    messages={historyDetail.messages ?? []}
+                    onDownload={(attachment) => void downloadAttachment(attachment)}
+                  />
                 </div>
               </>
             ) : (
@@ -1931,7 +2477,7 @@ export default function App() {
           role="presentation"
         >
           <div
-            className="modal"
+            className="modal team-modal"
             role="dialog"
             aria-label="Команда"
             onClick={(e) => e.stopPropagation()}
@@ -1957,27 +2503,10 @@ export default function App() {
                       : ""}
                   </div>
                   <div className="history-messages">
-                    {(teamTicket.messages ?? []).map((message) => (
-                      <div
-                        key={message.message_id}
-                        className={`message ${message.author_type === "OPERATOR" ? "from-operator" : ""}`}
-                      >
-                        <div className="message-content">
-                          <div className="message-heading">
-                            <strong>
-                              {messageHeading(message.author_type)}
-                            </strong>
-                            <time>
-                              {new Date(message.created_at).toLocaleString(
-                                "ru-RU",
-                                { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" },
-                              )}
-                            </time>
-                          </div>
-                          <div className="message-bubble">{message.text}</div>
-                        </div>
-                      </div>
-                    ))}
+                    <HistoryMessages
+                      messages={teamTicket.messages ?? []}
+                      onDownload={(attachment) => void downloadAttachment(attachment)}
+                    />
                   </div>
                 </>
               ) : (
@@ -2089,134 +2618,124 @@ export default function App() {
           role="presentation"
         >
           <div
-            className="modal wide"
+            className="modal wide ad-modal"
             role="dialog"
-            aria-label="Поиск по AD"
+            aria-label="Полная информация из AD"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              className="modal-close"
+              aria-label="Закрыть"
+              onClick={() => setAdOpen(false)}
+            >
+              ×
+            </button>
             {adDetail ? (
               <>
-                <button className="quiet-action" onClick={() => setAdDetail(null)}>
-                  ← К результатам поиска
-                </button>
-                <div className="modal-title">
-                  {adDetail.full_name || adDetail.login}
-                </div>
-                <div className="muted history-meta">
-                  {[adDetail.title, adDetail.department, adDetail.company]
-                    .filter(Boolean)
-                    .join(" · ") || "Сотрудник"}
-                  {adDetail.disabled || adDetail.locked
-                    ? ` · учётная запись ${adDetail.disabled ? "отключена" : "заблокирована"}`
-                    : ""}
-                </div>
-                <div className="ad-rows dialog-rows">
-                  {adDetail.login && (
-                    <div>
-                      <span>Логин</span>
-                      {adDetail.login}
-                    </div>
+                <div className="ad-card-head">
+                  {adDetail.photo ? (
+                    <img className="ad-card-photo" src={adDetail.photo} alt="" />
+                  ) : (
+                    <span className="profile-avatar">
+                      {initials(adDetail.full_name || adDetail.login)}
+                    </span>
                   )}
-                  {adDetail.email && (
-                    <div>
-                      <span>Почта</span>
-                      {adDetail.email}
+                  <div>
+                    <div className="modal-title">
+                      {adDetail.full_name || adDetail.login}
                     </div>
-                  )}
-                  {adDetail.phone && (
-                    <div>
-                      <span>Тел.</span>
-                      {adDetail.phone}
-                    </div>
-                  )}
-                  {adDetail.mobile && (
-                    <div>
-                      <span>Моб.</span>
-                      {adDetail.mobile}
-                    </div>
-                  )}
-                  {adDetail.manager && (
-                    <div>
-                      <span>Руководитель</span>
-                      {adDetail.manager}
-                    </div>
-                  )}
-                  {adDetail.password_changed_at && (
-                    <div>
-                      <span>Пароль изменён</span>
-                      {new Date(adDetail.password_changed_at).toLocaleDateString("ru-RU")}
-                    </div>
-                  )}
-                  {adDetail.password_expires_at &&
-                    new Date(adDetail.password_expires_at).getTime() > Date.now() && (
-                      <div>
-                        <span>Пароль истекает</span>
-                        {Math.ceil(
-                          (new Date(adDetail.password_expires_at).getTime() -
-                            Date.now()) /
-                            86400000,
-                        )}{" "}
-                        дн.
-                      </div>
-                    )}
-                </div>
-                <div className="modal-title small">Группы AD ({adDetail.groups.length})</div>
-                {adDetail.groups.length ? (
-                  <div className="tag-list dialog-groups">
-                    {adDetail.groups.map((group) => (
-                      <span className="tag" key={group} title={group}>
-                        {group}
-                      </span>
-                    ))}
                   </div>
-                ) : (
-                  <div className="past-empty">Группы не найдены.</div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="modal-title">Поиск по AD</div>
-                <form
-                  className="ad-search-row"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (adQuery.trim()) void searchAd(adQuery.trim());
-                  }}
-                >
+                </div>
+                <div className="ad-search-row">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="ad-search-icon">
+                    <circle cx="11" cy="11" r="6.5" />
+                    <path d="m20 20-4.4-4.4" />
+                  </svg>
                   <input
-                    autoFocus
-                    placeholder="Логин, ФИО или e-mail"
-                    value={adQuery}
-                    onChange={(e) => setAdQuery(e.target.value)}
+                    placeholder="Поиск по группам…"
+                    value={adGroupQuery}
+                    onChange={(e) => setAdGroupQuery(e.target.value)}
                   />
-                  <button type="submit" disabled={adSearching || !adQuery.trim()}>
-                    Найти
-                  </button>
-                </form>
-                {adSearching && <div className="past-empty">Поиск…</div>}
-                {!adSearching && !adResults.length && adSearched && (
-                  <div className="past-empty">
-                    Ничего не найдено. Введите логин, фамилию или e-mail.
+                </div>
+                <div className="modal-title small">Основные данные</div>
+                <div className="ad-table">
+                  {[
+                    ["Должность", adDetail.title],
+                    ["Отдел", adDetail.department],
+                    ["Компания", adDetail.company],
+                    ["Логин", adDetail.login],
+                    ["Почта", adDetail.email],
+                    ["Телефон", adDetail.phone],
+                    ["Мобильный", adDetail.mobile],
+                    ["Руководитель", adDetail.manager],
+                    [
+                      "Пароль изменён",
+                      adDetail.password_changed_at
+                        ? new Date(adDetail.password_changed_at).toLocaleDateString("ru-RU")
+                        : "",
+                    ],
+                    [
+                      "Пароль истекает",
+                      adDetail.password_expires_at
+                        ? `${Math.ceil(
+                            (new Date(adDetail.password_expires_at).getTime() -
+                              Date.now()) /
+                              86400000,
+                          )} дн.`
+                        : "",
+                    ],
+                  ]
+                    .filter(([, value]) => value)
+                    .map(([label, value]) => (
+                      <div className="ad-table-row" key={label}>
+                        <span className="ad-table-label">{label}</span>
+                        <span className="ad-table-value">{value}</span>
+                      </div>
+                    ))}
+                  <div className="ad-table-row">
+                    <span className="ad-table-label">Состояние УЗ</span>
+                    <span
+                      className={`ad-table-value ${adDetail.disabled || adDetail.locked ? "ad-status-bad" : "ad-status-ok"}`}
+                    >
+                      {adDetail.disabled
+                        ? "Отключена"
+                        : adDetail.locked
+                          ? "Заблокирована"
+                          : "Активна"}
+                    </span>
                   </div>
-                )}
-                {adResults.map((result) => (
-                  <button
-                    key={result.login}
-                    className="past-ticket"
-                    onClick={() => void openAdDetail(result.login)}
-                  >
-                    <span>
-                      {result.full_name || result.login}
-                      {result.disabled ? " · отключён" : ""}
-                      {result.demo ? " · демо" : ""}
-                    </span>
-                    <span className="muted">
-                      {[result.login, result.department].filter(Boolean).join(" · ")}
-                    </span>
-                    <time>{result.title || "—"}</time>
-                  </button>
-                ))}
+                </div>
+                <div className="modal-title small">
+                  Группы ({adGroupsFiltered.length})
+                </div>
+                <div className="ad-table">
+                  {adGroupsFiltered.map((group) => (
+                    <div className="ad-table-row" key={group.name}>
+                      <span className="ad-group-name">{group.name}</span>
+                      <span className="ad-table-value ad-group-desc">
+                        {group.description || "—"}
+                      </span>
+                    </div>
+                  ))}
+                  {!adGroupsFiltered.length && (
+                    <div className="ad-table-row">
+                      <span className="ad-table-value">Не найдено</span>
+                    </div>
+                  )}
+                </div>
               </>
+            ) : adSearching ? (
+              <div className="ad-loading">
+                <span className="ad-spinner" />
+                Загружаем данные из AD…
+              </div>
+            ) : (
+              <div className="past-empty">
+                Не удалось получить данные из AD.
+                <button className="quiet-action" onClick={() => setAdOpen(false)}>
+                  Закрыть
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -2412,90 +2931,205 @@ export default function App() {
           </div>
           {historyPageTicket ? (
             <div className="history-detail">
+              {/* Owner (2026-11-19): full-width "Назад" row above the
+                  history + details columns. */}
+              <button
+                type="button"
+                className="history-back"
+                onClick={() => setHistoryPageTicket(null)}
+              >
+                Назад
+              </button>
+              <div className="history-detail-columns">
               <div className="history-detail-chat">
-                <button
-                  className="quiet-action"
-                  onClick={() => setHistoryPageTicket(null)}
-                >
-                  ← К результатам
-                </button>
                 <div className="modal-title">
                   #{shortId(historyPageTicket.ticket_id)} ·{" "}
                   {statusName[historyPageTicket.status]}
                 </div>
                 <div className="history-messages">
-                  {(historyPageTicket.messages ?? []).map((message) => (
-                    <div
-                      key={message.message_id}
-                      className={`message ${message.author_type === "OPERATOR" ? "from-operator" : ""}`}
-                    >
-                      <div className="message-content">
-                        <div className="message-heading">
-                          <strong>{messageHeading(message.author_type)}</strong>
-                          <time>
-                            {new Date(message.created_at).toLocaleString("ru-RU", {
-                              day: "numeric",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </time>
-                        </div>
-                        <div className="message-bubble">{message.text}</div>
-                      </div>
-                    </div>
-                  ))}
+                  <HistoryMessages
+                    messages={historyPageTicket.messages ?? []}
+                    onDownload={(attachment) => void downloadAttachment(attachment)}
+                  />
                   {!(historyPageTicket.messages ?? []).length && (
                     <div className="past-empty">Сообщений нет.</div>
                   )}
                 </div>
               </div>
+              {/* Owner (2026-11-19): the aside mirrors the workspace
+                  details-panel sections (data / moves / SLA / tags / status). */}
               <aside className="history-detail-info">
-                <div className="detail-label">СТАТУС</div>
-                <div className="detail-value">
-                  <span
-                    className={`status-dot ${historyPageTicket.status.toLowerCase()}`}
-                  />
-                  {statusName[historyPageTicket.status]}
+                <div className="details-header">
+                  <h3>Детали обращения</h3>
                 </div>
-                <div className="detail-label spaced">ПРИОРИТЕТ</div>
-                <div className="detail-value">
-                  {priorityName[historyPageTicket.priority.toUpperCase()] ||
-                    historyPageTicket.priority}
-                </div>
-                <div className="detail-label spaced">ПОЛЬЗОВАТЕЛЬ</div>
-                <div className="detail-value">
-                  {shortId(historyPageTicket.user_id)}
-                </div>
-                <div className="detail-label spaced">ОПЕРАТОР</div>
-                <div className="detail-value">
-                  {historyPageTicket.assignee_id
-                    ? historyPageTicket.assignee_id === operatorId
-                      ? "Я"
-                      : shortId(historyPageTicket.assignee_id)
-                    : "—"}
-                </div>
-                <div className="detail-label spaced">СОЗДАНО</div>
-                <div className="detail-value">
-                  {new Date(historyPageTicket.created_at).toLocaleString("ru-RU")}
-                </div>
-                <div className="detail-label spaced">ОБНОВЛЕНО</div>
-                <div className="detail-value">
-                  {new Date(historyPageTicket.updated_at).toLocaleString("ru-RU")}
-                </div>
-                {historyPageTicket.tags.length > 0 && (
-                  <>
-                    <div className="detail-label spaced">ТЕГИ</div>
-                    <div className="tag-list">
-                      {historyPageTicket.tags.map((tag) => (
+                <section className="detail-section">
+                  <div className="detail-label">ОСНОВНЫЕ ДАННЫЕ</div>
+                  {/* Owner (2026-11-19): compact fact blocks. */}
+                  <div className="history-fact-block">
+                    <div className="history-fact-title">Пользователь</div>
+                    <div className="history-fact">
+                      <span>ФИО</span>
+                      <strong>
+                        {historyPageTicket.user_ad?.full_name ||
+                          historyPageTicket.user_name ||
+                          shortId(historyPageTicket.user_id)}
+                      </strong>
+                    </div>
+                    <div className="history-fact">
+                      <span>Логин</span>
+                      <strong>{historyPageTicket.user_ad?.login || "—"}</strong>
+                    </div>
+                    <div className="history-fact">
+                      <span>Почта</span>
+                      <strong>{historyPageTicket.user_ad?.email || "—"}</strong>
+                    </div>
+                    <div className="history-fact">
+                      <span>Руководитель</span>
+                      <strong>
+                        {historyPageTicket.user_ad?.manager || "—"}
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="history-fact-block">
+                    <div className="history-fact-title">Оператор</div>
+                    <div className="history-fact">
+                      <span>ФИО</span>
+                      <strong>
+                        {historyPageTicket.assignee_name || "—"}
+                      </strong>
+                    </div>
+                    <div className="history-fact">
+                      <span>Логин</span>
+                      <strong>
+                        {historyPageTicket.assignee_email
+                          ? historyPageTicket.assignee_email.split("@")[0]
+                          : "—"}
+                      </strong>
+                    </div>
+                    <div className="history-fact">
+                      <span>Почта</span>
+                      <strong>{historyPageTicket.assignee_email || "—"}</strong>
+                    </div>
+                  </div>
+                  <div className="history-fact-block">
+                    <div className="history-fact-title">Чат</div>
+                    <div className="history-fact">
+                      <span>Создан</span>
+                      <strong>
+                        {new Date(historyPageTicket.created_at).toLocaleString(
+                          "ru-RU",
+                        )}
+                      </strong>
+                    </div>
+                    <div className="history-fact">
+                      <span>Закрыт</span>
+                      <strong>
+                        {[
+                          "RESOLVED",
+                          "CLOSED",
+                          "CANCELLED",
+                        ].includes(historyPageTicket.status)
+                          ? new Date(historyPageTicket.updated_at).toLocaleString(
+                              "ru-RU",
+                            )
+                          : "—"}
+                      </strong>
+                    </div>
+                    <div className="history-fact">
+                      <span>Времени затрачено</span>
+                      <strong>
+                        {fmtDuration(
+                          new Date(historyPageTicket.updated_at).getTime() -
+                            new Date(historyPageTicket.created_at).getTime(),
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                </section>
+                <section className="detail-section">
+                  <div className="detail-label">ПЕРЕМЕЩЕНИЯ</div>
+                  <div className="assignment-history">
+                    <span className="history-line" />
+                    {(historyMovesExpanded
+                      ? historyMoves
+                      : historyMoves.slice(0, 3)
+                    ).map((event) => (
+                      <div
+                        className="history-event"
+                        key={`${event.created_at}-${event.actor_id}`}
+                      >
+                        {event.action === "handoff.accepted"
+                          ? "Принято у ИИ"
+                          : event.action === "ticket.assignment_queued"
+                            ? `Отложено: ожидает места у ${
+                                event.assignee_name ||
+                                shortId(event.assignee_id || "")
+                              }`
+                            : event.assignee_id
+                              ? `Назначено оператору ${
+                                  event.assignee_name ||
+                                  shortId(event.assignee_id)
+                                }`
+                              : "Снято назначение"}
+                        <time>{ago(event.created_at)}</time>
+                      </div>
+                    ))}
+                    {!historyMoves.length && (
+                      <div className="history-event">Перемещений пока не было</div>
+                    )}
+                  </div>
+                  {/* Owner (2026-11-19): always present, like in the workspace. */}
+                  <button
+                    className="quiet-action"
+                    onClick={() =>
+                      setHistoryMovesExpanded(!historyMovesExpanded)
+                    }
+                  >
+                    {historyMovesExpanded
+                      ? "Свернуть"
+                      : "Посмотреть полностью"}
+                  </button>
+                </section>
+                <section className="detail-section">
+                  {/* Owner (2026-11-19): SLA works for any ticket now. */}
+                  <div className="detail-label">SLA</div>
+                  <button
+                    type="button"
+                    className="sla-card history-sla-card"
+                    onClick={() => void openSlaHistory(historyPageTicket)}
+                  >
+                    <span className="sla-card-title">SLA</span>
+                    <span className="sla-card-sub">
+                      Посмотреть статусы и SLA
+                    </span>
+                  </button>
+                </section>
+                <section className="detail-section">
+                  <div className="detail-label">ТЕГИ</div>
+                  <div className="tag-list">
+                    {historyPageTicket.tags.length ? (
+                      historyPageTicket.tags.map((tag) => (
                         <span className="tag" key={tag}>
                           {tag}
                         </span>
-                      ))}
-                    </div>
-                  </>
-                )}
+                      ))
+                    ) : (
+                      <span className="muted">Без тегов</span>
+                    )}
+                  </div>
+                </section>
+                <section className="detail-section">
+                  <div
+                    className={`status-card ${historyPageTicket.status.toLowerCase()}`}
+                  >
+                    <span className="status-card-dot" />
+                    <span className="status-card-name">
+                      {statusName[historyPageTicket.status]}
+                    </span>
+                  </div>
+                </section>
               </aside>
+              </div>
             </div>
           ) : (
             <div className="history-table-wrap">

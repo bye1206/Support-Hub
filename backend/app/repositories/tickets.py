@@ -1,7 +1,7 @@
 """Ticket persistence, including P-04 routing queries and optimistic status changes."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import String, case, desc, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,9 @@ from app.models import (
     SessionStatus,
     Tag,
     Ticket,
+    TicketHistoryKind,
     TicketStatus,
+    TicketStatusHistory,
     TicketTag,
     User,
     UserIdentity,
@@ -98,6 +100,84 @@ class TicketRepository:
         if new_version is None:
             raise StateConflict(f"Ticket {ticket_id} changed concurrently")
         return int(new_version)
+
+    # --- Status history + SLA (owner request 2026-11-19) ----------------
+
+    async def add_history(
+        self,
+        session: AsyncSession,
+        *,
+        ticket_id: uuid.UUID,
+        kind: TicketHistoryKind,
+        from_status: str | None = None,
+        to_status: str | None = None,
+        changed_at: datetime | None = None,
+    ) -> None:
+        session.add(
+            TicketStatusHistory(
+                ticket_id=ticket_id,
+                kind=kind,
+                from_status=from_status,
+                to_status=to_status,
+                changed_at=changed_at or datetime.now(UTC),
+            )
+        )
+        await session.flush()
+
+    async def list_history(
+        self, session: AsyncSession, ticket_id: uuid.UUID
+    ) -> list[TicketStatusHistory]:
+        rows = await session.scalars(
+            select(TicketStatusHistory)
+            .where(TicketStatusHistory.ticket_id == ticket_id)
+            .order_by(TicketStatusHistory.changed_at, TicketStatusHistory.id)
+        )
+        return list(rows)
+
+    async def set_sla_deadline(
+        self, session: AsyncSession, ticket_id: uuid.UUID, deadline: datetime
+    ) -> None:
+        """(Re)arm the operator reply clock; clears any past breach."""
+        await session.execute(
+            update(Ticket)
+            .where(Ticket.id == ticket_id)
+            .values(sla_deadline=deadline, sla_breached_at=None)
+        )
+
+    async def clear_sla(self, session: AsyncSession, ticket_id: uuid.UUID) -> None:
+        await session.execute(
+            update(Ticket)
+            .where(Ticket.id == ticket_id)
+            .values(sla_deadline=None, sla_breached_at=None)
+        )
+
+    async def mark_sla_breached(
+        self, session: AsyncSession, ticket_id: uuid.UUID, at: datetime
+    ) -> bool:
+        """Flag the breach once (idempotent); returns True when it changed."""
+        result = await session.execute(
+            update(Ticket)
+            .where(
+                Ticket.id == ticket_id,
+                Ticket.sla_breached_at.is_(None),
+                Ticket.sla_deadline.is_not(None),
+            )
+            .values(sla_breached_at=at)
+        )
+        return bool(getattr(result, "rowcount", 0))
+
+    async def list_overdue_sla(
+        self, session: AsyncSession, now: datetime
+    ) -> list[Ticket]:
+        rows = await session.scalars(
+            select(Ticket).where(
+                Ticket.status == TicketStatus.OPEN,
+                Ticket.sla_breached_at.is_(None),
+                Ticket.sla_deadline.is_not(None),
+                Ticket.sla_deadline < now,
+            )
+        )
+        return list(rows)
 
     async def list_filtered(
         self,

@@ -124,13 +124,13 @@ def demo_card(login: str) -> dict[str, Any]:
         "password_changed_at": datetime.now(UTC) - timedelta(days=27),
         "password_expires_at": datetime.now(UTC) + timedelta(days=63),
         "groups": [
-            "1C-Users",
-            "VPN-Access",
-            "Support-Team",
-            "Confluence-Users",
-            "Jira-Users",
-            "Mail-All",
-            "SAP-Basic",
+            {"name": "1C-Users", "description": "Доступ к 1С:Предприятие"},
+            {"name": "VPN-Access", "description": "Подключение к корпоративному VPN"},
+            {"name": "Support-Team", "description": "Группа техподдержки"},
+            {"name": "Confluence-Users", "description": "Доступ к Confluence"},
+            {"name": "Jira-Users", "description": "Доступ к Jira"},
+            {"name": "Mail-All", "description": "Общая рассылка компании"},
+            {"name": "SAP-Basic", "description": "Базовый доступ к SAP"},
         ],
         "has_photo": True,
         "_photo": bytes.fromhex(
@@ -317,17 +317,27 @@ class AdDirectory:
             raise AdUnavailableError("AD service bind failed")
         return conn
 
-    def _read_groups(self, conn: Any, user_dn: str) -> list[str]:
-        """Group names FROM THE GROUP side (memberOf is stripped by the proxy)."""
+    def _read_groups(self, conn: Any, user_dn: str) -> list[dict[str, str]]:
+        """Groups FROM THE GROUP side (memberOf is stripped by the proxy).
+        Each entry: {name, description} — the owner wants the GetGroupBox
+        layout (group name + its description, one per line)."""
         escaped_dn = user_dn.replace("\\", "\\\\")
         conn.search(
             self._settings.ldap_base_dn,
             f"(&(objectClass=group)(member={escaped_dn}))",
-            attributes=["cn"],
+            attributes=["cn", "description"],
             search_scope="SUBTREE",
         )
-        names = [str(entry.cn) for entry in conn.entries if "cn" in entry]
-        return sorted(names)
+        groups = [
+            {
+                "name": str(entry.cn),
+                "description": str(entry.description) if "description" in entry else "",
+            }
+            for entry in conn.entries
+            if "cn" in entry
+        ]
+        groups.sort(key=lambda group: group["name"])
+        return groups
 
     def _read_manager(self, conn: Any, entry: Any) -> str:
         manager_dn = str(entry.manager) if "manager" in entry else ""

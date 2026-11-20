@@ -4,6 +4,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -23,6 +24,7 @@ from app.models import (
     MessageDeliveryState,
     Tag,
     Ticket,
+    TicketHistoryKind,
     TicketStatus,
 )
 from app.repositories.ai_runs import AiHandoffRepository
@@ -201,7 +203,14 @@ class TicketService:
             ticket = await self._apply_status(
                 session, ticket_id, TicketTrigger.OPERATOR_RESOLVED
             )
-            await self._notify_resolution(session, ticket.conversation_id)
+            # Owner request (2026-11-19): the closure invites the user to
+            # rate the dialog; the score is attributed to the operator.
+            await self._notify_resolution(
+                session,
+                ticket.conversation_id,
+                rating_target="OPERATOR",
+                rating_operator_id=actor_id or ticket.assignee_id,
+            )
             await self._audit.log(
                 session,
                 actor_type=AuditActorType.OPERATOR,
@@ -275,13 +284,50 @@ class TicketService:
                 to_status=target,
                 expected_state_version=ticket.state_version,
             )
+            # Owner request (2026-11-19): the status history feeds the SLA
+            # modal (per-status durations).
+            await self._tickets.add_history(
+                session,
+                ticket_id=ticket_id,
+                kind=TicketHistoryKind.STATUS,
+                from_status=str(ticket.status),
+                to_status=str(target),
+            )
             await session.refresh(ticket)
+        # Owner request (2026-11-19): the 15-minute reply SLA.
+        if trigger == TicketTrigger.OPERATOR_CLAIM:
+            from datetime import UTC, datetime, timedelta
+
+            await self._tickets.set_sla_deadline(
+                session,
+                ticket_id,
+                deadline=datetime.now(UTC) + timedelta(minutes=15),
+            )
+        elif trigger in (
+            TicketTrigger.OPERATOR_RESOLVED,
+            TicketTrigger.OPERATOR_CLOSED,
+            TicketTrigger.SESSION_TIMEOUT,
+        ):
+            # Terminal: no more operator replies — stop the clock silently.
+            await self._tickets.clear_sla(session, ticket_id)
         return ticket
 
-    async def send_resolution_note(self, session: AsyncSession, conversation_id: uuid.UUID) -> None:
+    async def send_resolution_note(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        *,
+        rating_target: str = "OPERATOR",
+        rating_operator_id: uuid.UUID | None = None,
+    ) -> None:
         """Public wrapper: the farewell note to the user (operator resolve
         and the AI "помогло" key both end a dialog with it)."""
-        await self._notify_resolution(session, conversation_id)
+        await self._notify_resolution(
+            session,
+            conversation_id,
+            rating_target=rating_target,
+            rating_operator_id=rating_operator_id,
+        )
 
     async def route_unassigned(self, session: AsyncSession) -> int:
         """Public wrapper: hand unassigned human tickets to free ACTIVE
@@ -321,24 +367,43 @@ class TicketService:
         self,
         session: AsyncSession,
         conversation_id: uuid.UUID,
+        *,
+        rating_target: str | None = None,
+        rating_operator_id: uuid.UUID | None = None,
     ) -> None:
         """Owner request 2026-11-13: on resolve the user gets a farewell
-        note, delivered to Tag through the outbound outbox."""
+        note, delivered to Tag through the outbound outbox.
+
+        Owner request 2026-11-19: the note asks for a 1-5 rating (buttons
+        in direct mode). The attribution target is stamped on the ticket so
+        whichever way the score arrives (button click or a digit reply) it
+        reaches the AI or the operator who closed the dialog."""
+        text = "Диалог со специалистом завершен!\nСпасибо за обращение в техподдержку! 🙌"
+        payload: dict[str, Any] = {
+            "message_id": "",
+            "conversation_id": str(conversation_id),
+        }
+        if rating_target:
+            ticket = await self._tickets.get_by_conversation(session, conversation_id)
+            if ticket is not None:
+                ticket.rating_target = rating_target
+                ticket.rating_operator_id = rating_operator_id
+                payload["ticket_id"] = str(ticket.id)
+            text += "\nПоставьте, пожалуйста, оценку от 1 до 5:"
+            payload["rating_request"] = True
         message = await self._create_system_message(
             session,
             conversation_id,
-            "Диалог со специалистом завершен!\nСпасибо за обращение в техподдержку! 🙌",
+            text,
         )
+        payload["message_id"] = str(message.id)
         await self._outbox.register(
             session,
             event_type="message.outbound",
             aggregate_type="message",
             aggregate_id=message.id,
             idempotency_key=f"message:{message.id}",
-            payload={
-                "message_id": str(message.id),
-                "conversation_id": str(conversation_id),
-            },
+            payload=payload,
         )
 
     TIMEOUT_FAREWELL_TEXT = (
@@ -424,6 +489,47 @@ class TicketService:
                 except StateConflict:
                     logger.warning("Timeout close skipped for %s", ticket_id)
         return closed
+
+    async def breach_overdue_slas(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> int:
+        """Worker step (owner request 2026-11-19): flag every OPEN ticket
+        whose 15-minute reply deadline has passed. The history gets a
+        `sla_breached` row and a WS event refreshes the workspace."""
+        now = datetime.now(UTC)
+        async with factory() as session:
+            overdue = await self._tickets.list_overdue_sla(session, now=now)
+            breached = 0
+            for ticket in overdue:
+                marked = await self._tickets.mark_sla_breached(session, ticket.id, at=now)
+                if marked:
+                    await self._tickets.add_history(
+                        session,
+                        ticket_id=ticket.id,
+                        kind=TicketHistoryKind.SLA_BREACHED,
+                    )
+                    breached += 1
+            await session.commit()
+        if breached:
+            try:
+                from app.config import get_settings
+                from app.infra.redis_client import RedisClient
+
+                await RedisClient(get_settings().redis_url).publish_event(
+                    '{"type": "tickets.changed"}'
+                )
+            except Exception:  # noqa: BLE001 - redis trouble must not break the sweep
+                logger.warning("SLA breach event not published")
+        return breached
+
+    async def create_bot_note(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        text: str,
+    ) -> Message:
+        """Public system note to the user (rating answers)."""
+        return await self._create_system_message(session, conversation_id, text)
 
     async def _create_system_message(
         self,
@@ -542,7 +648,9 @@ class TicketService:
             to_mode=DialogMode(new_mode),
             expected_state_version=conversation.state_version,
         )
-        if ticket.status == TicketStatus.AI_PROCESSING:
+        if ticket.status in (TicketStatus.AI_PROCESSING, TicketStatus.NEW):
+            # Owner (2026-11-18): assignment IS "В работе" — including a
+            # greeting-stage ticket that never reached AI_PROCESSING yet.
             await self._apply_status(session, ticket.id, TicketTrigger.OPERATOR_CLAIM)
 
     async def _apply_pending(self, session: AsyncSession, operator_id: uuid.UUID) -> None:

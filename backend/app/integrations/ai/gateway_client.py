@@ -19,8 +19,12 @@ logger = logging.getLogger(__name__)
 
 CHAT_PATH = "/api/v1/chat"
 MESSAGE_PATH_TEMPLATE = "/api/v1/message/{chat_id}"
+HEALTH_PATH = "/health"
 # Contract §5: LLM answers take 30-60 s; the hard bound is 120 s.
 DEFAULT_TIMEOUT_SECONDS = 130.0
+# Integration spec §3 (2026-11-18): marks our traffic as test traffic —
+# without it the calls land in the orchestrator's PRODUCTION analytics.
+SOURCE_HEADER = "support-hub"
 
 
 class GatewayError(Exception):
@@ -60,7 +64,7 @@ class AssistantGatewayClient:
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=timeout_seconds,
-            headers={"X-API-Key": api_key},
+            headers={"X-API-Key": api_key, "X-Source": SOURCE_HEADER},
             transport=transport,
         )
 
@@ -88,6 +92,19 @@ class AssistantGatewayClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    async def health(self) -> bool:
+        """Spec §2: GET /health -> {"status":"ok"}; False on any failure."""
+        try:
+            response = await self._client.get(HEALTH_PATH)
+        except (httpx.TimeoutException, httpx.ConnectError):
+            return False
+        if response.status_code != 200:
+            return False
+        try:
+            return response.json().get("status") == "ok"
+        except ValueError:
+            return False
 
     async def _request(
         self,

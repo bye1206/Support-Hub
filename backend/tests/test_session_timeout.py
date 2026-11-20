@@ -114,7 +114,9 @@ async def test_message_after_timeout_starts_new_ticket(session_factory) -> None:
     # The timed-out dialog was closed; the message lives in a new one.
     assert result.conversation.id != old_conversation_id
     assert result.conversation_created is True
-    assert result.ticket.status == TicketStatus.NEW
+    # Owner flow (2026-11-18): the greeting-stage ticket is already in the
+    # AI stage ("Обработка ИИ").
+    assert result.ticket.status == TicketStatus.AI_PROCESSING
 
     async with session_factory() as check:
         old_ticket = (

@@ -125,3 +125,13 @@ async def expire_sessions(ctx: dict[str, Any]) -> int:
     if expired or closed:
         logger.info("Sessions expired: %s; tickets timeout-closed: %s", expired, closed)
     return expired
+
+
+async def check_sla_breaches(ctx: dict[str, Any]) -> int:
+    """Owner request (2026-11-19): flag OPEN tickets whose 15-minute
+    operator-reply deadline has passed. The history gets a breach row and
+    the workspace refreshes over WS (the SLA card turns red)."""
+    breached = await TicketService().breach_overdue_slas(_session_factory(ctx))
+    if breached:
+        logger.info("SLA breached: %s", breached)
+    return breached

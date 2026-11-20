@@ -76,6 +76,10 @@ async def test_sender_posts_to_mattermost(direct_env) -> None:
         return httpx.Response(201, json={"status": "ok"})
 
     class _Session:
+        async def scalars(self, *_args: Any, **_kwargs: Any):
+            # No attachments on the fake message (owner round 2026-11-19).
+            return []
+
         async def __aenter__(self):
             return self
 
@@ -113,6 +117,10 @@ async def test_sender_rejects_non_2xx(direct_env) -> None:
         return httpx.Response(403, json={})
 
     class _Session:
+        async def scalars(self, *_args: Any, **_kwargs: Any):
+            # No attachments on the fake message (owner round 2026-11-19).
+            return []
+
         async def __aenter__(self):
             return self
 

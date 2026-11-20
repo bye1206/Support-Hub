@@ -41,6 +41,8 @@ async def test_create_chat_returns_id(anyio_backend: str) -> None:
     assert seen[0].url.path == "/api/v1/chat"
     assert seen[0].headers["x-api-key"] == "key-123"
     assert seen[0].headers["x-user-id"] == "u-1"
+    # Spec §3 (2026-11-18): X-Source marks traffic as test traffic.
+    assert seen[0].headers["x-source"] == "support-hub"
     assert json.loads(seen[0].content)["title"] == "Support dialog"
 
 
@@ -58,7 +60,33 @@ async def test_send_message_returns_answer_and_headers(anyio_backend: str) -> No
     assert seen[0].url.path == "/api/v1/message/7"
     assert seen[0].headers["x-api-key"] == "key-123"
     assert seen[0].headers["x-user-id"] == "u-2"
+    assert seen[0].headers["x-source"] == "support-hub"
     assert json.loads(seen[0].content) == {"query": "Помогите"}
+
+
+@pytest.mark.anyio
+async def test_health_ok(anyio_backend: str) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"status": "ok"})
+
+    gateway = client_with(handler)
+    assert await gateway.health() is True
+    assert seen[0].url.path == "/health"
+
+
+@pytest.mark.anyio
+async def test_health_degraded_or_down_is_false(anyio_backend: str) -> None:
+    gateway = client_with(lambda request: httpx.Response(503))
+    assert await gateway.health() is False
+
+    def broken(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=request)
+
+    gateway = client_with(broken)
+    assert await gateway.health() is False
 
 
 @pytest.mark.parametrize("status", [401, 403])

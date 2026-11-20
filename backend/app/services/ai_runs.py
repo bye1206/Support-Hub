@@ -187,7 +187,17 @@ class AiRunService:
                 await session.commit()
                 return 1
             user_id = conversation.user_id
+            # Owner request (2026-11-19): the gateway is text-only; an
+            # attachment-only message still needs a non-empty query.
             query = input_message.text
+            if not query.strip():
+                from app.repositories.attachments import AttachmentRepository
+
+                attached = await AttachmentRepository().for_message(
+                    session, input_message.id
+                )
+                names = ", ".join(a.file_name for a in attached) or "файл"
+                query = f"[Пользователь отправил вложение: {names}]"
             cached_chat_id = conversation.ai_chat_id
             run_id = run.id
             await session.commit()
@@ -316,7 +326,10 @@ class AiRunService:
         )
         # Owner flow step 7b (2026-11-13): "помогло" closes the dialog with
         # the same farewell note an operator's resolve sends.
-        await TicketService().send_resolution_note(session, conversation.id)
+        # Owner request (2026-11-19): the rating goes to the AI here.
+        await TicketService().send_resolution_note(
+            session, conversation.id, rating_target="AI"
+        )
         await self._runs.cancel_pending_for_conversation(
             session, conversation_id=conversation.id
         )

@@ -87,7 +87,7 @@ async function openTicket(calls: Call[]) {
   const rows = await screen.findAllByText("#11111111");
   fireEvent.click(rows[0]);
   // The composer appears once the ticket card is loaded.
-  await screen.findByLabelText("Публичный ответ");
+  await screen.findByLabelText("Текст сообщения");
   return calls;
 }
 
@@ -108,10 +108,10 @@ describe("operator composer mode separation (docs/06 §8)", () => {
   it("reply mode posts the text to the public replies endpoint", async () => {
     const calls = await openTicket(stubNetwork());
 
-    fireEvent.change(screen.getByLabelText("Публичный ответ"), {
+    fireEvent.change(screen.getByLabelText("Текст сообщения"), {
       target: { value: "Передаём специалисту" },
     });
-    fireEvent.click(screen.getByText("Отправить ответ ↗"));
+    fireEvent.click(screen.getByRole("button", { name: "Отправить ответ" }));
 
     await waitFor(() => {
       expect(
@@ -129,10 +129,10 @@ describe("operator composer mode separation (docs/06 §8)", () => {
     const calls = await openTicket(stubNetwork());
 
     fireEvent.click(screen.getByRole("tab", { name: /Внутренняя заметка/ }));
-    fireEvent.change(screen.getByLabelText("Внутренняя заметка"), {
+    fireEvent.change(screen.getByLabelText("Текст сообщения"), {
       target: { value: "Секретная служебная заметка" },
     });
-    fireEvent.click(screen.getByText("Добавить заметку ↗"));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить заметку" }));
 
     await waitFor(() => {
       expect(
@@ -153,10 +153,10 @@ describe("operator composer mode separation (docs/06 §8)", () => {
     const calls = await openTicket(stubNetwork());
 
     fireEvent.click(screen.getByRole("tab", { name: /Внутренняя заметка/ }));
-    fireEvent.change(screen.getByLabelText("Внутренняя заметка"), {
+    fireEvent.change(screen.getByLabelText("Текст сообщения"), {
       target: { value: "Только для сотрудников" },
     });
-    fireEvent.click(screen.getByText("Добавить заметку ↗"));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить заметку" }));
 
     await waitFor(() => {
       expect(
@@ -171,10 +171,10 @@ describe("operator composer mode separation (docs/06 §8)", () => {
   it("reply mode never calls the internal notes endpoint", async () => {
     const calls = await openTicket(stubNetwork());
 
-    fireEvent.change(screen.getByLabelText("Публичный ответ"), {
+    fireEvent.change(screen.getByLabelText("Текст сообщения"), {
       target: { value: "Ответ пользователю" },
     });
-    fireEvent.click(screen.getByText("Отправить ответ ↗"));
+    fireEvent.click(screen.getByRole("button", { name: "Отправить ответ" }));
 
     await waitFor(() => {
       expect(calls.some((c) => c.url.includes("/replies"))).toBe(true);

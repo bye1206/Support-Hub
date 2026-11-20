@@ -12,24 +12,29 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, desc, or_, select
+from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.operators import require_operator
 from app.errors import ApiError
+from app.infra.file_storage import FileStorageError, LocalFileStorage
 from app.integrations.ad_directory import AdUnavailableError
 from app.models import (
     AuditLog,
     ConversationSession,
     InternalNote,
     Message,
+    MessageAttachment,
     Operator,
     SessionStatus,
     Tag,
     Ticket,
     TicketStatus,
+    User,
 )
+from app.repositories.attachments import AttachmentRepository
 from app.repositories.categories import TicketCategoryRepository
 from app.repositories.messages import MessageRepository
 from app.repositories.operators import OperatorRepository
@@ -72,15 +77,28 @@ async def get_current_operator_photo(
 
 
 def _ticket_view(
-    ticket: Ticket, *, tags: list[Tag] | None = None
+    ticket: Ticket,
+    *,
+    tags: list[Tag] | None = None,
+    user_name: str | None = None,
+    unread_from_user: int = 0,
+    assignee_name: str | None = None,
 ) -> dict[str, Any]:
     return {
         "ticket_id": str(ticket.id),
         "conversation_id": str(ticket.conversation_id),
         "user_id": str(ticket.user_id),
+        # Owner request (2026-11-17): the queue must show the person, not a
+        # short UUID — display_name (Tag profile / AD), fallback frontend.
+        "user_name": user_name,
+        # Owner request (2026-11-18): user messages since the operator's
+        # last reply — badge in the queue, resets on the operator's answer.
+        "unread_from_user": unread_from_user,
         "status": str(ticket.status),
         "priority": ticket.priority,
         "assignee_id": str(ticket.assignee_id) if ticket.assignee_id else None,
+        # Owner (2026-11-19): the history shows the operator's name, not a UUID.
+        "assignee_name": assignee_name,
         "pending_assignee_id": (
             str(ticket.pending_assignee_id) if ticket.pending_assignee_id else None
         ),
@@ -88,26 +106,85 @@ def _ticket_view(
         "tags": [t.name for t in (tags or [])],
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
+        # Owner request (2026-11-19): the 15-minute reply SLA clock.
+        "sla": {
+            "deadline": (
+                ticket.sla_deadline.isoformat() if ticket.sla_deadline else None
+            ),
+            "breached_at": (
+                ticket.sla_breached_at.isoformat() if ticket.sla_breached_at else None
+            ),
+        },
     }
 
 
-def _note_view(note: InternalNote) -> dict[str, Any]:
+@router.get("/tickets/{ticket_id}/sla-history")
+async def get_sla_history(
+    ticket_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Status history + SLA events (owner request 2026-11-19); the workspace
+    modal computes the per-status durations from these rows."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        ticket = await TicketRepository().get(session, ticket_id)
+        if ticket is None:
+            raise ApiError(
+                code="NOT_FOUND", message="Ticket not found", status_code=404
+            )
+        events = await TicketRepository().list_history(session, ticket_id)
+    return {
+        "ticket_id": str(ticket_id),
+        "events": [
+            {
+                "kind": str(event.kind),
+                "from_status": event.from_status,
+                "to_status": event.to_status,
+                "changed_at": event.changed_at.isoformat(),
+            }
+            for event in events
+        ],
+    }
+
+
+def _note_view(note: InternalNote, author_name: str | None = None) -> dict[str, Any]:
     return {
         "note_id": str(note.id),
         "conversation_id": str(note.conversation_id),
         "author_id": str(note.author_id),
+        # Owner (2026-11-18): the timeline must show which operator wrote
+        # the internal note.
+        "author_name": author_name,
         "body": note.body,
         "created_at": note.created_at.isoformat(),
     }
 
 
-def _message_view(message: Message) -> dict[str, Any]:
+def _message_view(
+    message: Message,
+    attachments: list[MessageAttachment] | None = None,
+    author_name: str | None = None,
+) -> dict[str, Any]:
     return {
         "message_id": str(message.id),
         "sequence_no": message.sequence_no,
         "author_type": str(message.author_type),
+        # Owner (2026-11-19): the history shows WHO wrote the message (the
+        # operator's name / the user's name), not just the role.
+        "author_name": author_name,
         "text": message.text,
         "created_at": message.created_at.isoformat(),
+        # Owner request (2026-11-19): files travel with the message.
+        "attachments": [
+            {
+                "id": str(a.id),
+                "file_name": a.file_name,
+                "mime_type": a.mime_type,
+                "size_bytes": a.size_bytes,
+            }
+            for a in (attachments or [])
+        ],
     }
 
 
@@ -126,6 +203,25 @@ async def _notify_workspace(request: Request) -> None:
         )
     except Exception:  # noqa: BLE001 - redis trouble must not break the API
         pass
+
+
+async def _user_name_map(
+    session: AsyncSession, user_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """id -> display name for the queue's person column (owner 2026-11-17).
+    Prefers the AD full name ("Фамилия Имя Отчество" — gives proper
+    "Фамилия И.О." initials in the UI); falls back to the Tag profile name."""
+    if not user_ids:
+        return {}
+    rows = await session.execute(
+        select(
+            User.id,
+            func.coalesce(
+                User.ad_info["full_name"].astext, User.display_name
+            ).label("person"),
+        ).where(User.id.in_(user_ids))
+    )
+    return {row[0]: row[1] for row in rows}
 
 
 @router.get("/tickets")
@@ -193,9 +289,31 @@ async def list_tickets(
         tag_map = await TagRepository().map_for_tickets(
             session, [t.id for t in tickets]
         )
+        user_names = await _user_name_map(session, [t.user_id for t in tickets])
+        # Owner (2026-11-19): operator display names for the history.
+        assignee_ids = {t.assignee_id for t in tickets if t.assignee_id}
+        assignee_names: dict[Any, str] = {}
+        if assignee_ids:
+            rows = await session.scalars(
+                select(Operator).where(Operator.id.in_(assignee_ids))
+            )
+            for op in rows:
+                assignee_names[op.id] = op.display_name or op.email.split("@")[0]
+        # Owner (2026-11-18): per-chat counter of user messages since the
+        # operator's last reply (resets when the operator answers).
+        unread = await MessageRepository().unread_counts(
+            session, [t.conversation_id for t in tickets]
+        )
     return {
         "tickets": [
-            _ticket_view(t, tags=tag_map.get(t.id, [])) for t in tickets
+            _ticket_view(
+                t,
+                tags=tag_map.get(t.id, []),
+                user_name=user_names.get(t.user_id),
+                unread_from_user=unread.get(t.conversation_id, 0),
+                assignee_name=assignee_names.get(t.assignee_id),
+            )
+            for t in tickets
         ],
         "limit": limit,
         "offset": offset,
@@ -217,6 +335,31 @@ async def get_ticket(
         messages = await MessageRepository().list_for_conversation(
             session, ticket.conversation_id
         )
+        attachments = await AttachmentRepository().for_conversation(
+            session, ticket.conversation_id
+        )
+        attachments_by_message: dict[Any, list[MessageAttachment]] = {}
+        for attachment in attachments:
+            if attachment.message_id is not None:
+                attachments_by_message.setdefault(attachment.message_id, []).append(
+                    attachment
+                )
+        # Owner (2026-11-19): resolve message authors to display names —
+        # the history shows the operator's / the user's real name.
+        operator_ids = {m.author_operator_id for m in messages if m.author_operator_id}
+        user_ids = {m.author_user_id for m in messages if m.author_user_id}
+        name_by_operator: dict[Any, str] = {}
+        name_by_user: dict[Any, str] = {}
+        if operator_ids:
+            rows = await session.scalars(
+                select(Operator).where(Operator.id.in_(operator_ids))
+            )
+            for op in rows:
+                name_by_operator[op.id] = op.display_name or op.email.split("@")[0]
+        if user_ids:
+            rows = await session.scalars(select(User).where(User.id.in_(user_ids)))
+            for user in rows:
+                name_by_user[user.id] = user.display_name or "Пользователь"
         tags = await TicketService().list_tags(session, ticket_id)
         active_session = await session.scalar(
             select(ConversationSession)
@@ -226,9 +369,46 @@ async def get_ticket(
             )
             .limit(1)
         )
+        ticket_user = await session.get(User, ticket.user_id)
+        assignee_name = None
+        if ticket.assignee_id:
+            assignee = await session.get(Operator, ticket.assignee_id)
+            if assignee is not None:
+                assignee_name = assignee.display_name or assignee.email.split("@")[0]
+                assignee_email = assignee.email
+            else:
+                assignee_email = None
+        else:
+            assignee_email = None
+        # Owner (2026-11-19): the history aside shows the person blocks —
+        # user (FIO/login/email/manager) and operator (FIO/login/email).
+        user_ad = (ticket_user.ad_info or {}) if ticket_user else {}
     return {
-        **_ticket_view(ticket, tags=tags),
-        "messages": [_message_view(m) for m in messages],
+        **_ticket_view(
+            ticket,
+            tags=tags,
+            user_name=ticket_user.display_name if ticket_user else None,
+            assignee_name=assignee_name,
+        ),
+        "assignee_email": assignee_email,
+        "user_ad": {
+            "full_name": user_ad.get("full_name"),
+            "login": user_ad.get("login"),
+            "email": user_ad.get("email"),
+            "manager": user_ad.get("manager"),
+        },
+        "messages": [
+            _message_view(
+                m,
+                attachments_by_message.get(m.id),
+                (
+                    name_by_operator.get(m.author_operator_id)
+                    if m.author_operator_id
+                    else name_by_user.get(m.author_user_id)
+                ),
+            )
+            for m in messages
+        ],
         "session": (
             {
                 "started_at": active_session.started_at.isoformat(),
@@ -241,7 +421,92 @@ async def get_ticket(
 
 
 class ReplyIn(BaseModel):
-    text: str = Field(min_length=1, max_length=10000)
+    # Owner request (2026-11-19): a reply may carry only attachments, so the
+    # text is optional when files are attached.
+    text: str = Field(default="", max_length=10000)
+    attachment_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+def _content_disposition(file_name: str) -> str:
+    """RFC 5987: file names are user text and may be non-ASCII (Cyrillic) —
+    a raw header would fail latin-1 encoding and break the download."""
+    from urllib.parse import quote
+
+    ascii_fallback = file_name.encode("ascii", "ignore").decode() or "file"
+    return (
+        f"attachment; filename=\"{ascii_fallback}\"; "
+        f"filename*=UTF-8''{quote(file_name)}"
+    )
+
+
+def _attachment_view(attachment: MessageAttachment) -> dict[str, Any]:
+    return {
+        "id": str(attachment.id),
+        "file_name": attachment.file_name,
+        "mime_type": attachment.mime_type,
+        "size_bytes": attachment.size_bytes,
+    }
+
+
+@router.post("/tickets/{ticket_id}/attachments")
+async def upload_ticket_attachment(
+    ticket_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+    file: Annotated[UploadFile, File(...)],
+) -> dict[str, Any]:
+    """Composer upload (owner request 2026-11-19): store now, link on send."""
+    content = await file.read()
+    if not content:
+        raise ApiError(
+            code="EMPTY_FILE", message="Файл пустой", status_code=422
+        )
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        try:
+            attachment = await MessageService().add_operator_upload(
+                session,
+                ticket_id=ticket_id,
+                file_name=file.filename or "file",
+                mime_type=file.content_type or "application/octet-stream",
+                content=content,
+                operator_id=operator.id,
+            )
+        except ValueError as exc:
+            raise _map_value_error(exc) from exc
+    return _attachment_view(attachment)
+
+
+@router.get("/attachments/{attachment_id}/file")
+async def download_attachment(
+    attachment_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> Response:
+    """Stream one attachment's bytes (operator session required)."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        attachment = await AttachmentRepository().get(session, attachment_id)
+        if attachment is None:
+            raise ApiError(
+                code="NOT_FOUND", message="Вложение не найдено", status_code=404
+            )
+        storage_key, mime, file_name = (
+            attachment.storage_key,
+            attachment.mime_type,
+            attachment.file_name,
+        )
+    try:
+        content = await LocalFileStorage().open(storage_key)
+    except FileStorageError as exc:
+        raise ApiError(
+            code="NOT_FOUND", message="Файл отсутствует", status_code=404
+        ) from exc
+    return Response(
+        content=content,
+        media_type=mime or "application/octet-stream",
+        headers={"Content-Disposition": _content_disposition(file_name)},
+    )
 
 
 @router.post("/tickets/{ticket_id}/replies")
@@ -252,6 +517,12 @@ async def reply_to_ticket(
     request: Request,
 ) -> dict[str, Any]:
     """Public reply (docs/06 §4): message + PENDING_USER + outbox, one tx."""
+    if not payload.text.strip() and not payload.attachment_ids:
+        raise ApiError(
+            code="EMPTY_MESSAGE",
+            message="Сообщение или вложение обязательно",
+            status_code=422,
+        )
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         try:
@@ -260,6 +531,7 @@ async def reply_to_ticket(
                 ticket_id=ticket_id,
                 text=payload.text,
                 operator_id=operator.id,
+                attachment_ids=payload.attachment_ids,
             )
         except ValueError as exc:
             raise _map_value_error(exc) from exc
@@ -409,7 +681,7 @@ async def create_note(
             )
         except ValueError as exc:
             raise _map_value_error(exc) from exc
-    return _note_view(note)
+    return _note_view(note, operator.display_name or operator.email.split("@")[0])
 
 
 @router.get("/conversations/{conversation_id}/notes")
@@ -424,7 +696,18 @@ async def list_notes(
             notes = await NoteService().list(session, conversation_id)
         except ValueError as exc:
             raise _map_value_error(exc) from exc
-    return {"notes": [_note_view(n) for n in notes]}
+        # Owner (2026-11-18): resolve note authors to display names.
+        name_by_id: dict[uuid.UUID, str] = {}
+        author_ids = {n.author_id for n in notes}
+        if author_ids:
+            rows = await session.execute(
+                select(Operator).where(Operator.id.in_(author_ids))
+            )
+            for op in rows.scalars():
+                name_by_id[op.id] = op.display_name or op.email.split("@")[0]
+    return {
+        "notes": [_note_view(n, name_by_id.get(n.author_id)) for n in notes]
+    }
 
 
 @router.get("/categories")
@@ -484,9 +767,24 @@ async def list_user_tickets(
         tag_map = await TagRepository().map_for_tickets(
             session, [ticket.id for ticket in tickets]
         )
+        user_names = await _user_name_map(session, [t.user_id for t in tickets])
+        assignee_ids = {t.assignee_id for t in tickets if t.assignee_id}
+        assignee_names: dict[Any, str] = {}
+        if assignee_ids:
+            rows = await session.scalars(
+                select(Operator).where(Operator.id.in_(assignee_ids))
+            )
+            for op in rows:
+                assignee_names[op.id] = op.display_name or op.email.split("@")[0]
     return {
         "tickets": [
-            _ticket_view(ticket, tags=tag_map.get(ticket.id, [])) for ticket in tickets
+            _ticket_view(
+                ticket,
+                tags=tag_map.get(ticket.id, []),
+                user_name=user_names.get(ticket.user_id),
+                assignee_name=assignee_names.get(ticket.assignee_id),
+            )
+            for ticket in tickets
         ]
     }
 
@@ -496,15 +794,17 @@ async def user_ad_info(
     user_id: uuid.UUID,
     operator: Annotated[Operator, Depends(require_operator)],
     request: Request,
+    force: bool = Query(default=False, description="Bypass the 24h cache"),
 ) -> dict[str, Any]:
     """Employee card from AD (P-29): org data, groups, password dates.
 
     Degrades to ``{"available": false}`` when AD is unreachable or no service
-    account is configured; never blocks the ticket view."""
+    account is configured; never blocks the ticket view. ``force=true`` is the
+    operator's manual "Обновить из AD" action (owner 2026-11-17)."""
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         try:
-            return await AdInfoService().get_for_user(session, user_id)
+            return await AdInfoService().get_for_user(session, user_id, force=force)
         except LookupError as exc:
             raise ApiError(code="NOT_FOUND", message=str(exc), status_code=404) from exc
 
@@ -528,6 +828,11 @@ async def user_ad_photo(
     return Response(content=photo, media_type=media_type)
 
 
+class AdGroupOut(BaseModel):
+    name: str = ""
+    description: str = ""
+
+
 class AdSearchOut(BaseModel):
     login: str = ""
     full_name: str = ""
@@ -537,7 +842,9 @@ class AdSearchOut(BaseModel):
     company: str = ""
     phone: str = ""
     disabled: bool = False
-    groups: list[str] = []
+    # Owner (2026-11-17): groups carry descriptions (GetGroupBox layout);
+    # the description comes from the SAME LDAP search — no extra latency.
+    groups: list[AdGroupOut] = []
     mobile: str = ""
     manager: str = ""
     password_changed_at: str | None = None
@@ -549,6 +856,17 @@ class AdSearchOut(BaseModel):
 def _normalize_ad_card(card: dict[str, Any]) -> AdSearchOut:
     changed = card.get("password_changed_at")
     expires = card.get("password_expires_at")
+    groups: list[AdGroupOut] = []
+    for group in card.get("groups") or []:
+        if isinstance(group, dict):
+            groups.append(
+                AdGroupOut(
+                    name=str(group.get("name") or ""),
+                    description=str(group.get("description") or ""),
+                )
+            )
+        else:
+            groups.append(AdGroupOut(name=str(group)))
     return AdSearchOut(
         login=str(card.get("login") or ""),
         full_name=str(card.get("full_name") or ""),
@@ -561,7 +879,7 @@ def _normalize_ad_card(card: dict[str, Any]) -> AdSearchOut:
         manager=str(card.get("manager") or ""),
         disabled=bool(card.get("disabled")),
         locked=bool(card.get("locked")),
-        groups=[str(g) for g in card.get("groups") or []],
+        groups=groups,
         password_changed_at=str(changed) if changed else None,
         password_expires_at=str(expires) if expires else None,
         demo=bool(card.get("demo")),
@@ -637,12 +955,38 @@ async def ticket_assignment_history(
             .order_by(desc(AuditLog.created_at))
         )
         events = list((await session.scalars(stmt)).all())
+        # Owner request (2026-11-17): movements must show WHO, not "5D…".
+        operator_ids = {
+            event.actor_id
+            for event in events
+            if event.actor_id is not None
+        } | {
+            uuid.UUID(event.details["assignee_id"])
+            for event in events
+            if (event.details or {}).get("assignee_id")
+        }
+        operator_names = {
+            operator.id: operator.display_name or operator.email
+            for operator in (
+                await session.scalars(
+                    select(Operator).where(Operator.id.in_(operator_ids))
+                )
+            ).all()
+        } if operator_ids else {}
+
+        def _name(value: str | None) -> str | None:
+            if value is None:
+                return None
+            return operator_names.get(uuid.UUID(value), None)
+
     return {
         "events": [
             {
                 "action": event.action,
                 "actor_id": str(event.actor_id) if event.actor_id else None,
+                "actor_name": _name(str(event.actor_id)) if event.actor_id else None,
                 "assignee_id": (event.details or {}).get("assignee_id"),
+                "assignee_name": _name((event.details or {}).get("assignee_id")),
                 "created_at": event.created_at.isoformat(),
             }
             for event in events

@@ -2,10 +2,12 @@
 
 import enum
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    DateTime,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
@@ -82,4 +84,20 @@ class Ticket(UuidPkMixin, TimestampMixin, Base):
     )
     state_version: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=1, server_default=text("1")
+    )
+    # Operator reply SLA (owner, 2026-11-19): 15 minutes to answer. The
+    # deadline is (re)armed on every user message in a human dialog and on
+    # assignment; the worker flags breaches. NULL = the clock is not running.
+    sla_deadline: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sla_breached_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Rating attribution (owner, 2026-11-19): stamped at closure — AI when
+    # the dialog was closed by "помогло", OPERATOR + resolver on resolve.
+    # NULL (e.g. timeout closures) = no rating request.
+    rating_target: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    rating_operator_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("operators.id", ondelete="SET NULL"), nullable=True
     )

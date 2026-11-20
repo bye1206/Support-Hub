@@ -9,6 +9,7 @@ from arq.connections import RedisSettings
 from app.config import get_settings
 from app.worker.tasks import (
     _session_factory,
+    check_sla_breaches,
     expire_sessions,
     process_ai_runs,
     process_outbox,
@@ -76,10 +77,14 @@ class WorkerSettings:
     # Session expiry runs every minute; expiry is idempotent (P-05).
     cron_jobs = [
         cron(expire_sessions, minute=set(range(60)), run_at_startup=False),
+        # Owner request (2026-11-19): the 15-minute reply SLA — the breach
+        # sweep runs every minute (idempotent: one flag per ticket).
+        cron(check_sla_breaches, minute=set(range(60)), run_at_startup=False),
         # Outbox dispatch loop: nothing else enqueues process_outbox, so the
-        # worker must poll by itself. Every 10 s keeps reply latency low;
+        # worker must poll by itself. Every 2 s keeps reply latency near-
+        # instant (owner 2026-11-18: queue/chat updates must feel live);
         # processing is at-least-once and idempotent by idempotency_key.
-        cron(process_outbox, second=set(range(0, 60, 10)), run_at_startup=True),
+        cron(process_outbox, second=set(range(0, 60, 2)), run_at_startup=True),
     ]
 
     on_startup: Any = _startup

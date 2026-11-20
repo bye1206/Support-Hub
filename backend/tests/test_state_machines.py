@@ -30,9 +30,11 @@ ALLOWED_TICKET = [
     ("OPEN", TicketTrigger.USER_MESSAGE, "OPEN", "HUMAN_ACTIVE"),
     ("PENDING_USER", TicketTrigger.USER_MESSAGE, "OPEN"),
     ("OPEN", TicketTrigger.USER_MESSAGE, "OPEN", "HUMAN_PENDING"),
-    # AI reply (D-039: completes processing) and no-op on open.
-    ("AI_PROCESSING", TicketTrigger.AI_REPLY, "OPEN"),
-    ("OPEN", TicketTrigger.AI_REPLY, "OPEN"),
+    # Owner's final FSM (2026-11-19): the whole AI stage is AI_PROCESSING —
+    # the AI answer does NOT open the ticket; a legacy OPEN returns to the
+    # AI stage.
+    ("AI_PROCESSING", TicketTrigger.AI_REPLY, "AI_PROCESSING"),
+    ("OPEN", TicketTrigger.AI_REPLY, "AI_PROCESSING"),
     # Operator reply -> PENDING_USER (D-011), from any non-terminal status;
     # the operator may also preempt the AI while it is processing.
     ("NEW", TicketTrigger.OPERATOR_REPLY, "PENDING_USER"),

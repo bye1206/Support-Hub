@@ -29,6 +29,7 @@ from app.domain.state_machines import (
     next_dialog_mode,
     next_ticket_status,
 )
+from app.infra.file_storage import LocalFileStorage
 from app.models import (
     AuditActorType,
     Conversation,
@@ -38,8 +39,10 @@ from app.models import (
     MessageAuthorType,
     MessageDeliveryState,
     Ticket,
+    TicketHistoryKind,
     TicketStatus,
 )
+from app.repositories.attachments import AttachmentRepository
 from app.repositories.conversations import ConversationRepository
 from app.repositories.messages import MessageRepository
 from app.repositories.tickets import TicketRepository
@@ -47,8 +50,18 @@ from app.repositories.users import UserRepository
 from app.services._tx import unit_of_work
 from app.services.audit import AuditService
 from app.services.outbox import OutboxService
+from app.services.ratings import RatingService
 from app.services.sessions import SessionService
 from app.services.tickets import RoutingResult, TicketService
+
+
+@dataclass
+class IncomingFile:
+    """One file the user attached (bytes already fetched by the caller)."""
+
+    file_name: str
+    mime_type: str
+    content: bytes
 
 
 @dataclass
@@ -74,6 +87,8 @@ class MessageService:
         outbox: OutboxService | None = None,
         audit: AuditService | None = None,
         ticket_repo: TicketRepository | None = None,
+        attachments: AttachmentRepository | None = None,
+        storage: LocalFileStorage | None = None,
     ) -> None:
         self._users = users or UserRepository()
         self._ticket_service = ticket_service or TicketService()
@@ -83,6 +98,8 @@ class MessageService:
         self._outbox = outbox or OutboxService()
         self._audit = audit or AuditService()
         self._ticket_repo = ticket_repo or TicketRepository()
+        self._attachments = attachments or AttachmentRepository()
+        self._storage = storage or LocalFileStorage()
 
     async def handle_incoming_user_message(
         self,
@@ -95,6 +112,7 @@ class MessageService:
         external_post_id: str | None = None,
         source_created_at: datetime | None = None,
         channel_id: uuid.UUID | None = None,
+        files: list[IncomingFile] | None = None,
     ) -> IngestResult:
         """Ingress flow for one user message from Tag (via the bot). Own transaction."""
         async with unit_of_work(session):
@@ -113,6 +131,35 @@ class MessageService:
                 external_user_id=external_user_id,
                 external_user_name=external_user_name,
             )
+            # Owner request (2026-11-19): the rating flow — after the
+            # farewell a bare digit is the score, a free text on a low
+            # score is the review. Both are consumed here instead of
+            # starting a new ticket.
+            last = await self._ticket_repo.get_last_for_user(session, user.id)
+            if (
+                last is not None
+                and last.status in (TicketStatus.RESOLVED, TicketStatus.CLOSED)
+                and not files
+            ):
+                ratings = RatingService()
+                reply: Message | None = None
+                if await ratings.ticket_needs_score(session, last, text):
+                    reply = await ratings.capture_score(
+                        session, last, int(text.strip())
+                    )
+                else:
+                    reply = await ratings.capture_review_text(session, user.id, text)
+                if reply is not None:
+                    return IngestResult(
+                        message=reply,
+                        conversation=await self._require_conversation(
+                            session, last.conversation_id
+                        ),
+                        ticket=last,
+                        session=None,
+                        conversation_created=False,
+                        ticket_reopened=False,
+                    )
             routing = await self._ticket_service.route_incoming(
                 session, user_id=user.id, channel_id=channel_id
             )
@@ -132,10 +179,22 @@ class MessageService:
                 external_post_id=external_post_id,
                 source_created_at=source_created_at,
             )
+            # Owner request (2026-11-19): files the user attached travel with
+            # the message; bytes were downloaded/decoded by the caller.
+            if files:
+                await self._store_attachments(
+                    session,
+                    conversation_id=routing.conversation.id,
+                    message_id=message.id,
+                    files=files,
+                )
             if routing.conversation_created:
-                # Owner flow (2026-11-13): the FIRST message of a dialog gets
-                # only the greeting — the actual question (the next message)
-                # is what goes to the AI. No AI run, ticket stays NEW.
+                # Owner flow (2026-11-13, clarified 2026-11-18): the FIRST
+                # message of a dialog gets only the greeting — the question
+                # itself is NOT sent to the AI yet, but the ticket already
+                # enters "Обработка ИИ" (AI_PROCESSING): the dialog belongs
+                # to the AI stage from the very start.
+                await self._apply_ticket_transition(session, routing)
                 greeting = await self._create_greeting(
                     session, routing.conversation.id, user
                 )
@@ -257,6 +316,7 @@ class MessageService:
         text: str,
         operator_id: uuid.UUID | None = None,
         reply_to_message_id: uuid.UUID | None = None,
+        attachment_ids: list[uuid.UUID] | None = None,
     ) -> IngestResult:
         """Public operator reply (stage 7 adds the API and permissions).
 
@@ -292,8 +352,28 @@ class MessageService:
                 sequence_no=sequence,
                 author_type=MessageAuthorType.OPERATOR,
                 text=text,
+                author_operator_id=operator_id,
                 reply_to_message_id=reply_to_message_id,
             )
+            # Owner request (2026-11-19): files uploaded from the composer
+            # beforehand (message_id NULL) are linked to the sent reply.
+            if attachment_ids:
+                await self._attachments.link_to_message(
+                    session,
+                    attachment_ids,
+                    conversation_id=ticket.conversation_id,
+                    message_id=message.id,
+                )
+            # The operator answered: the reply SLA clock stops; if a deadline
+            # was armed, the history gets a "met" row (durations modal).
+            deadline_was_armed = ticket.sla_deadline is not None
+            await self._ticket_repo.clear_sla(session, ticket.id)
+            if deadline_was_armed:
+                await self._ticket_repo.add_history(
+                    session,
+                    ticket_id=ticket.id,
+                    kind=TicketHistoryKind.SLA_MET,
+                )
             # D-011: operator reply -> PENDING_USER (FSM: from any non-CLOSED).
             await self._transition_ticket(
                 session, ticket, TicketTrigger.OPERATOR_REPLY
@@ -332,6 +412,19 @@ class MessageService:
             TicketTrigger.USER_MESSAGE,
             dialog_mode=str(routing.conversation.mode),
         )
+        # Owner request (2026-11-19): the operator has 15 minutes to reply.
+        # A user message in a HUMAN dialog (re)arms the clock; a message in
+        # the AI stage stops it (no operator SLA there).
+        if ticket.status == TicketStatus.OPEN:
+            from datetime import UTC, datetime, timedelta
+
+            await self._ticket_repo.set_sla_deadline(
+                session,
+                ticket.id,
+                deadline=datetime.now(UTC) + timedelta(minutes=15),
+            )
+        elif ticket.status == TicketStatus.AI_PROCESSING:
+            await self._ticket_repo.clear_sla(session, ticket.id)
 
     async def _transition_ticket(
         self,
@@ -361,6 +454,15 @@ class MessageService:
                     ticket.id,
                     to_status=target,
                     expected_state_version=ticket.state_version,
+                )
+                # Owner request (2026-11-19): every transition lands in the
+                # status history (the SLA modal renders durations from it).
+                await self._ticket_repo.add_history(
+                    session,
+                    ticket_id=ticket.id,
+                    kind=TicketHistoryKind.STATUS,
+                    from_status=str(ticket.status),
+                    to_status=str(target),
                 )
                 await session.refresh(ticket)
                 return
@@ -398,17 +500,113 @@ class MessageService:
     async def _register_outbound(
         self, session: AsyncSession, message: Message, conversation_id: uuid.UUID
     ) -> None:
+        # Owner request (2026-11-19): the webhook-mode bot receives the file
+        # metadata plus a tokenized download URL; direct mode resolves the
+        # files itself and ignores these extra keys.
+        attachments = await self._attachments.for_message(session, message.id)
+        payload: dict[str, Any] = {
+            "message_id": str(message.id),
+            "conversation_id": str(conversation_id),
+        }
+        if attachments:
+            from app.config import get_settings
+
+            settings = get_settings()
+            base = settings.app_base_url.rstrip("/")
+            token = settings.bot_webhook_token
+            payload["attachments"] = [
+                {
+                    "id": str(a.id),
+                    "file_name": a.file_name,
+                    "mime_type": a.mime_type,
+                    "size_bytes": a.size_bytes,
+                    "download_url": (
+                        f"{base}/api/v1/integrations/tag/attachments/"
+                        f"{a.id}/file?token={token}"
+                    ),
+                }
+                for a in attachments
+            ]
         await self._outbox.register(
             session,
             event_type="message.outbound",
             aggregate_type="message",
             aggregate_id=message.id,
             idempotency_key=f"message:{message.id}",
-            payload={
-                "message_id": str(message.id),
-                "conversation_id": str(conversation_id),
-            },
+            payload=payload,
         )
+
+    async def _store_attachments(
+        self,
+        session: AsyncSession,
+        *,
+        conversation_id: uuid.UUID,
+        message_id: uuid.UUID | None,
+        files: list[IncomingFile],
+        uploaded_by_operator_id: uuid.UUID | None = None,
+    ) -> list[Any]:
+        """Persist attachment rows (and their bytes) for one message."""
+        from app.config import get_settings
+        from app.errors import ApiError
+
+        max_bytes = get_settings().max_attachment_mb * 1024 * 1024
+        stored: list[Any] = []
+        for file in files:
+            if not file.content:
+                continue
+            if len(file.content) > max_bytes:
+                raise ApiError(
+                    code="ATTACHMENT_TOO_LARGE",
+                    message=(
+                        "Файл больше "
+                        f"{get_settings().max_attachment_mb} МБ"
+                    ),
+                    status_code=413,
+                )
+            key = await self._storage.save(file.content)
+            stored.append(
+                await self._attachments.create(
+                    session,
+                    conversation_id=conversation_id,
+                    file_name=file.file_name or "file",
+                    mime_type=file.mime_type or "application/octet-stream",
+                    size_bytes=len(file.content),
+                    storage_key=key,
+                    uploaded_by_operator_id=uploaded_by_operator_id,
+                )
+            )
+        for attachment in stored:
+            if message_id is not None:
+                attachment.message_id = message_id
+        return stored
+
+    async def add_operator_upload(
+        self,
+        session: AsyncSession,
+        *,
+        ticket_id: uuid.UUID,
+        file_name: str,
+        mime_type: str,
+        content: bytes,
+        operator_id: uuid.UUID,
+    ) -> Any:
+        """Composer upload: store the file now, link it when the reply sends."""
+        async with unit_of_work(session):
+            ticket = await self._require_ticket(session, ticket_id)
+            stored = await self._store_attachments(
+                session,
+                conversation_id=ticket.conversation_id,
+                message_id=None,
+                files=[
+                    IncomingFile(
+                        file_name=file_name, mime_type=mime_type, content=content
+                    )
+                ],
+                uploaded_by_operator_id=operator_id,
+            )
+        if not stored:
+            raise ValueError("Empty file")
+        return stored[0]
 
     async def _require_conversation(
         self, session: AsyncSession, conversation_id: uuid.UUID

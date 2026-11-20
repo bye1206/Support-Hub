@@ -145,7 +145,9 @@ async def test_happy_path_publishes_ai_answer_and_opens_ticket(session_factory) 
         assert ai_message.text == "Проверьте подключение и перезагрузите роутер"
 
     ticket = await _get_ticket(session_factory, conversation_id)
-    assert ticket.status == TicketStatus.OPEN  # AI_REPLY completes processing
+    # Owner's final FSM (2026-11-19): the AI stage is AI_PROCESSING end to
+    # end — the AI answer does NOT open the ticket.
+    assert ticket.status == TicketStatus.AI_PROCESSING
 
     # Outbound delivery event for the AI message is registered.
     async with session_factory() as session:
@@ -370,4 +372,5 @@ async def test_process_ai_runs_task_end_to_end(session_factory) -> None:
     assert processed == 1
 
     ticket = await _get_ticket(session_factory, conversation_id)
-    assert ticket.status == TicketStatus.OPEN
+    # Owner's final FSM (2026-11-19): the AI stage stays AI_PROCESSING.
+    assert ticket.status == TicketStatus.AI_PROCESSING

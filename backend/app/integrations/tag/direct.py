@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 WEBSOCKET_PATH = "/api/v4/websocket"
 POSTS_PATH = "/api/v4/posts"
+FILES_PATH = "/api/v4/files"
 USERS_PATH = "/api/v4/users/{user_id}"
 DEFAULT_TIMEOUT_SECONDS = 5.0
 # DM channel type in Mattermost (private group would be "G", channel "O").
@@ -70,17 +71,88 @@ class TagDirectSender:
         )
 
     async def send_message(self, payload: dict[str, Any]) -> None:
-        """Deliver {message_id, conversation_id} as a Mattermost post."""
-        channel_id, text = await self._resolve(payload)
+        """Deliver {message_id, conversation_id} as a Mattermost post.
+
+        Owner request (2026-11-19): if the message carries attachments, the
+        files are uploaded first (POST /api/v4/files) and referenced by the
+        post's file_ids.
+        """
+        channel_id, text, attachments = await self._resolve(payload)
+        file_ids: list[str] = []
+        if attachments:
+            from app.infra.file_storage import FileStorageError, LocalFileStorage
+
+            storage = LocalFileStorage()
+            for file_name, mime, storage_key in attachments:
+                try:
+                    content = await storage.open(storage_key)
+                except FileStorageError as exc:
+                    raise TagDirectError(
+                        f"Attachment file missing: {type(exc).__name__}"
+                    ) from exc
+                try:
+                    response = await self._client.post(
+                        FILES_PATH,
+                        params={"channel_id": channel_id, "filename": file_name},
+                        files={
+                            "files": (
+                                file_name,
+                                content,
+                                mime or "application/octet-stream",
+                            )
+                        },
+                    )
+                except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                    raise TagDirectUnknown(
+                        f"Mattermost unreachable: {type(exc).__name__}"
+                    ) from exc
+                if response.status_code // 100 != 2:
+                    raise TagDirectRejected(
+                        f"Mattermost file upload answered HTTP {response.status_code}"
+                    )
+                infos = response.json().get("file_infos") or []
+                file_ids.extend(str(info["id"]) for info in infos if info.get("id"))
         try:
-            response = await self._client.post(
-                POSTS_PATH,
-                json={
-                    "channel_id": channel_id,
-                    "message": text,
-                    "props": {"support_hub_message_id": str(payload["message_id"])},
-                },
-            )
+            body: dict[str, Any] = {
+                "channel_id": channel_id,
+                "message": text,
+                "props": {"support_hub_message_id": str(payload["message_id"])},
+            }
+            if file_ids:
+                body["file_ids"] = file_ids
+            # Owner request (2026-11-19): the closure note carries five
+            # interactive rating buttons (5..1); Mattermost calls our
+            # /integrations/tag/rating endpoint with the button context.
+            if payload.get("rating_request"):
+                from app.config import get_settings
+
+                settings = get_settings()
+                rating_url = (
+                    f"{settings.app_base_url.rstrip('/')}/api/v1/integrations/"
+                    f"tag/rating?token={settings.bot_webhook_token}"
+                )
+                ticket_id = str(payload.get("ticket_id", ""))
+                body["props"]["attachments"] = [
+                    {
+                        "text": "Оцените, пожалуйста, работу поддержки:",
+                        "actions": [
+                            {
+                                "id": f"rate_{score}",
+                                "name": str(score),
+                                "type": "button",
+                                "integration": {
+                                    "url": rating_url,
+                                    "context": {
+                                        "ticket_id": ticket_id,
+                                        "score": score,
+                                    },
+                                },
+                            }
+                            for score in (5, 4, 3, 2, 1)
+                        ],
+                    }
+                ]
+            response = await self._client.post(POSTS_PATH, json=body)
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
             raise TagDirectUnknown(
                 f"Mattermost unreachable: {type(exc).__name__}"
@@ -89,7 +161,10 @@ class TagDirectSender:
             # Never log user text; status is enough for the outbox retry.
             raise TagDirectRejected(f"Mattermost answered HTTP {response.status_code}")
 
-    async def _resolve(self, payload: dict[str, Any]) -> tuple[str, str]:
+    async def _resolve(
+        self, payload: dict[str, Any]
+    ) -> tuple[str, str, list[tuple[str, str, str]]]:
+        """Returns (channel_id, text, attachments[(name, mime, storage_key)])."""
         message_id = payload.get("message_id")
         if not message_id:
             raise TagDirectError("Outbox payload without message_id")
@@ -124,7 +199,13 @@ class TagDirectSender:
                 raise TagDirectError(
                     f"Conversation {message.conversation_id} has no external channel"
                 )
-            return channel_id, message.text
+            from app.repositories.attachments import AttachmentRepository
+
+            attachments = [
+                (a.file_name, a.mime_type, a.storage_key)
+                for a in await AttachmentRepository().for_message(session, message.id)
+            ]
+            return channel_id, message.text, attachments
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -149,8 +230,16 @@ def parse_posted_event(data: dict[str, Any], bot_user_id: str) -> dict[str, Any]
     if not user_id or user_id == bot_user_id:
         return None  # the bot's own replies must not loop back
     text = (post.get("message") or "").strip()
-    if not text:
+    # Owner request (2026-11-19): a post may be attachment-only.
+    file_ids = [str(f) for f in (post.get("file_ids") or []) if f]
+    if not text and not file_ids:
         return None
+    metadata = post.get("metadata") or {}
+    files_meta = {
+        str(f.get("id")): f
+        for f in (metadata.get("files") or [])
+        if isinstance(f, dict) and f.get("id")
+    }
     create_at = post.get("create_at")
     source_created_at = None
     if isinstance(create_at, (int, float)) and create_at > 0:
@@ -160,6 +249,8 @@ def parse_posted_event(data: dict[str, Any], bot_user_id: str) -> dict[str, Any]
         "user_id": str(user_id),
         "post_id": str(post.get("id") or ""),
         "text": text,
+        "file_ids": file_ids,
+        "files_meta": files_meta,
         "source_created_at": source_created_at,
     }
 
@@ -265,10 +356,44 @@ class TagDirectListener:
         if fields is None:
             return
         fields["user_name"] = await self._user_name(fields["user_id"])
+        # Owner request (2026-11-19): download the user's files from
+        # Mattermost so the workspace can show them.
+        fields["files"] = await self._download_files(fields)
         try:
             await self._ingest(fields)
         except Exception:  # noqa: BLE001 - one message must not kill the listener
             logger.exception("Tag direct ingest failed for post %s", fields["post_id"])
+
+    async def _download_files(self, fields: dict[str, Any]) -> list[dict[str, Any]]:
+        """Fetch one post's files; a failed download skips that file (logged)."""
+        out: list[dict[str, Any]] = []
+        for file_id in fields.get("file_ids") or []:
+            meta = (fields.get("files_meta") or {}).get(file_id, {})
+            try:
+                async with httpx.AsyncClient(
+                    base_url=self._settings.mattermost_base_url.rstrip("/"),
+                    timeout=30.0,
+                    headers={
+                        "Authorization": f"Bearer {self._settings.mattermost_bot_token}"
+                    },
+                ) as client:
+                    response = await client.get(f"{FILES_PATH}/{file_id}")
+                    response.raise_for_status()
+            except httpx.HTTPError:
+                logger.warning(
+                    "Tag direct: file %s of post %s could not be downloaded",
+                    file_id,
+                    fields["post_id"],
+                )
+                continue
+            out.append(
+                {
+                    "file_name": str(meta.get("name") or file_id),
+                    "mime_type": str(meta.get("mime_type") or ""),
+                    "content": response.content,
+                }
+            )
+        return out
 
     async def _user_name(self, user_id: str) -> str:
         if user_id in self._user_names:
@@ -305,8 +430,16 @@ def _connect_websocket(url: str, headers: dict[str, str]) -> Any:
 async def ingest_direct_message(session_factory: Any, fields: dict[str, Any]) -> None:
     """Feed one DM post into the same pipeline as the webhook ingress."""
     from app.repositories.channels import ChannelRepository
-    from app.services.messages import MessageService
+    from app.services.messages import IncomingFile, MessageService
 
+    files = [
+        IncomingFile(
+            file_name=file["file_name"],
+            mime_type=file["mime_type"],
+            content=file["content"],
+        )
+        for file in fields.get("files") or []
+    ]
     async with session_factory() as session:
         channel = await ChannelRepository().get_or_create(
             session,
@@ -323,6 +456,7 @@ async def ingest_direct_message(session_factory: Any, fields: dict[str, Any]) ->
             external_post_id=fields["post_id"] or None,
             source_created_at=fields.get("source_created_at"),
             channel_id=channel.id,
+            files=files,
         )
 
 

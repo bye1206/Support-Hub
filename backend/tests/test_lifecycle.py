@@ -65,9 +65,10 @@ async def test_first_message_creates_full_chain(session_factory) -> None:
 
         # P-06: user auto-provisioned with the channel identity.
         assert result.message.author_user_id is not None
-        # Owner flow: the FIRST message is the greeting stage — the ticket
-        # stays NEW until the user actually asks the question.
-        assert result.ticket.status == TicketStatus.NEW
+        # Owner flow (clarified 2026-11-18): the FIRST message is the
+        # greeting stage — no AI call yet, but the ticket already enters
+        # "Обработка ИИ" (AI_PROCESSING).
+        assert result.ticket.status == TicketStatus.AI_PROCESSING
         assert result.conversation.mode == DialogMode.AI_ACTIVE
         assert result.conversation_created is True
         # D-007: exactly 3 hours.
@@ -121,7 +122,9 @@ async def test_ai_reply_opens_new_ticket(session_factory) -> None:
         )
 
     assert reply.ticket.id == ticket_id
-    assert reply.ticket.status == TicketStatus.OPEN  # D-039: processing done
+    # Owner's final FSM (2026-11-19): the AI stage stays AI_PROCESSING —
+    # the AI answer does not open the ticket.
+    assert reply.ticket.status == TicketStatus.AI_PROCESSING
     assert reply.message.sequence_no == 4  # hello, greeting, question, AI
     assert reply.message.author_type == MessageAuthorType.AI
 
@@ -203,8 +206,8 @@ async def test_close_then_new_message_starts_new_ticket_and_dialog(
     assert second.ticket.id != ticket_id
     assert second.conversation.id != old_conversation_id
     assert second.conversation_created is True
-    # Fresh dialog: greeting stage, the ticket stays NEW until the question.
-    assert second.ticket.status == TicketStatus.NEW
+    # Fresh dialog: greeting stage, the ticket is already AI_PROCESSING.
+    assert second.ticket.status == TicketStatus.AI_PROCESSING
     assert second.message.sequence_no == 1  # numbering restarts in the new dialog
 
     # The old dialog is closed with its sessions ENDED.

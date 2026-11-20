@@ -5,6 +5,7 @@ description = "Support Hub backend - modular monolith (FastAPI)"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115,<1",
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
