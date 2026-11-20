@@ -236,20 +236,42 @@ class AdDirectory:
         try:
             escaped = ldap3.utils.conv.escape_filter_chars(login)
             if "@" in login:
-                filter_expr = f"(mail={escaped})"
+                candidates = [f"(mail={escaped})"]
             else:
-                filter_expr = f"(sAMAccountName={escaped})"
-            conn.search(
-                self._settings.ldap_base_dn,
-                f"(&(objectClass=user)(objectCategory=user){filter_expr})",
-                attributes=_USER_ATTRIBUTES,
-                search_scope="SUBTREE",
-                size_limit=1,
-            )
-            if not conn.entries:
+                # Owner report (2026-11-20): Tag usernames do not always
+                # equal the AD sAMAccountName — try the UPN and the corp
+                # e-mail built from the same name before giving up.
+                domain = self._settings.ldap_domain
+                candidates = [
+                    f"(sAMAccountName={escaped})",
+                    f"(userPrincipalName={escaped}@{domain})",
+                    f"(mail={escaped}@{domain})",
+                ]
+            matched_by = ""
+            entry = None
+            for filter_expr in candidates:
+                conn.search(
+                    self._settings.ldap_base_dn,
+                    f"(&(objectClass=user)(objectCategory=user){filter_expr})",
+                    attributes=_USER_ATTRIBUTES,
+                    search_scope="SUBTREE",
+                    size_limit=1,
+                )
+                if conn.entries:
+                    entry = conn.entries[0]
+                    matched_by = filter_expr
+                    break
+            if entry is None:
+                logger.info(
+                    "AD lookup missed for login %r (tried %s)",
+                    login,
+                    [f.strip("()") for f in candidates],
+                )
                 return None
-            entry = conn.entries[0]
             user_dn = str(entry.entry_dn)
+            logger.info(
+                "AD lookup matched login %r via %s", login, matched_by
+            )
 
             groups = self._read_groups(conn, user_dn)
             manager = self._read_manager(conn, entry)
