@@ -1,0 +1,64 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+        xmlns:local="using:GetGroupBoxMember.Views.Controls"
+        x:Class="GetGroupBoxMember.Views.ShowOwnerWindow"
+        Title="Владельцы ИС"
+         Width="1497"
+         Height="750"
+         MinWidth="900"
+         MinHeight="600"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,Auto,*">
+
+    <!-- Menu -->
+    <Menu Grid.Row="0"  Classes="PrimaryText" x:Name="MainMenu" FontSize="12">
+      <MenuItem Header="Файл">
+        <MenuItem Header="Копировать" Click="CopyToClipboard_Click"/>
+        <Separator/>
+        <MenuItem Header="Экспорт (.xlsx)" Click="ExportXlsx_Click"/>
+        <MenuItem Header="Экспорт (.txt)" Click="ExportTxt_Click"/>
+      </MenuItem>
+      <MenuItem Header="Навигация" x:Name="NavigationMenu" IsVisible="False">
+        <MenuItem Header="◀ Предыдущая" Click="PrevPage_Click"/>
+        <MenuItem Header="Следующая ▶" Click="NextPage_Click"/>
+        <Separator/>
+        <MenuItem Header="Страница 1 из 1" x:Name="PageInfoMenuItem" IsEnabled="False"/>
+      </MenuItem>
+    </Menu>
+
+    <!-- Search Bar -->
+    <Border Classes="Card" Grid.Row="1"  Padding="12,8" x:Name="SearchBorder" IsVisible="True">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox Grid.Column="0" 
+                x:Name="GroupSearchBox"
+                PlaceholderText="Поиск по логину владельца..."
+                FontSize="13"
+                Padding="10,8"
+                Margin="0,0,8,0"
+                KeyDown="GroupSearchBox_KeyDown"/>
+        <Button Grid.Column="1" 
+                Content="Найти" 
+                Click="GroupSearch_Click"
+                Padding="16,8"/>
+      </Grid>
+    </Border>
+
+    <!-- Content -->
+    <Grid Grid.Row="2" RowDefinitions="*,Auto">
+
+      <!-- Loading Overlay -->
+      <Border Grid.Row="0" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+          <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+          <TextBlock x:Name="LoadingTextBlock" Text="Загрузка данных..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+
+      <!-- GridTable -->
+      <controls:GridTable Grid.Row="0" x:Name="MainGridTable" VerticalAlignment="Stretch" IsTabStop="False" IsVisible="True"/>
+    </Grid>
+  </Grid>
+</Window>

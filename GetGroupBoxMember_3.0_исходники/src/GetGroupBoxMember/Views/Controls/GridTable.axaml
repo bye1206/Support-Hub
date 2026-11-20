@@ -1,0 +1,24 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+             x:Class="GetGroupBoxMember.Views.Controls.GridTable"
+             x:DataType="controls:GridTable">
+  <Border Background="{DynamicResource ThemeElevatedSurface}">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <Grid x:Name="HeaderGrid" Background="{DynamicResource ThemeCardBackground}" Grid.Row="0"/>
+      <ScrollViewer Grid.Row="1" x:Name="DataScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <ItemsControl x:Name="DataRows">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
+  </Border>
+</UserControl>

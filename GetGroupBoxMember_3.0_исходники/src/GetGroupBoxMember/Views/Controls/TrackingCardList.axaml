@@ -1,0 +1,12 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="using:GetGroupBoxMember.Models"
+             x:Class="GetGroupBoxMember.Views.Controls.TrackingCardList"
+             x:DataType="controls:TrackingCardList"
+             xmlns:controls="using:GetGroupBoxMember.Views.Controls">
+  <Border Background="{DynamicResource ThemeElevatedSurface}">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <StackPanel x:Name="CardsPanel" Spacing="8" Margin="0"/>
+    </ScrollViewer>
+  </Border>
+</UserControl>

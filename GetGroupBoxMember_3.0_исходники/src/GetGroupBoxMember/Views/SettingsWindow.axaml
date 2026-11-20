@@ -1,0 +1,130 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         x:Class="GetGroupBoxMember.Views.SettingsWindow"
+         Title="Настройки"
+         Width="820"
+         Height="480"
+         MinWidth="700"
+         MinHeight="400"
+         WindowStartupLocation="CenterOwner">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <Border Grid.Row="0" Background="{DynamicResource ThemeAccent}" Height="3"/>
+
+    <Grid Grid.Row="1" ColumnDefinitions="1*,1*" Margin="20,14">
+
+      <StackPanel Grid.Column="0" Margin="0,0,10,0" Spacing="10">
+
+        <!-- DC -->
+        <Border Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="16,14">
+          <Grid RowDefinitions="Auto,Auto">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,10">
+              <Border Width="28" Height="28" CornerRadius="5" Background="{DynamicResource ThemeAccent}" Opacity="0.9">
+                <TextBlock Text="DC" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+              </Border>
+              <TextBlock Text="Контроллер домена" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBox Grid.Row="1"
+                     Classes="Elevated"
+                     x:Name="DcInputTextBox"
+                     PlaceholderText="dc.domain.local"
+                     FontSize="14"
+                     Padding="12,8"/>
+          </Grid>
+        </Border>
+
+        <!-- UserLog -->
+        <Border Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="16,14">
+          <Grid RowDefinitions="Auto,Auto">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,10">
+              <Border Width="28" Height="28" CornerRadius="5" Background="{DynamicResource ThemeAccent}" Opacity="0.9">
+                <TextBlock Text="📁" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+              </Border>
+              <TextBlock Text="Путь к UserLog" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}" VerticalAlignment="Center"/>
+            </StackPanel>
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+              <TextBox Classes="Elevated"
+                       x:Name="UserLogPathTextBox"
+                       Grid.Column="0"
+                       PlaceholderText="C:\UserLog"
+                       FontSize="14"
+                       Padding="12,8"/>
+              <Button Grid.Column="1" Content="…" Margin="8,0,0,0" Classes="Secondary" Padding="12,8" FontSize="14" Click="BrowseUserLog_Click"/>
+            </Grid>
+          </Grid>
+        </Border>
+
+        <!-- Mailings -->
+        <Border Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="16,14">
+          <Grid RowDefinitions="Auto,Auto">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,10">
+              <Border Width="28" Height="28" CornerRadius="5" Background="{DynamicResource ThemeAccent}" Opacity="0.9">
+                <TextBlock Text="📧" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+              </Border>
+              <TextBlock Text="Рассылки" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}" VerticalAlignment="Center"/>
+            </StackPanel>
+            <CheckBox Grid.Row="1" x:Name="ShowAllMemberMaillistCheckBox" Padding="0,2">
+              <TextBlock Text="Показывать всех участников" FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}"/>
+            </CheckBox>
+          </Grid>
+        </Border>
+
+      </StackPanel>
+
+      <!-- Right Column: Theme section -->
+      <Border Grid.Column="1" Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="16,14" Margin="10,0,0,0" VerticalAlignment="Top">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,12">
+            <Border Width="28" Height="28" CornerRadius="5" Background="{DynamicResource ThemeAccent}" Opacity="0.9">
+              <TextBlock Text="🎨" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+            </Border>
+            <TextBlock Text="Тема оформления" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}" VerticalAlignment="Center"/>
+          </StackPanel>
+
+          <ItemsControl Grid.Row="1" x:Name="ThemeList">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal"/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Border x:Name="ThemeButton"
+                        Classes="Elevated"
+                        CornerRadius="5"
+                        Padding="14,8"
+                        Margin="0,0,6,6"
+                        PointerPressed="ThemeButton_Click"
+                        Cursor="Hand">
+                  <TextBlock Text="{Binding}" FontSize="13" Foreground="{DynamicResource ThemeTextPrimary}"/>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Border Grid.Row="2" Background="{DynamicResource ThemeElevatedSurface}" CornerRadius="6" Padding="10" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="Auto,*">
+              <Border Grid.Column="0" Width="6" Height="6" CornerRadius="3" Background="{DynamicResource ThemeAccent}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="Текущая" FontSize="12" Foreground="{DynamicResource ThemeTextMuted}"/>
+                <TextBlock x:Name="CurrentThemeLabel" Text="Тёмная" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Grid>
+      </Border>
+
+    </Grid>
+
+    <!-- Action Bar -->
+    <Border Grid.Row="2" Background="{DynamicResource ThemeCardBackground}" Padding="20,12">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="Настройки вступят в силу после перезапуска" FontSize="13" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
+        <Button Grid.Column="1" Content="Отмена" Classes="Secondary" Margin="0,0,10,0" Padding="18,8" FontSize="14" Click="CancelButton_Click"/>
+        <Button Grid.Column="2" x:Name="SaveButton" Content="Сохранить" Classes="AccentButton" Padding="22,8" FontSize="14" Click="SaveButton_Click"/>
+      </Grid>
+    </Border>
+
+  </Grid>
+</Window>

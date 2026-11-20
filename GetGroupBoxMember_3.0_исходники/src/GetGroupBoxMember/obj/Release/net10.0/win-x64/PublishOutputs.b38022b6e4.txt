@@ -1,0 +1,3 @@
+C:\Users\bondarev_dy\Nextcloud\Documents\GetGroupBoxMember_3.0_исходники\publish\libHarfBuzzSharp.pdb
+C:\Users\bondarev_dy\Nextcloud\Documents\GetGroupBoxMember_3.0_исходники\publish\libSkiaSharp.pdb
+C:\Users\bondarev_dy\Nextcloud\Documents\GetGroupBoxMember_3.0_исходники\publish\GetGroupBoxMember.exe

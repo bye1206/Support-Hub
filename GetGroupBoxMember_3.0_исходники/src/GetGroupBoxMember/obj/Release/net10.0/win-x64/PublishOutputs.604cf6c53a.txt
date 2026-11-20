@@ -1,0 +1,3 @@
+C:\Users\bondarev_dy\Nextcloud\Documents\ggbm\GGBM_avalonia\publish\libHarfBuzzSharp.pdb
+C:\Users\bondarev_dy\Nextcloud\Documents\ggbm\GGBM_avalonia\publish\libSkiaSharp.pdb
+C:\Users\bondarev_dy\Nextcloud\Documents\ggbm\GGBM_avalonia\publish\GGBM.Avalonia.exe

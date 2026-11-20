@@ -1,0 +1,97 @@
+{
+  "version": 2,
+  "dgSpecHash": "oEsQklHOmQQ=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\bondarev_dy\\Nextcloud\\Documents\\GetGroupBoxMember_3.0_исходники\\src\\GetGroupBoxMember\\GetGroupBoxMember.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia\\12.0.4\\avalonia.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.angle.windows.natives\\2.1.27548.20260419\\avalonia.angle.windows.natives.2.1.27548.20260419.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.buildservices\\11.3.2\\avalonia.buildservices.11.3.2.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.controls.datagrid\\12.0.0\\avalonia.controls.datagrid.12.0.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.desktop\\12.0.4\\avalonia.desktop.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.freedesktop\\12.0.4\\avalonia.freedesktop.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.freedesktop.atspi\\12.0.4\\avalonia.freedesktop.atspi.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.harfbuzz\\12.0.4\\avalonia.harfbuzz.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.native\\12.0.4\\avalonia.native.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.remote.protocol\\12.0.4\\avalonia.remote.protocol.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.skia\\12.0.4\\avalonia.skia.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.themes.fluent\\12.0.4\\avalonia.themes.fluent.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.win32\\12.0.4\\avalonia.win32.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\avalonia.x11\\12.0.4\\avalonia.x11.12.0.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\closedxml\\0.102.3\\closedxml.0.102.3.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\communitytoolkit.mvvm\\8.2.2\\communitytoolkit.mvvm.8.2.2.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\documentformat.openxml\\2.16.0\\documentformat.openxml.2.16.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\excelnumberformat\\1.1.0\\excelnumberformat.1.1.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\harfbuzzsharp\\8.3.1.3\\harfbuzzsharp.8.3.1.3.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\harfbuzzsharp.nativeassets.linux\\8.3.1.3\\harfbuzzsharp.nativeassets.linux.8.3.1.3.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\harfbuzzsharp.nativeassets.macos\\8.3.1.3\\harfbuzzsharp.nativeassets.macos.8.3.1.3.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\harfbuzzsharp.nativeassets.webassembly\\8.3.1.3\\harfbuzzsharp.nativeassets.webassembly.8.3.1.3.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\harfbuzzsharp.nativeassets.win32\\8.3.1.3\\harfbuzzsharp.nativeassets.win32.8.3.1.3.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\irony.netcore\\1.0.11\\irony.netcore.1.0.11.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microcom.runtime\\0.11.4\\microcom.runtime.0.11.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microsoft.data.sqlite\\8.0.0\\microsoft.data.sqlite.8.0.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microsoft.data.sqlite.core\\8.0.0\\microsoft.data.sqlite.core.8.0.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microsoft.net.illink.tasks\\10.0.9\\microsoft.net.illink.tasks.10.0.9.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microsoft.netcore.platforms\\1.1.0\\microsoft.netcore.platforms.1.1.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\netstandard.library\\1.6.1\\netstandard.library.1.6.1.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\sixlabors.fonts\\1.0.0\\sixlabors.fonts.1.0.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\skiasharp\\4.150.1\\skiasharp.4.150.1.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\skiasharp.nativeassets.linux\\3.119.4\\skiasharp.nativeassets.linux.3.119.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\skiasharp.nativeassets.macos\\4.150.1\\skiasharp.nativeassets.macos.4.150.1.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\skiasharp.nativeassets.webassembly\\3.119.4\\skiasharp.nativeassets.webassembly.3.119.4.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\skiasharp.nativeassets.win32\\4.150.1\\skiasharp.nativeassets.win32.4.150.1.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\sqlitepclraw.bundle_e_sqlite3\\2.1.6\\sqlitepclraw.bundle_e_sqlite3.2.1.6.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\sqlitepclraw.core\\2.1.6\\sqlitepclraw.core.2.1.6.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\sqlitepclraw.lib.e_sqlite3\\2.1.6\\sqlitepclraw.lib.e_sqlite3.2.1.6.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\sqlitepclraw.provider.e_sqlite3\\2.1.6\\sqlitepclraw.provider.e_sqlite3.2.1.6.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\system.directoryservices\\8.0.0\\system.directoryservices.8.0.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\system.directoryservices.protocols\\8.0.0\\system.directoryservices.protocols.8.0.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\system.io.packaging\\6.0.0\\system.io.packaging.6.0.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\tmds.dbus.protocol\\0.92.0\\tmds.dbus.protocol.0.92.0.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\xlparser\\1.5.2\\xlparser.1.5.2.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\10.0.9\\microsoft.netcore.app.runtime.win-x64.10.0.9.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\10.0.9\\microsoft.windowsdesktop.app.runtime.win-x64.10.0.9.nupkg.sha512",
+    "C:\\Users\\bondarev_dy\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\10.0.9\\microsoft.aspnetcore.app.runtime.win-x64.10.0.9.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "У пакета \"SQLitePCLRaw.lib.e_sqlite3\" 2.1.6 есть известная уязвимость https://github.com/advisories/GHSA-2m69-gcr7-jv3q (уровень серьезности: высокий уровень)",
+      "projectPath": "C:\\Users\\bondarev_dy\\Nextcloud\\Documents\\GetGroupBoxMember_3.0_исходники\\src\\GetGroupBoxMember\\GetGroupBoxMember.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\bondarev_dy\\Nextcloud\\Documents\\GetGroupBoxMember_3.0_исходники\\src\\GetGroupBoxMember\\GetGroupBoxMember.csproj",
+      "libraryId": "SQLitePCLRaw.lib.e_sqlite3",
+      "targetGraphs": [
+        "net10.0",
+        "net10.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "У пакета \"System.IO.Packaging\" 6.0.0 есть известная уязвимость https://github.com/advisories/GHSA-f32c-w444-8ppv (уровень серьезности: высокий уровень)",
+      "projectPath": "C:\\Users\\bondarev_dy\\Nextcloud\\Documents\\GetGroupBoxMember_3.0_исходники\\src\\GetGroupBoxMember\\GetGroupBoxMember.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\bondarev_dy\\Nextcloud\\Documents\\GetGroupBoxMember_3.0_исходники\\src\\GetGroupBoxMember\\GetGroupBoxMember.csproj",
+      "libraryId": "System.IO.Packaging",
+      "targetGraphs": [
+        "net10.0",
+        "net10.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "У пакета \"System.IO.Packaging\" 6.0.0 есть известная уязвимость https://github.com/advisories/GHSA-qj66-m88j-hmgj (уровень серьезности: высокий уровень)",
+      "projectPath": "C:\\Users\\bondarev_dy\\Nextcloud\\Documents\\GetGroupBoxMember_3.0_исходники\\src\\GetGroupBoxMember\\GetGroupBoxMember.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\bondarev_dy\\Nextcloud\\Documents\\GetGroupBoxMember_3.0_исходники\\src\\GetGroupBoxMember\\GetGroupBoxMember.csproj",
+      "libraryId": "System.IO.Packaging",
+      "targetGraphs": [
+        "net10.0",
+        "net10.0/win-x64"
+      ]
+    }
+  ]
+}

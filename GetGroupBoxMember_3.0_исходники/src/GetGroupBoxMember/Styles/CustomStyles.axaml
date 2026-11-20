@@ -1,0 +1,344 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winf/2006/xaml">
+
+  <!-- Window -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource ThemeBackground}"/>
+  </Style>
+
+  <!-- Base Button -->
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnElevated}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderAlt}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="18,9"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="CornerRadius" Value="6"/>
+  </Style>
+  <Style Selector="Button:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="Background" Value="{DynamicResource ThemeBackground}"/>
+  </Style>
+
+  <!-- Secondary Button -->
+  <Style Selector="Button.Secondary">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefault}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeRadioText}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderAlt}"/>
+    <Setter Property="Padding" Value="14,8"/>
+    <Setter Property="FontSize" Value="14"/>
+  </Style>
+  <Style Selector="Button.Secondary:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefaultHover}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnElevated}"/>
+  </Style>
+
+  <!-- Accent Button -->
+  <Style Selector="Button.AccentButton">
+    <Setter Property="Background" Value="{DynamicResource ThemeAccent}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeAccentButtonForeground}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="18,9"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.AccentButton:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeAccentHover}"/>
+  </Style>
+  <Style Selector="Button.AccentButton:pressed">
+    <Setter Property="Background" Value="{DynamicResource ThemeAccentPressed}"/>
+  </Style>
+
+  <!-- TextBox -->
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource ThemeTextBoxBackground}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnTextBox}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderAlt}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="14,11"/>
+    <Setter Property="FontSize" Value="15"/>
+    <Setter Property="CornerRadius" Value="6"/>
+  </Style>
+  <Style Selector="TextBox:focus">
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+  </Style>
+  <Style Selector="TextBox:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+  </Style>
+
+  <!-- ComboBox -->
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource ThemeTextBoxBackground}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnTextBox}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderAlt}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="12,7"/>
+    <Setter Property="FontSize" Value="14"/>
+  </Style>
+
+  <!-- NumericUpDown -->
+  <Style Selector="NumericUpDown">
+    <Setter Property="Background" Value="{DynamicResource ThemeTextBoxBackground}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnTextBox}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderAlt}"/>
+  </Style>
+
+  <!-- ProgressBar -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+    <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+    <Setter Property="Height" Value="4"/>
+  </Style>
+
+  <!-- RadioButton -->
+  <Style Selector="RadioButton">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeRadioText}"/>
+    <Setter Property="FontSize" Value="14"/>
+  </Style>
+  <Style Selector="RadioButton:checked">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeRadioTextChecked}"/>
+  </Style>
+
+  <!-- Small RadioButton -->
+  <Style Selector="RadioButton.SmallRadioButton">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeRadioText}"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Padding" Value="5,3"/>
+    <Setter Property="Margin" Value="0,0,6,0"/>
+  </Style>
+  <Style Selector="RadioButton.SmallRadioButton:checked">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeRadioTextChecked}"/>
+  </Style>
+  <Style Selector="RadioButton.SmallRadioButton:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeRadioTextChecked}"/>
+  </Style>
+
+  <!-- DataGrid -->
+  <Style Selector="DataGrid">
+    <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderAlt}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource ThemeGridLines}"/>
+    <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource ThemeGridLines}"/>
+    <Setter Property="RowBackground" Value="{DynamicResource ThemeElevatedSurface}"/>
+    <Setter Property="GridLinesVisibility" Value="All"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="RowHeight" Value="36"/>
+    <Setter Property="ColumnHeaderHeight" Value="36"/>
+    <Setter Property="IsReadOnly" Value="True"/>
+    <Setter Property="CanUserResizeColumns" Value="True"/>
+    <Setter Property="CanUserSortColumns" Value="True"/>
+  </Style>
+
+  <!-- DataGrid Column Header -->
+  <Style Selector="DataGridColumnHeader">
+    <Setter Property="Background" Value="{DynamicResource ThemeTextBoxBackground}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnTextBox}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Padding" Value="10,8"/>
+    <Setter Property="BorderThickness" Value="0,0,1,1"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderAlt}"/>
+  </Style>
+
+  <!-- DataGrid Row -->
+  <Style Selector="DataGridRow">
+    <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+  </Style>
+  <Style Selector="DataGridRow:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefaultHover}"/>
+  </Style>
+  <Style Selector="DataGridRow:selected">
+    <Setter Property="Background">
+      <Setter.Value>
+        <SolidColorBrush Color="{DynamicResource ThemeAccent}" Opacity="0.1"/>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- DataGrid Cell -->
+  <Style Selector="DataGridCell">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+    <Setter Property="Padding" Value="8,4"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <Style Selector="DataGridCell:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefaultHover}"/>
+  </Style>
+
+  <!-- ListBox -->
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <Style Selector="ListBoxItem">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+    <Setter Property="Padding" Value="10,8"/>
+  </Style>
+  <Style Selector="ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefaultHover}"/>
+  </Style>
+  <Style Selector="ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource ThemeAccent}"/>
+  </Style>
+
+  <!-- Menu -->
+  <Style Selector="Window > Grid > Menu">
+    <Setter Property="Background" Value="{DynamicResource ThemeTextBoxBackground}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnTextBox}"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+  <Style Selector="Window > Grid > Menu MenuItem">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnTextBox}"/>
+    <Setter Property="Padding" Value="12,8"/>
+  </Style>
+  <Style Selector="Window > Grid > Menu MenuItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefaultHover}"/>
+  </Style>
+
+  <!-- Dropdown MenuItem -->
+  <Style Selector="MenuItem">
+    <Setter Property="Background" Value="{DynamicResource ThemeTextBoxBackground}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnTextBox}"/>
+    <Setter Property="Padding" Value="12,8"/>
+  </Style>
+  <Style Selector="MenuItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefaultHover}"/>
+  </Style>
+
+  <!-- Separator -->
+  <Style Selector="Separator">
+    <Setter Property="Background" Value="{DynamicResource ThemeBorderAlt}"/>
+    <Setter Property="Height" Value="1"/>
+  </Style>
+
+  <!-- ScrollBar -->
+  <Style Selector="ScrollBar">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+
+  <!-- TextBlock defaults -->
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="Segoe UI"/>
+  </Style>
+
+  <Style Selector="TextBlock.MobilePhoneValue">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeSuccessText}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+  <Style Selector="TextBlock.MobilePhoneValue.FieldWarning">
+    <Setter Property="Foreground" Value="#FF0000"/>
+  </Style>
+
+  <Style Selector="TextBlock.MailValue">
+    <Setter Property="Foreground" Value="{DynamicResource LinkColor}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+  <Style Selector="TextBlock.MailValue.FieldWarning">
+    <Setter Property="Foreground" Value="#FF0000"/>
+  </Style>
+
+  <!-- Copyable Value Border (click-to-copy fields) -->
+  <Style Selector="Border.CopyableValue">
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="CornerRadius" Value="4"/>
+    <Setter Property="Padding" Value="2,1"/>
+    <Setter Property="Transitions">
+      <Setter.Value>
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.15"/>
+        </Transitions>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <Style Selector="Border.CopyableValue:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefaultHover}"/>
+  </Style>
+  <Style Selector="Border.CopyableValue:pressed">
+    <Setter Property="Background" Value="{DynamicResource ThemeButtonDefault}"/>
+  </Style>
+
+  <!-- Copy Feedback Toast -->
+  <Style Selector="Border.CopyToast">
+    <Setter Property="Background" Value="{DynamicResource StatusGreen}"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Padding" Value="14,8"/>
+    <Setter Property="BoxShadow" Value="0 2 8 0 #40000000"/>
+    <Setter Property="Transitions">
+      <Setter.Value>
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+        </Transitions>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- DN Value TextBlock -->
+  <Style Selector="TextBlock.dnValue">
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeMutedText}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+    <Setter Property="FontFamily" Value="Segoe UI"/>
+    <Setter Property="Margin" Value="0,1,0,0"/>
+  </Style>
+
+  <!-- Action Button (for card buttons) -->
+  <Style Selector="Button.ActionButton">
+    <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeMenuForeground}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorder}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="12,8"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="MinHeight" Value="36"/>
+  </Style>
+  <Style Selector="Button.ActionButton:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeActionButtonAccent}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnElevated}"/>
+  </Style>
+  <Style Selector="Button.ActionButton:pressed">
+    <Setter Property="Background" Value="{DynamicResource ThemeActionButtonAccentPressed}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextOnElevated}"/>
+  </Style>
+
+  <!-- Action Button Loading State -->
+  <Style Selector="Button.ActionButton.loading">
+    <Setter Property="Background" Value="{DynamicResource ThemeActionLoadingBackground}"/>
+    <Setter Property="IsEnabled" Value="False"/>
+  </Style>
+
+  <!-- Progress Bar for Loading Buttons -->
+  <Style Selector="ProgressBar.ActionProgress">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+    <Setter Property="Background" Value="{DynamicResource ThemeBorderAlt}"/>
+    <Setter Property="Height" Value="4"/>
+    <Setter Property="CornerRadius" Value="2"/>
+  </Style>
+
+  <!-- Search Button -->
+  <Style Selector="Button.SearchButton">
+    <Setter Property="Background" Value="{DynamicResource ThemeSearchButton}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeSearchButtonForeground}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="14,11"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="CornerRadius" Value="6"/>
+  </Style>
+  <Style Selector="Button.SearchButton:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ThemeSearchButtonHover}"/>
+  </Style>
+  <Style Selector="Button.SearchButton:pressed">
+    <Setter Property="Background" Value="{DynamicResource ThemeSearchButtonPressed}"/>
+  </Style>
+
+</Styles>

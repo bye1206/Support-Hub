@@ -1,0 +1,1 @@
+UPDATE outbox_events SET status='NEW', attempts=0, processed_at=NULL, next_attempt_at=NULL WHERE idempotency_key='test-vite-probe-002';

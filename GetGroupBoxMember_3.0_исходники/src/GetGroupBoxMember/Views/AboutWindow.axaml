@@ -1,0 +1,116 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GetGroupBoxMember.ViewModels"
+        x:Class="GetGroupBoxMember.Views.AboutWindow"
+        x:DataType="vm:AboutWindowViewModel"
+        Title="О программе"
+        Width="960"
+        Height="400"
+        MinWidth="820"
+        MinHeight="360"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+  <Grid RowDefinitions="Auto,Auto,Auto">
+
+    <!-- ROW 1: Title + Features -->
+    <Grid Grid.Row="0" ColumnDefinitions="1.2*,2*" Margin="16,16,16,10">
+
+      <!-- Title Card -->
+      <Border Grid.Column="0" Background="{DynamicResource ThemeCardBackground}" CornerRadius="10" Padding="16,12" Margin="0,0,8,0">
+        <StackPanel HorizontalAlignment="Center" Spacing="4">
+          <Border Width="48" Height="48" Classes="Elevated" CornerRadius="12"
+                  HorizontalAlignment="Center" Margin="0,0,0,8">
+            <Grid Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Ellipse Fill="{DynamicResource LinkColor}" Opacity="0.15" Width="36" Height="36"/>
+              <TextBlock Text="AD" FontSize="16" FontWeight="800"
+                         Foreground="{DynamicResource LinkColor}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+
+        <TextBlock Text="GetGroupBoxMember"
+                       FontSize="20" FontWeight="SemiBold"
+                       Classes="PrimaryText" HorizontalAlignment="Center" TextAlignment="Center"/>
+
+          <TextBlock Text="{Binding Version, StringFormat='Версия {0}'}"
+                       FontSize="14" Classes="MutedText"
+                       HorizontalAlignment="Center" TextAlignment="Center"/>
+
+          <TextBlock Text="Информация об объектах Active Directory"
+                       FontSize="13" Classes="MutedText"
+                       HorizontalAlignment="Center" TextAlignment="Center"/>
+        </StackPanel>
+      </Border>
+
+      <!-- Features Card -->
+      <Border Grid.Column="1" Background="{DynamicResource ThemeCardBackground}" CornerRadius="10" Padding="16,12" Margin="8,0,0,0">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Возможности" FontSize="13" FontWeight="SemiBold"
+                     Classes="MutedText" Margin="0,0,0,4"/>
+
+          <StackPanel Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="6" Height="6" Fill="{DynamicResource LinkColor}" VerticalAlignment="Top" Margin="0,4,0,0"/>
+              <TextBlock Text="Поиск пользователей, групп и компьютеров" FontSize="14" Classes="PrimaryText" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="6" Height="6" Fill="{DynamicResource LinkColor}" VerticalAlignment="Top" Margin="0,4,0,0"/>
+              <TextBlock Text="Детальная информация об учётных записях AD" FontSize="14" Classes="PrimaryText" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="6" Height="6" Fill="{DynamicResource LinkColor}" VerticalAlignment="Top" Margin="0,4,0,0"/>
+              <TextBlock Text="Экспорт данных в Excel с автоформатированием" FontSize="14" Classes="PrimaryText" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="6" Height="6" Fill="{DynamicResource LinkColor}" VerticalAlignment="Top" Margin="0,4,0,0"/>
+              <TextBlock Text="Инструменты репликации и анализа изменений AD" FontSize="14" Classes="PrimaryText" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="6" Height="6" Fill="{DynamicResource LinkColor}" VerticalAlignment="Top" Margin="0,4,0,0"/>
+              <TextBlock Text="Поддержка рассылок, динамических групп, почтовых ящиков" FontSize="14" Classes="PrimaryText" TextWrapping="Wrap"/>
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- ROW 2: Authors -->
+    <Border Grid.Row="1" Background="{DynamicResource ThemeCardBackground}" CornerRadius="10" Padding="16,12" Margin="16,0,16,10">
+      <Grid ColumnDefinitions="1*,Auto,1*">
+        <StackPanel Grid.Column="0" HorizontalAlignment="Center" Spacing="0">
+          <TextBlock Text="Изначальный автор" FontSize="11" Classes="MutedText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="Кожевников Сергей" FontSize="14" FontWeight="SemiBold" Classes="SecondaryText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="Владимирович" FontSize="14" FontWeight="SemiBold" Classes="SecondaryText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="(kozhevnikov_s_v)" FontSize="12" Classes="MutedText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="©2023" FontSize="10" Classes="MutedText" HorizontalAlignment="Center" TextAlignment="Center"/>
+        </StackPanel>
+
+        <Border Grid.Column="1" Width="1" Background="{DynamicResource ThemeBorder}" Margin="32,4" Opacity="0.5"/>
+
+        <StackPanel Grid.Column="2" HorizontalAlignment="Center" Spacing="0">
+          <TextBlock Text="Форк и доработка" FontSize="11" Classes="MutedText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="Бондарев Дмитрий" FontSize="14" FontWeight="SemiBold" Classes="SecondaryText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="Юрьевич" FontSize="14" FontWeight="SemiBold" Classes="SecondaryText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="(bondarev_dy)" FontSize="12" Classes="MutedText" HorizontalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock Text="©2026" FontSize="10" Classes="MutedText" HorizontalAlignment="Center" TextAlignment="Center"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ROW 3: Tech Info -->
+    <Border Grid.Row="2" Background="{DynamicResource ThemeCardBackground}" CornerRadius="10" Padding="16,10" Margin="16,0,16,12">
+      <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="t.me/bond_dmitriy" FontSize="12"
+                     Foreground="{DynamicResource LinkColor}" Cursor="Hand"
+                     PointerPressed="Telegram_Click" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Text="·" FontSize="12" Classes="MutedText" VerticalAlignment="Center"/>
+        <TextBlock Text="Avalonia 12.0.4 · .NET 10" FontSize="12" Classes="MutedText" VerticalAlignment="Center"/>
+      </StackPanel>
+    </Border>
+
+  </Grid>
+</Window>

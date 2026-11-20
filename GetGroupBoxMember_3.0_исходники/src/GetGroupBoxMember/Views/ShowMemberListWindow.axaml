@@ -1,0 +1,67 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+        xmlns:local="using:GetGroupBoxMember.Views.Controls"
+        x:Class="GetGroupBoxMember.Views.ShowMemberListWindow"
+        Title="Список участников"
+          Width="1100"
+          Height="958"
+          MinWidth="900"
+          MinHeight="600"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+    <!-- Menu -->
+    <Menu Grid.Row="0"  Classes="PrimaryText" x:Name="MainMenu" FontSize="12">
+      <MenuItem Header="Файл">
+        <MenuItem Header="Копировать" Click="CopyToClipboard_Click"/>
+        <Separator/>
+        <MenuItem Header="Экспорт (.xlsx)" Click="ExportXlsx_Click"/>
+        <MenuItem Header="Экспорт (.txt)" Click="ExportTxt_Click"/>
+      </MenuItem>
+    </Menu>
+
+    <!-- Search Bar -->
+    <Border Grid.Row="1" Classes="Card"  Padding="12,8" x:Name="SearchBorder">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox Grid.Column="0" 
+                x:Name="GroupSearchBox"
+                PlaceholderText="Поиск по логину..."
+                FontSize="13"
+                Padding="10,8"
+                Margin="0,0,8,0"
+                KeyDown="GroupSearchBox_KeyDown"/>
+        <Button Grid.Column="1" 
+                Content="Найти" 
+                Click="GroupSearch_Click"
+                Padding="16,8"/>
+      </Grid>
+    </Border>
+
+    <!-- Content -->
+    <Grid Grid.Row="2" RowDefinitions="*">
+
+      <!-- Loading Overlay -->
+      <Border Grid.Row="0" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+          <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+          <TextBlock x:Name="LoadingTextBlock" Text="Загрузка данных..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+
+      <!-- GridTable -->
+      <controls:GridTable Grid.Row="0" x:Name="MainGridTable" VerticalAlignment="Stretch" IsTabStop="False" IsVisible="True"/>
+    </Grid>
+
+    <!-- Pagination Panel (bottom) -->
+    <Border Grid.Row="3" Classes="Card" Padding="12,6" x:Name="PaginationPanel" IsVisible="False">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Button Grid.Column="0" x:Name="PrevPageBtn" Content="◀ Предыдущая" Click="PrevPage_Click" Padding="12,6"/>
+        <TextBlock Grid.Column="1" x:Name="PageInfoText" Text="" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="PrimaryText"/>
+        <Button Grid.Column="2" x:Name="NextPageBtn" Content="Следующая ▶" Click="NextPage_Click" Padding="12,6"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -1,0 +1,23 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GetGroupBoxMember.Views.SearchDialog"
+        Title="Быстрый поиск"
+        Width="400"
+        Height="150"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        >
+  <StackPanel Margin="16" Spacing="12">
+    <TextBlock Text="Введите текст для поиска:"
+               Classes="PrimaryText"/>
+    <TextBox x:Name="SearchTextBox"
+             PlaceholderText="Текст для поиска..."
+             Focusable="True"
+             
+             Classes="PrimaryText"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="Отмена" Width="80" Click="Cancel_Click"/>
+      <Button Content="Найти" Width="80" Click="Ok_Click"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

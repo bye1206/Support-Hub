@@ -1,0 +1,38 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+         x:Class="GetGroupBoxMember.Views.FindPCWindow"
+        Title="Поиск ПК"
+         Width="877"
+         Height="700"
+         MinWidth="800"
+         MinHeight="500"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Menu -->
+    <Menu Grid.Row="0"  Classes="PrimaryText">
+      <MenuItem Header="Файл">
+        <MenuItem Header="Копировать" Click="CopyToClipboard_Click"/>
+        <Separator/>
+        <MenuItem Header="Экспорт (.xlsx)" Click="ExportXlsx_Click"/>
+        <MenuItem Header="Экспорт (.txt)" Click="ExportTxt_Click"/>
+      </MenuItem>
+    </Menu>
+
+    <!-- Data Grid with Loading Overlay -->
+    <Grid Grid.Row="1">
+      <controls:GridTable x:Name="MainGridTable" VerticalAlignment="Stretch" IsTabStop="False" Margin="0,24,0,0"/>
+
+      <!-- Loading Overlay -->
+      <Border Grid.Row="0" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+          <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+          <TextBlock x:Name="LoadingTextBlock" Text="Загрузка данных..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

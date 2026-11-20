@@ -1,0 +1,91 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+        x:Class="GetGroupBoxMember.Views.RepadminWindow"
+        Title="Информация RepAdmin"
+        Width="1100"
+        Height="750"
+        MinWidth="800"
+        MinHeight="500"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Menu -->
+    <Menu Grid.Row="0"  Classes="PrimaryText">
+      <MenuItem Header="Файл">
+        <MenuItem Header="Копировать" Click="CopyToClipboard_Click"/>
+        <Separator/>
+        <MenuItem Header="Экспорт (.xlsx)" Click="Export_Click"/>
+      </MenuItem>
+    </Menu>
+
+    <!-- Tab Control -->
+    <TabControl Grid.Row="1" x:Name="MainTabControl" Margin="0,36,0,0">
+
+      <!-- Tab: Attribute MetaData -->
+      <TabItem Header="Однострочные атрибуты">
+        <Grid RowDefinitions="Auto,*">
+          <!-- Filter -->
+          <Border Classes="Card" Grid.Row="0"  Padding="12,8">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" Text="Фильтр:" VerticalAlignment="Center" Classes="SecondaryText" Margin="0,0,10,0"/>
+              <TextBox Grid.Column="1" x:Name="AttributeFilterTextBox"
+                       PlaceholderText="Поиск по атрибуту, контроллеру домена, дате..."
+                       Padding="8"  Classes="PrimaryText"
+                       TextChanged="AttributeFilter_TextChanged"/>
+            </Grid>
+          </Border>
+
+          <!-- GridTable -->
+          <controls:GridTable Grid.Row="1" x:Name="AttributeMetaDataGrid" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" IsTabStop="False" IsVisible="True"/>
+        </Grid>
+      </TabItem>
+
+      <!-- Tab: Value MetaData -->
+      <TabItem Header="Многострочные атрибуты">
+        <Grid ColumnDefinitions="200,*">
+          <!-- Attribute List -->
+          <Border Classes="Card" Grid.Column="0"  Padding="8">
+            <ListBox x:Name="ValueMetaDataListBox"
+                     Background="Transparent"
+                     Classes="PrimaryText"
+                     SelectionChanged="ValueMetaDataListBox_SelectionChanged">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding}" Padding="4"/>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Border>
+
+          <!-- Value Grid with Filter -->
+          <Grid Grid.Column="1" RowDefinitions="Auto,*">
+            <!-- Filter -->
+            <Border Classes="Card" Grid.Row="0"  Padding="12,8">
+              <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Text="Фильтр:" VerticalAlignment="Center" Classes="SecondaryText" Margin="0,0,10,0"/>
+                <TextBox Grid.Column="1" x:Name="ValueFilterTextBox"
+                         PlaceholderText="Поиск..."
+                         Padding="8"  Classes="PrimaryText"
+                         TextChanged="ValueFilter_TextChanged"/>
+              </Grid>
+            </Border>
+
+            <!-- GridTable -->
+            <controls:GridTable Grid.Row="1" x:Name="ValueMetaDataGrid" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" IsTabStop="False" IsVisible="True"/>
+          </Grid>
+        </Grid>
+      </TabItem>
+    </TabControl>
+
+    <!-- Loading Overlay -->
+    <Border Grid.Row="1" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+        <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+        <TextBlock x:Name="LoadingTextBlock" Text="Загрузка данных..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

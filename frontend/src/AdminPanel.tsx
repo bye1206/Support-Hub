@@ -22,6 +22,27 @@ type AuditEntry = {
   created_at: string;
 };
 type Overview = { tickets: number; active_operators: number };
+// Owner (2026-11-20): the stats section — per-operator workload, ratings
+// and reviews, SLA breaches, and the AI bot counters.
+type StatRating = { score: number; review: string | null; created_at: string };
+type OperatorStat = {
+  operator_id: string;
+  name: string;
+  dialogs_total: number;
+  dialogs_day: number;
+  avg_rating: number | null;
+  ratings_count: number;
+  sla_breached: number;
+  ratings: StatRating[];
+};
+type AiStat = {
+  avg_rating: number | null;
+  ratings_count: number;
+  ratings: StatRating[];
+  chats_closed: number;
+  chats_no_handoff: number;
+  handoffs: number;
+};
 type Category = { category_id: string; name: string; parent_id: string | null; is_active: boolean };
 type Tag = { tag_id: string; name: string; is_active: boolean };
 type Ticket = {
@@ -129,7 +150,7 @@ export function AdminPanel({
   role: Role;
   onRoleChange: (role: Role) => void;
 }) {
-  const [section, setSection] = useState<"overview" | "distribution" | "operators" | "categories" | "tags" | "audit">("overview");
+  const [section, setSection] = useState<"overview" | "stats" | "distribution" | "operators" | "categories" | "tags" | "audit">("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [operators, setOperators] = useState<Operator[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -150,6 +171,11 @@ export function AdminPanel({
   const categorySearchRef = useRef<HTMLInputElement>(null);
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  // Owner (2026-11-20): stats block, loaded lazily when the tab opens.
+  const [statOps, setStatOps] = useState<OperatorStat[]>([]);
+  const [statAi, setStatAi] = useState<AiStat | null>(null);
+  const [statDate, setStatDate] = useState("");
+  const [statExpanded, setStatExpanded] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [categoryName, setCategoryName] = useState("");
@@ -181,6 +207,26 @@ export function AdminPanel({
       .finally(() => active && setBusy(false));
     return () => { active = false; };
   }, [auth, role]);
+
+  // Owner (2026-11-20): the stats tab fetches on open and on date change.
+  useEffect(() => {
+    if (section !== "stats") return;
+    let active = true;
+    const query = statDate ? `?date=${encodeURIComponent(statDate)}` : "";
+    void Promise.all([
+      adminApi<{ operators: OperatorStat[] }>(`/stats/operators${query}`, auth),
+      adminApi<AiStat>("/stats/ai", auth),
+    ])
+      .then(([ops, ai]) => {
+        if (!active) return;
+        setStatOps(ops.operators);
+        setStatAi(ai);
+      })
+      .catch((cause: unknown) =>
+        active && setError(cause instanceof Error ? cause.message : "Не удалось загрузить статистику"),
+      );
+    return () => { active = false; };
+  }, [auth, section, statDate]);
 
   // Presence changes constantly; refresh staff statuses quietly.
   // Perf (2026-11-17): guard against overlapping polls (a slow answer used
@@ -511,7 +557,7 @@ export function AdminPanel({
         <div className="admin-header-actions" />
       </header>
       <nav className="admin-nav" aria-label="Разделы панели">
-        {([ ["overview", "Обзор"], ["distribution", "Распределение"], ["operators", "Сотрудники"], ["categories", "Категории"], ["tags", "Теги"], ["audit", "Аудит"] ] as const)
+        {([ ["overview", "Обзор"], ["stats", "Статистика"], ["distribution", "Распределение"], ["operators", "Сотрудники"], ["categories", "Категории"], ["tags", "Теги"], ["audit", "Аудит"] ] as const)
           .filter(([key]) => (key !== "operators" || role === "ADMIN") && (key !== "categories" && key !== "tags" || role !== "OPERATOR"))
           .map(([key, label]) => <button key={key} className={section === key ? "active" : ""} onClick={() => setSection(key)}>{label}</button>)}
       </nav>
@@ -674,6 +720,62 @@ export function AdminPanel({
               <div className="directory-list">{tags.map((tag) => <div key={tag.tag_id} className={`directory-row ${!tag.is_active ? "inactive" : ""}`}>
                 {editingTag?.tag_id === tag.tag_id ? <form className="directory-edit" onSubmit={(event) => void updateTag(event)}><input required maxLength={100} value={editingTag.name} onChange={(event) => setEditingTag({ ...editingTag, name: event.target.value })} /><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingTag(null)}>Отмена</button></form> : <><span>{tag.name}</span><span>{tag.is_active ? "Активен" : "Отключён"}</span><div className="directory-actions">{tag.is_active && <button onClick={() => setEditingTag(tag)}>Изменить</button>}<button onClick={() => void setDirectoryActive("tags", tag.tag_id, !tag.is_active)}>{tag.is_active ? "Отключить" : "Включить"}</button></div></>}
               </div>)}</div>
+            </>}
+            {section === "stats" && <>
+              <p className="admin-intro">Работа и оценки · по каждому сотруднику и ИИ-боту</p>
+              <div className="stats-toolbar">
+                <label>За день <input type="date" value={statDate} onChange={(event) => setStatDate(event.target.value)} /></label>
+                {statDate && <button className="quiet-action" onClick={() => setStatDate("")}>Показать всё время</button>}
+              </div>
+              <div className="admin-stats">
+                <article><span>Средняя оценка ИИ</span><strong>{statAi?.avg_rating ?? "—"}</strong></article>
+                <article><span>Чатов закрыто без перевода</span><strong>{statAi?.chats_no_handoff ?? "—"}</strong></article>
+                <article><span>Переводов на оператора</span><strong>{statAi?.handoffs ?? "—"}</strong></article>
+              </div>
+              <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Всего</th><th>За день</th><th>Ср. оценка</th><th>Оценок</th><th>SLA пропущено</th><th></th></tr></thead><tbody>
+                {statOps.map((stat) => <>
+                  <tr key={stat.operator_id} className="stats-row" onClick={() => setStatExpanded(statExpanded === stat.operator_id ? null : stat.operator_id)}>
+                    <td><strong>{stat.name}</strong></td>
+                    <td>{stat.dialogs_total}</td>
+                    <td>{stat.dialogs_day}</td>
+                    <td>{stat.avg_rating ?? "—"}</td>
+                    <td>{stat.ratings_count}</td>
+                    <td>{stat.sla_breached}</td>
+                    <td>{stat.ratings_count ? (statExpanded === stat.operator_id ? "Свернуть ▲" : "Оценки ▼") : ""}</td>
+                  </tr>
+                  {statExpanded === stat.operator_id && (
+                    <tr key={`${stat.operator_id}-details`} className="stats-details">
+                      <td colSpan={7}>
+                        {stat.ratings.length ? (
+                          <div className="stats-reviews">
+                            {stat.ratings.map((rating, index) => (
+                              <div className="stats-review" key={`${stat.operator_id}-${index}`}>
+                                <span className={`stats-score ${rating.score >= 4 ? "good" : rating.score === 3 ? "mid" : "bad"}`}>{rating.score}</span>
+                                <p>{rating.review || "Без отзыва"}</p>
+                                <time>{new Date(rating.created_at).toLocaleString("ru-RU")}</time>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="admin-muted">Оценок пока нет</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </>)}
+                {!statOps.length && <tr><td colSpan={7}>Операторов пока нет</td></tr>}
+              </tbody></table></div>
+              {statAi && statAi.ratings.length > 0 && (
+                <div className="stats-reviews ai-reviews">
+                  {statAi.ratings.map((rating, index) => (
+                    <div className="stats-review" key={`ai-${index}`}>
+                      <span className={`stats-score ${rating.score >= 4 ? "good" : rating.score === 3 ? "mid" : "bad"}`}>{rating.score}</span>
+                      <p>{rating.review || "Без отзыва"}</p>
+                      <time>{new Date(rating.created_at).toLocaleString("ru-RU")}</time>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>}
             {section === "audit" && <>
               <p className="admin-intro">Последние действия · показаны только метаданные</p>

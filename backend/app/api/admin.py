@@ -18,6 +18,10 @@ from app.models import (
     Tag,
     Ticket,
     TicketCategory,
+    TicketHistoryKind,
+    TicketRating,
+    TicketStatus,
+    TicketStatusHistory,
 )
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -701,4 +705,150 @@ async def list_audit(
             }
             for entry in entries
         ]
+    }
+
+
+@router.get("/stats/operators")
+async def operator_stats(
+    request: Request,
+    _actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+    date: str = "",
+) -> dict[str, list[dict[str, object]]]:
+    """Per-operator workload and satisfaction (owner request, 2026-11-20).
+
+    dialogs_total = dialogs RESOLVED/CLOSED while assigned to the operator;
+    dialogs_day = the same limited to one day via ?date=YYYY-MM-DD
+    (updated_at day); the ratings and free-text reviews come from
+    ticket_ratings; sla_breached counts the breach events on the dialogs
+    assigned to the operator.
+    """
+    from datetime import date as date_type
+
+    from sqlalchemy import Date, cast
+
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        operators = (
+            await session.scalars(select(Operator).order_by(Operator.display_name))
+        ).all()
+        terminal = [TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value]
+        day: date_type | None = None
+        if date:
+            try:
+                day = date_type.fromisoformat(date)
+            except ValueError:
+                raise ApiError(
+                    code="VALIDATION_ERROR", message="date must be YYYY-MM-DD"
+                ) from None
+        rows: list[dict[str, object]] = []
+        for operator in operators:
+            base = select(func.count()).select_from(Ticket).where(
+                Ticket.assignee_id == operator.id,
+                Ticket.status.in_(terminal),
+            )
+            dialogs_total = await session.scalar(base) or 0
+            dialogs_day = 0
+            if day is not None:
+                dialogs_day = (
+                    await session.scalar(
+                        base.where(cast(Ticket.updated_at, Date) == day)
+                    )
+                ) or 0
+            rating_rows = (
+                await session.scalars(
+                    select(TicketRating)
+                    .where(TicketRating.operator_id == operator.id)
+                    .order_by(desc(TicketRating.created_at))
+                )
+            ).all()
+            avg = (
+                sum(r.score for r in rating_rows) / len(rating_rows)
+                if rating_rows
+                else None
+            )
+            sla_breached = await session.scalar(
+                select(func.count())
+                .select_from(TicketStatusHistory)
+                .join(Ticket, Ticket.id == TicketStatusHistory.ticket_id)
+                .where(
+                    Ticket.assignee_id == operator.id,
+                    TicketStatusHistory.kind == TicketHistoryKind.SLA_BREACHED.value,
+                )
+            ) or 0
+            rows.append(
+                {
+                    "operator_id": str(operator.id),
+                    "name": operator.display_name or operator.email,
+                    "dialogs_total": dialogs_total,
+                    "dialogs_day": dialogs_day,
+                    "avg_rating": round(avg, 2) if avg is not None else None,
+                    "ratings_count": len(rating_rows),
+                    "sla_breached": sla_breached,
+                    "ratings": [
+                        {
+                            "score": r.score,
+                            "review": r.review_text,
+                            "created_at": r.created_at.isoformat(),
+                        }
+                        for r in rating_rows
+                    ],
+                }
+            )
+    return {"operators": rows}
+
+
+@router.get("/stats/ai")
+async def ai_stats(
+    request: Request,
+    _actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> dict[str, object]:
+    """AI bot satisfaction and handoff counts (owner request, 2026-11-20)."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        ai_ratings = (
+            await session.scalars(
+                select(TicketRating)
+                .where(TicketRating.target == "AI")
+                .order_by(desc(TicketRating.created_at))
+            )
+        ).all()
+        avg = (
+            sum(r.score for r in ai_ratings) / len(ai_ratings)
+            if ai_ratings
+            else None
+        )
+        terminal = [TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value]
+        closed_total = await session.scalar(
+            select(func.count())
+            .select_from(Ticket)
+            .where(Ticket.status.in_(terminal))
+        ) or 0
+        # Dialogs the AI handed to operators: distinct conversations with a
+        # handoff.accepted event.
+        handed_off = await session.scalar(
+            select(func.count(func.distinct(AuditLog.entity_id)))
+            .select_from(AuditLog)
+            .where(
+                AuditLog.action == "handoff.accepted",
+                AuditLog.entity_type == "conversation",
+            )
+        ) or 0
+    return {
+        "avg_rating": round(avg, 2) if avg is not None else None,
+        "ratings_count": len(ai_ratings),
+        "ratings": [
+            {
+                "score": r.score,
+                "review": r.review_text,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in ai_ratings
+        ],
+        "chats_closed": closed_total,
+        "chats_no_handoff": max(0, closed_total - handed_off),
+        "handoffs": handed_off,
     }

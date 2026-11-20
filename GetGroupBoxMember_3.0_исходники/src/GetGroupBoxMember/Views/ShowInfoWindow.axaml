@@ -1,0 +1,86 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+        xmlns:local="using:GetGroupBoxMember.Views.Controls"
+        x:Class="GetGroupBoxMember.Views.ShowInfoWindow"
+        Title="Информация"
+         Width="1400"
+         Height="750"
+         MinWidth="1100"
+         MinHeight="600"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,Auto,*">
+
+    <!-- Menu -->
+    <Menu Grid.Row="0"  Classes="PrimaryText" x:Name="MainMenu" FontSize="12">
+      <MenuItem Header="Файл">
+        <MenuItem Header="Копировать" Click="CopyToClipboard_Click"/>
+        <Separator/>
+        <MenuItem Header="Экспорт (.xlsx)" Click="ExportXlsx_Click"/>
+        <MenuItem Header="Экспорт (.txt)" Click="ExportTxt_Click"/>
+      </MenuItem>
+      <MenuItem Header="VDI группы" Click="FilterInfoVDI_Click"/>
+      <MenuItem Header="VPN группы" Click="FilterInfoVPN_Click"/>
+      <MenuItem Header="Confluence группы" Click="FilterInfoConfluence_Click"/>
+      <MenuItem Header="T-APP группы" Click="FilterInfoTAPP_Click"/>
+      <MenuItem Header="INET группы" Click="FilterInfoINET_Click"/>
+      <MenuItem Header="Filenet группы" Click="FilterInfoFilenet_Click"/>
+      <MenuItem Header="HNAS группы" Click="FilterInfoHNAS_Click"/>
+      <MenuItem Header="Tag группы" Click="FilterInfoTag_Click"/>
+      <MenuItem Header="Статус пароля" Click="FilterPassword_Click"/>
+      <MenuItem Header="Убрать рассылки" Click="FilterRemoveDistribution_Click"/>
+      <MenuItem Header="VDI папки" Click="VdiFolders_Click"/>
+      <MenuItem Header="Навигация" x:Name="NavigationMenu" IsVisible="False">
+        <MenuItem Header="◀ Предыдущая" Click="PrevPage_Click"/>
+        <MenuItem Header="Следующая ▶" Click="NextPage_Click"/>
+        <Separator/>
+        <MenuItem Header="Страница 1 из 1" x:Name="PageInfoMenuItem" IsEnabled="False"/>
+      </MenuItem>
+    </Menu>
+
+    <!-- Search Bar -->
+    <Border Grid.Row="1" Classes="Card"  Padding="12,8" x:Name="SearchBorder">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBox Grid.Column="0" 
+                x:Name="GroupSearchBox"
+                PlaceholderText="Поиск по атрибуту..."
+                FontSize="13"
+                Padding="10,8"
+                Margin="0,0,8,0"
+                KeyDown="GroupSearchBox_KeyDown"
+                TextChanged="GroupSearchBox_TextChanged"/>
+        <Button Grid.Column="1" 
+                Content="Найти" 
+                Click="GroupSearch_Click"
+                Padding="16,8"/>
+        <Button Grid.Column="2"
+                Content="Сбросить результаты фильтра"
+                Click="ClearSearch_Click"
+                Padding="16,8"
+                Margin="8,0,0,0"/>
+      </Grid>
+    </Border>
+
+    <!-- Content -->
+    <Grid Grid.Row="2" RowDefinitions="*,Auto">
+
+      <!-- Loading Overlay -->
+      <Border Grid.Row="0" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+          <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+          <TextBlock x:Name="LoadingTextBlock" Text="Загрузка данных..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+
+      <!-- GridTable -->
+      <controls:GridTable Grid.Row="0" x:Name="MainGridTable" VerticalAlignment="Stretch" IsTabStop="False" IsVisible="True"/>
+
+      <TextBlock Grid.Row="0" x:Name="NoResultsText" Text="Нет совпадений в результатах фильтрации"
+                 FontSize="16" Foreground="{DynamicResource ThemeTextSecondary}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                 IsVisible="False" IsHitTestVisible="False"/>
+    </Grid>
+  </Grid>
+</Window>

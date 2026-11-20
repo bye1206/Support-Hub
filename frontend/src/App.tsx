@@ -1254,10 +1254,6 @@ export default function App() {
               {signingIn ? "Проверяем…" : "Открыть очередь"} <span>→</span>
             </button>
           </form>
-          <p className="auth-footnote">
-            Авторизация через LDAP/AD (D-047); сессия закрывается по истечении
-            срока.
-          </p>
         </section>
       </main>
     );

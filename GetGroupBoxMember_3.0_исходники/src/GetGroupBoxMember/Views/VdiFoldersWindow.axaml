@@ -1,0 +1,37 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+        xmlns:vm="using:GetGroupBoxMember.Views"
+        x:Class="GetGroupBoxMember.Views.VdiFoldersWindow"
+        x:DataType="vm:VdiFoldersWindowViewModel"
+        Title="VDI папки"
+        Width="950"
+        Height="350"
+        MinWidth="750"
+        MinHeight="280"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Margin="16">
+      <controls:GridTable x:Name="MainGridTable"/>
+    </Border>
+
+    <Border Classes="Card" Grid.Row="1"  Padding="16,12">
+      <Button Content="Закрыть" HorizontalAlignment="Right" Padding="24,8"
+               Classes="PrimaryText" FontWeight="SemiBold"
+              Click="Close_Click"/>
+    </Border>
+
+    <Border Grid.Row="0" Grid.RowSpan="2" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock x:Name="LoadingText" Text="Загрузка данных..." FontSize="16" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

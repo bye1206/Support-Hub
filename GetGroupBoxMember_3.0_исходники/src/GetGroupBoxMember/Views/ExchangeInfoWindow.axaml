@@ -1,0 +1,255 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+         x:Class="GetGroupBoxMember.Views.ExchangeInfoWindow"
+         Title="Exchange меню"
+          Width="1046"
+          Height="700"
+          MinWidth="1024"
+          MinHeight="500"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Menu -->
+    <Menu Grid.Row="0"  Classes="PrimaryText">
+      <MenuItem Header="Файл">
+        <MenuItem Header="Копировать" Click="CopyToClipboard_Click"/>
+        <Separator/>
+        <MenuItem Header="Экспорт (.xlsx)" Click="ExportXlsx_Click"/>
+        <MenuItem Header="Экспорт (.txt)" Click="ExportTxt_Click"/>
+      </MenuItem>
+      <MenuItem Header="Квота" Click="ShowQuota_Click"/>
+      <MenuItem Header="Папки пользователя" Click="ShowFolders_Click"/>
+      <MenuItem Header="Удаленные элементы" Click="ShowDeletedItems_Click"/>
+      <MenuItem Header="Полная инфо" Click="ShowFullInfo_Click"/>
+      <MenuItem Header="Календарь" Click="ShowCalendar_Click"/>
+      <MenuItem Header="Почтовые правила" Click="ShowInboxRules_Click"/>
+      <MenuItem Header="Автоответ" Click="ShowAutoReply_Click"/>
+      <MenuItem Header="Трекинг" Click="ShowTracking_Click"/>
+    </Menu>
+
+    <!-- Main Content -->
+    <Grid Grid.Row="1" RowDefinitions="*,Auto">
+      <!-- Normal Grid View -->
+      <Grid x:Name="MainContentGrid" RowDefinitions="Auto,*" Grid.Row="0">
+        <Border Grid.Row="0" Classes="Card" Padding="12,8">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                    x:Name="ExchangeSearchBox"
+                    PlaceholderText="Поиск по загруженным данным..."
+                    FontSize="13"
+                    Padding="10,8"
+                    Margin="0,0,8,0"
+                    KeyDown="ExchangeSearchBox_KeyDown"/>
+            <Button Grid.Column="1"
+                    Content="Найти"
+                    Click="ExchangeSearch_Click"
+                    Padding="16,8"/>
+          </Grid>
+        </Border>
+        <controls:GridTable Grid.Row="1" x:Name="MainGridTable" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
+      </Grid>
+
+      <!-- Tracking Panel -->
+      <Grid x:Name="TrackingPanel" RowDefinitions="Auto,Auto,Auto,Auto,*" IsVisible="False" Margin="16">
+        <Border Classes="Card" Grid.Row="0" CornerRadius="12" Padding="20" Margin="0,0,0,8">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,*,Auto">
+            <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="Трекинг сообщений" FontSize="16" FontWeight="SemiBold" Classes="PrimaryText" Margin="0,0,0,12"/>
+
+            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,16,8">
+              <TextBlock Text="Отправитель" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+              <TextBox x:Name="TrackingSenderTextBox" Padding="10" Classes="PrimaryText" FontSize="13" Watermark="login или email"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,16,8">
+              <TextBlock Text="Получатель" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+              <TextBox x:Name="TrackingRecipientTextBox" Padding="10" Classes="PrimaryText" FontSize="13" Watermark="login или email"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,8">
+              <Button x:Name="TrackingSearchButton" Content="Поиск" Classes="SearchButton" Padding="24,10" FontSize="13" Click="TrackingSearch_Click"/>
+              <Button x:Name="TrackingCancelButton" Content="Отмена" Classes="CancelButton" Padding="16,10" Margin="8,0,0,0" IsVisible="False" Click="TrackingCancel_Click"/>
+            </StackPanel>
+
+            <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Classes="SecondaryText" FontSize="11" Margin="0,0,0,8" Text="При заполнении обоих полей (отправитель + получатель) поиск идёт по отправителю с фильтрацией по получателю"/>
+
+            <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,16,8">
+              <TextBlock Text="Начало периода" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <CalendarDatePicker x:Name="TrackingStartDate" FontSize="13" Width="140"/>
+                <TextBox x:Name="TrackingStartTime" Text="09:01" Width="70" Padding="8" Classes="PrimaryText" FontSize="13" Watermark="ЧЧ:мм" VerticalContentAlignment="Center"/>
+              </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Grid.Column="1">
+              <TextBlock Text="Конец периода" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <CalendarDatePicker x:Name="TrackingEndDate" FontSize="13" Width="140"/>
+                <TextBox x:Name="TrackingEndTime" Text="00:00" Width="70" Padding="8" Classes="PrimaryText" FontSize="13" Watermark="ЧЧ:мм" VerticalContentAlignment="Center"/>
+              </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Row="4" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="6" Margin="0,0,0,0">
+              <TextBlock Text="Быстрый выбор:" Classes="SecondaryText" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <Button Content="-1 день" Padding="10,4" FontSize="11" Click="TrackingQuickDate_Click" Tag="1"/>
+              <Button Content="-7 дней" Padding="10,4" FontSize="11" Click="TrackingQuickDate_Click" Tag="7"/>
+              <Button Content="-14 дней" Padding="10,4" FontSize="11" Click="TrackingQuickDate_Click" Tag="14"/>
+              <Button Content="-21 дней" Padding="10,4" FontSize="11" Click="TrackingQuickDate_Click" Tag="21"/>
+            </StackPanel>
+
+            <Expander Grid.Row="5" Grid.ColumnSpan="3" Header="Дополнительные фильтры" FontSize="13" Margin="0,8,0,0" IsExpanded="False">
+              <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*,*" Margin="0,8,0,0">
+                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,8">
+                  <TextBlock Text="Тип события" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+                  <ComboBox x:Name="TrackingEventIdComboBox" SelectedIndex="0" FontSize="13" Padding="10,8">
+                    <ComboBoxItem Content="Все события"/>
+                    <ComboBoxItem Content="DELIVER"/>
+                    <ComboBoxItem Content="SEND"/>
+                    <ComboBoxItem Content="RECEIVE"/>
+                    <ComboBoxItem Content="FAIL"/>
+                    <ComboBoxItem Content="DSN"/>
+                    <ComboBoxItem Content="DEFER"/>
+                    <ComboBoxItem Content="REDIRECT"/>
+                    <ComboBoxItem Content="RESOLVE"/>
+                    <ComboBoxItem Content="EXPAND"/>
+                    <ComboBoxItem Content="TRANSFER"/>
+                    <ComboBoxItem Content="SUBMIT"/>
+                  </ComboBox>
+                </StackPanel>
+
+                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,16,8">
+                  <TextBlock Text="Источник" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+                  <ComboBox x:Name="TrackingSourceComboBox" SelectedIndex="0" FontSize="13" Padding="10,8">
+                    <ComboBoxItem Content="Все источники"/>
+                    <ComboBoxItem Content="STOREDRIVER"/>
+                    <ComboBoxItem Content="SMTP"/>
+                    <ComboBoxItem Content="ROUTING"/>
+                    <ComboBoxItem Content="AGENT"/>
+                    <ComboBoxItem Content="UNAVAIL"/>
+                  </ComboBox>
+                </StackPanel>
+
+                <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,8">
+                  <TextBlock Text="Message-ID" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+                  <TextBox x:Name="TrackingMessageIdTextBox" Padding="10" Classes="PrimaryText" FontSize="13" Watermark="&lt;id@domain&gt;"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,8,0,0">
+                  <TextBlock Text="Поиск по теме (локально после загрузки)" Classes="SecondaryText" FontSize="12" Margin="0,0,0,6"/>
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBox x:Name="TrackingSubjectFilterTextBox" Grid.Column="0" Padding="10" Classes="PrimaryText" FontSize="13" Watermark="Часть темы письма..."/>
+                    <Button x:Name="TrackingSubjectFilterButton" Grid.Column="1" Content="Фильтр" Padding="16,8" FontSize="13" Margin="8,0,0,0" Click="TrackingSubjectFilter_Click"/>
+                  </Grid>
+                </StackPanel>
+              </Grid>
+            </Expander>
+          </Grid>
+        </Border>
+
+        <!-- Quick Stats -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16" Margin="0,0,0,4" IsVisible="False" x:Name="TrackingStatsPanel">
+          <TextBlock x:Name="TrackingStatsTotal" Text="" Classes="LinkText" FontSize="13" FontWeight="SemiBold"/>
+          <TextBlock x:Name="TrackingStatsDelivered" Text="" Classes="SecondaryText" FontSize="13"/>
+          <TextBlock x:Name="TrackingStatsSent" Text="" Classes="SecondaryText" FontSize="13"/>
+          <TextBlock x:Name="TrackingStatsFailed" Text="" Classes="SecondaryText" FontSize="13"/>
+        </StackPanel>
+
+        <!-- Progress -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,8">
+          <TextBlock x:Name="TrackingProgressText" Text="" Classes="LinkText" FontSize="13" FontWeight="SemiBold"/>
+          <ProgressBar x:Name="TrackingProgressBar" IsIndeterminate="False" Height="4" Margin="0,8,0,0" IsVisible="False"/>
+        </StackPanel>
+
+        <!-- Tracking Results — Collapsible Cards -->
+        <controls:TrackingCardList Grid.Row="4" x:Name="TrackingCardList"/>
+      </Grid>
+
+      <!-- AutoReply Panel -->
+      <Grid x:Name="AutoReplyPanel" IsVisible="False" Margin="16" RowDefinitions="Auto,Auto,*">
+
+        <!-- Status + Actions -->
+        <Border Classes="Card" Grid.Row="0" CornerRadius="12" Padding="20" Margin="0,0,0,8">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+
+            <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Автоответ (Out of Office)" FontSize="16" FontWeight="SemiBold" Classes="PrimaryText" Margin="0,0,0,12"/>
+
+            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+              <TextBlock Text="Статус:" Classes="SecondaryText" FontSize="13" VerticalAlignment="Center"/>
+              <TextBlock x:Name="AutoReplyStatusText" Text="—" FontSize="13" FontWeight="SemiBold" Classes="LinkText" VerticalAlignment="Center"/>
+              <TextBlock x:Name="AutoReplyScheduleText" Text="" Classes="SecondaryText" FontSize="12" VerticalAlignment="Center" Margin="16,0,0,0"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+              <Button Content="Обновить" Click="AutoReplyRefresh_Click" Padding="16,8" FontSize="13"/>
+              <Button x:Name="AutoReplySetButton" Content="Установить" Click="AutoReplySet_Click" Padding="16,8" FontSize="13" Classes="SearchButton"/>
+              <Button x:Name="AutoReplyDisableButton" Content="Отключить" Click="AutoReplyDisable_Click" Padding="16,8" FontSize="13" Classes="CancelButton" IsEnabled="False"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Grid.Column="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+              <TextBlock Text="Сообщение:" Classes="SecondaryText" FontSize="13" VerticalAlignment="Center"/>
+              <ComboBox x:Name="AutoReplyScopeComboBox" SelectedIndex="0" FontSize="13" Padding="10,6" SelectionChanged="AutoReplyScope_Changed">
+                <ComboBoxItem Content="Единое для всех"/>
+                <ComboBoxItem Content="Для внутренних"/>
+                <ComboBoxItem Content="Для внешних"/>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,4" IsVisible="False" x:Name="AutoReplySchedulePanel">
+              <CheckBox x:Name="AutoReplyScheduleCheckBox" Content="По расписанию" Click="AutoReplySchedule_Changed" VerticalAlignment="Center"/>
+              <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="False" x:Name="AutoReplyScheduleDates">
+                <CalendarDatePicker x:Name="AutoReplyStartDate" FontSize="13" Width="140" Watermark="Начало"/>
+                <TextBox x:Name="AutoReplyStartTime" Text="09:00" Width="60" Padding="8" FontSize="13" Watermark="ЧЧ:мм" VerticalAlignment="Center"/>
+                <CalendarDatePicker x:Name="AutoReplyEndDate" FontSize="13" Width="140" Watermark="Конец"/>
+                <TextBox x:Name="AutoReplyEndTime" Text="18:00" Width="60" Padding="8" FontSize="13" Watermark="ЧЧ:мм" VerticalAlignment="Center"/>
+              </StackPanel>
+            </StackPanel>
+
+            <TextBlock Grid.Row="5" Grid.ColumnSpan="2" x:Name="AutoReplyErrorText" Text="" Classes="SecondaryText" FontSize="12" Margin="0,4,0,0" IsVisible="False"/>
+          </Grid>
+        </Border>
+
+        <!-- Editor + Preview -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,8,*">
+          <!-- Editor -->
+          <Border Grid.Column="0" Classes="Card" CornerRadius="12" Padding="12">
+            <Grid RowDefinitions="Auto,*">
+              <TextBlock Grid.Row="0" Text="Редактор сообщения" FontSize="13" FontWeight="SemiBold" Classes="SecondaryText" Margin="0,0,0,8"/>
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" Margin="0,0,0,8">
+                <Button x:Name="FmtBoldBtn" Content="B" FontWeight="Bold" Focusable="False" Padding="16,4" FontSize="13" Click="FmtBold_Click"/>
+                <Button x:Name="FmtItalicBtn" Content="I" FontStyle="Italic" Focusable="False" Padding="16,4" FontSize="13" Click="FmtItalic_Click"/>
+                <Button x:Name="FmtUnderlineBtn" Content="U" Focusable="False" Padding="16,4" FontSize="13" Click="FmtUnderline_Click"/>
+                <Button Content="• Список" Focusable="False" Padding="16,4" FontSize="12" Click="FmtList_Click"/>
+                <Button Content="Ссылка" Focusable="False" Padding="16,4" FontSize="12" Click="FmtLink_Click"/>
+                <Button Content="↵ BR" Focusable="False" Padding="16,4" FontSize="12" Click="FmtBR_Click"/>
+              </StackPanel>
+              <TextBox Grid.Row="1" x:Name="AutoReplyTextBox" AcceptsReturn="True" TextWrapping="Wrap" FontSize="14" Padding="10" Height="280"
+                       Watermark="Введите текст автоответа... Выделите текст и нажмите B/I/U для форматирования"/>
+            </Grid>
+          </Border>
+
+          <!-- Preview -->
+          <Border Grid.Column="2" Classes="Card" CornerRadius="12" Padding="12">
+            <Grid RowDefinitions="Auto,*">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <TextBlock Text="Предпросмотр (HTML)" FontSize="13" FontWeight="SemiBold" Classes="SecondaryText"/>
+                <Button Content="Обновить" Padding="12,4" FontSize="11" Click="AutoReplyPreview_Click"/>
+              </StackPanel>
+              <TextBox Grid.Row="1" x:Name="AutoReplyPreviewBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontSize="11" Padding="10" Height="280"
+                       FontFamily="Consolas,Courier New,monospace"/>
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
+
+      <!-- Loading Overlay -->
+      <Border Grid.Row="0" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+          <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+          <TextBlock x:Name="LoadingTextBlock" Text="Загрузка данных..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

@@ -1,0 +1,3 @@
+SELECT m.id::text, m.author_type, m.sequence_no, left(m.text,40) AS txt, m.created_at FROM messages m WHERE m.conversation_id='27dc31d6-190c-4d6b-a6a3-2a1d024b329f' ORDER BY m.sequence_no;
+SELECT event_type, status, created_at FROM outbox_events WHERE created_at > '2026-11-18 10:00' ORDER BY created_at;
+SELECT event_type, created_at FROM integration_events WHERE created_at > '2026-11-18 10:00' ORDER BY created_at LIMIT 10;

@@ -1,0 +1,63 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:GetGroupBoxMember.Views.Controls"
+        x:Class="GetGroupBoxMember.Views.SearchByAttributesWindow"
+        Title="Поиск по атрибутам"
+        Width="1000"
+        Height="650"
+        MinWidth="800"
+        MinHeight="500"
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+    <Border Grid.Row="0" Classes="Card" Padding="16,10">
+      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto">
+        <TextBlock Grid.Column="0" Text="Атрибут:" VerticalAlignment="Center" Classes="PrimaryText" Margin="0,0,10,0"/>
+        <ComboBox Grid.Column="1" x:Name="AttributeComboBox" PlaceholderText="Выберите атрибут..." Padding="8" Classes="PrimaryText"
+                   HorizontalAlignment="Stretch" MaxDropDownHeight="400"/>
+
+        <TextBlock Grid.Column="2" Text="Значение:" VerticalAlignment="Center" Classes="PrimaryText" Margin="20,0,10,0"/>
+        <TextBox Grid.Column="3" x:Name="AttributeValueBox" PlaceholderText="Значение атрибута" Padding="8" Classes="PrimaryText"/>
+
+        <Button Grid.Column="4" x:Name="SearchButton" Content="Поиск" Classes="AccentButton" Margin="20,0,0,0" Click="SearchButton_Click"/>
+      </Grid>
+    </Border>
+
+    <TextBlock Grid.Row="1" x:Name="StatusText" Text="" FontSize="12" Foreground="{DynamicResource ThemeTextSecondary}"
+               Margin="16,4,16,0" IsVisible="False"/>
+
+    <Grid Grid.Row="2" Margin="8,4,8,8">
+      <controls:GridTable x:Name="MainGridTable" Grid.Row="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" IsVisible="True"/>
+
+      <Border Grid.Row="0" x:Name="EmptyStateBorder" IsVisible="True" ZIndex="50">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+          <TextBlock Text="🔍" FontSize="48" HorizontalAlignment="Center" Opacity="0.4"/>
+          <TextBlock Text="Выберите атрибут из списка и введите значение, затем нажмите «Поиск» для выполнения LDAP-запроса к Active Directory."
+                     FontSize="15" Foreground="{DynamicResource ThemeTextSecondary}"
+                     TextWrapping="Wrap" TextAlignment="Center" MaxWidth="500" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Row="0" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+          <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+          <TextBlock x:Name="LoadingTextBlock" Text="Поиск..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Grid.Row="0" x:Name="NoResultsText" Text="Нет совпадений в результатах поиска"
+                 FontSize="16" Foreground="{DynamicResource ThemeTextSecondary}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                 IsVisible="False" IsHitTestVisible="False"/>
+    </Grid>
+
+    <Border Grid.Row="3" Classes="Card" Padding="12,6" IsVisible="False" x:Name="PaginationPanel">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Button Grid.Column="0" x:Name="PrevPageBtn" Content="◀ Предыдущая" Click="PrevPage_Click" Padding="12,6"/>
+        <TextBlock Grid.Column="1" x:Name="PageInfoText" Text="" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="PrimaryText"/>
+        <Button Grid.Column="2" x:Name="NextPageBtn" Content="Следующая ▶" Click="NextPage_Click" Padding="12,6"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

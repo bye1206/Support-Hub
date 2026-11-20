@@ -1,0 +1,114 @@
+is_global = true
+build_property.EnableAotAnalyzer = 
+build_property.EnableSingleFileAnalyzer = true
+build_property.EnableTrimAnalyzer = 
+build_property.IncludeAllContentForSelfExtract = 
+build_property.VerifyReferenceTrimCompatibility = 
+build_property.VerifyReferenceAotCompatibility = 
+build_property.AvaloniaNameGeneratorIsEnabled = true
+build_property.AvaloniaNameGeneratorBehavior = InitializeComponent
+build_property.AvaloniaNameGeneratorDefaultFieldModifier = internal
+build_property.AvaloniaNameGeneratorFilterByPath = *
+build_property.AvaloniaNameGeneratorFilterByNamespace = *
+build_property.AvaloniaNameGeneratorViewFileNamingStrategy = NamespaceAndClassName
+build_property.AvaloniaNameGeneratorAttachDevTools = true
+build_property.TargetFramework = net10.0
+build_property.TargetFrameworkIdentifier = .NETCoreApp
+build_property.TargetFrameworkVersion = v10.0
+build_property.TargetPlatformMinVersion = 
+build_property.UsingMicrosoftNETSdkWeb = 
+build_property.ProjectTypeGuids = 
+build_property.InvariantGlobalization = 
+build_property.PlatformNeutralAssembly = 
+build_property.EnforceExtendedAnalyzerRules = 
+build_property._SupportedPlatformList = Linux,macOS,Windows
+build_property.RootNamespace = GGBM.Avalonia
+build_property.ProjectDir = C:\Users\bondarev_dy\Nextcloud\Documents\ggbm\GGBM_avalonia\src\GGBM.Avalonia\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.EffectiveAnalysisLevelStyle = 10.0
+build_property.EnableCodeStyleSeverity = 
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/App.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Styles/CustomStyles.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Styles/DynamicThemeStyles.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Styles/ThemeResources.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/AboutWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/CompareGroupsWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/Controls/CommandPaletteView.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/Controls/GridTable.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/Controls/TrackingCardList.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ExchangeInfoWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/FindPCWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/MainWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/PasswordChangeDialog.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/PasswordOperationsWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/RepadminWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/SearchByAttributesWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/SearchDialog.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/SettingsWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowEximExchangeWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowHierarchyWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowHistoryWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowInfoWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowMailboxListWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowMaillistWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowMemberListWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ShowOwnerWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/ThemeRestartDialog.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
+[C:/Users/bondarev_dy/Nextcloud/Documents/ggbm/GGBM_avalonia/src/GGBM.Avalonia/Views/VdiFoldersWindow.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml

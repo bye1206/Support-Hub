@@ -1,0 +1,460 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:av="https://github.com/avaloniaui">
+
+  <av:Color x:Key="ThemeBackground">#0D1117</av:Color>
+  <av:Color x:Key="ThemeCardBackground">#161B22</av:Color>
+  <av:Color x:Key="ThemeElevatedSurface">#21262D</av:Color>
+  <av:Color x:Key="ThemeBorder">#30363D</av:Color>
+  <av:Color x:Key="ThemeTextPrimary">#F0F6FC</av:Color>
+  <av:Color x:Key="ThemeTextSecondary">#8B949E</av:Color>
+  <av:Color x:Key="ThemeTextMuted">#8D99A7</av:Color>
+  <av:Color x:Key="ThemeAccent">#60CDFF</av:Color>
+  <av:Color x:Key="ThemeAccentHover">#8AD4FF</av:Color>
+  <av:Color x:Key="ThemeAccentPressed">#0078D4</av:Color>
+  <av:Color x:Key="ThemeButtonBackground">#21262D</av:Color>
+  <av:Color x:Key="ThemeButtonHover">#30363D</av:Color>
+  <av:Color x:Key="ThemeSearchButton">#238636</av:Color>
+  <av:Color x:Key="ThemeSearchButtonHover">#2EA043</av:Color>
+  <av:Color x:Key="ThemeSearchButtonPressed">#238636</av:Color>
+  <av:Color x:Key="LinkColor">#58A6FF</av:Color>
+  <av:Color x:Key="ThemeOverlay">#DD0D1117</av:Color>
+
+  <av:Color x:Key="ThemeSuccessText">#7EE787</av:Color>
+  <av:Color x:Key="ThemeWarningText">#FFA657</av:Color>
+
+  <!-- Additional Dark Theme Colors (used in OLD design) -->
+  <av:Color x:Key="ThemeMenuForeground">#C9D1D9</av:Color>
+  <av:Color x:Key="ThemeMutedText">#7D858F</av:Color>
+  <av:Color x:Key="ThemeButtonDefault">#2D2D2D</av:Color>
+  <av:Color x:Key="ThemeButtonDefaultHover">#3D3D3D</av:Color>
+  <av:Color x:Key="ThemeTextBoxBackground">#1A1A1A</av:Color>
+  <av:Color x:Key="ThemeBorderAlt">#454545</av:Color>
+
+  <!-- Status Badge Colors -->
+  <av:Color x:Key="StatusGreen">#238636</av:Color>
+  <av:Color x:Key="StatusGreenHover">#2EA043</av:Color>
+  <av:Color x:Key="StatusPurple">#8957E5</av:Color>
+  <av:Color x:Key="StatusRed">#DA3633</av:Color>
+  <av:Color x:Key="StatusBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="StatusOrange">#F0883E</av:Color>
+
+  <!-- Text on different backgrounds (Dark theme) -->
+  <av:Color x:Key="ThemeTextOnElevated">#FFFFFF</av:Color>
+  <av:Color x:Key="ThemeTextOnTextBox">#FFFFFF</av:Color>
+  <av:Color x:Key="ThemeTextOnCard">#FFFFFF</av:Color>
+  <av:Color x:Key="ThemeRadioText">#9E9E9E</av:Color>
+  <av:Color x:Key="ThemeRadioTextChecked">#FFFFFF</av:Color>
+
+  <av:Color x:Key="AccentGreen">#238636</av:Color>
+  <av:Color x:Key="AccentBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="AccentOrange">#F0883E</av:Color>
+  <av:Color x:Key="AccentPurple">#8957E5</av:Color>
+  <av:Color x:Key="AccentPink">#E91E63</av:Color>
+  <av:Color x:Key="AccentRed">#DA3633</av:Color>
+
+  <av:Color x:Key="GreenThemeBackground">#0D1117</av:Color>
+  <av:Color x:Key="GreenThemeCardBackground">#0D1F12</av:Color>
+  <av:Color x:Key="GreenThemeElevatedSurface">#163318</av:Color>
+  <av:Color x:Key="GreenThemeBorder">#1B3D1B</av:Color>
+  <av:Color x:Key="GreenThemeTextPrimary">#F0F6FC</av:Color>
+  <av:Color x:Key="GreenThemeTextSecondary">#8B949E</av:Color>
+  <av:Color x:Key="GreenThemeTextMuted">#8D99A7</av:Color>
+  <av:Color x:Key="GreenThemeAccent">#2EA043</av:Color>
+  <av:Color x:Key="GreenThemeAccentHover">#3CB050</av:Color>
+  <av:Color x:Key="GreenThemeAccentPressed">#218821</av:Color>
+  <av:Color x:Key="GreenThemeButtonBackground">#0D1F12</av:Color>
+  <av:Color x:Key="GreenThemeButtonHover">#163318</av:Color>
+  <av:Color x:Key="GreenLinkColor">#58A6FF</av:Color>
+  <av:Color x:Key="GreenThemeOverlay">#DD0D1117</av:Color>
+  <av:Color x:Key="GreenThemeSuccessText">#7EE787</av:Color>
+  <av:Color x:Key="GreenThemeWarningText">#FFA657</av:Color>
+  <av:Color x:Key="GreenAccentGreen">#2EA043</av:Color>
+  <av:Color x:Key="GreenAccentBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="GreenAccentOrange">#F0883E</av:Color>
+  <av:Color x:Key="GreenAccentPurple">#8957E5</av:Color>
+  <av:Color x:Key="GreenAccentPink">#E91E63</av:Color>
+  <av:Color x:Key="GreenAccentRed">#DA3633</av:Color>
+
+  <!-- Text on different backgrounds (Green theme) -->
+  <av:Color x:Key="GreenThemeTextOnElevated">#FFFFFF</av:Color>
+  <av:Color x:Key="GreenThemeTextOnTextBox">#FFFFFF</av:Color>
+  <av:Color x:Key="GreenThemeTextOnCard">#FFFFFF</av:Color>
+  <av:Color x:Key="GreenThemeRadioText">#9E9E9E</av:Color>
+  <av:Color x:Key="GreenThemeRadioTextChecked">#FFFFFF</av:Color>
+
+  <av:Color x:Key="GreenThemeMenuForeground">#C9D1D9</av:Color>
+  <av:Color x:Key="GreenThemeMutedText">#7D858F</av:Color>
+  <av:Color x:Key="GreenThemeButtonDefault">#0D1F12</av:Color>
+  <av:Color x:Key="GreenThemeButtonDefaultHover">#163318</av:Color>
+  <av:Color x:Key="GreenThemeTextBoxBackground">#0D1F12</av:Color>
+  <av:Color x:Key="GreenThemeBorderAlt">#1B3D1B</av:Color>
+  <av:Color x:Key="GreenStatusGreen">#2EA043</av:Color>
+  <av:Color x:Key="GreenStatusGreenHover">#3CB050</av:Color>
+  <av:Color x:Key="GreenStatusPurple">#8957E5</av:Color>
+  <av:Color x:Key="GreenStatusRed">#DA3633</av:Color>
+  <av:Color x:Key="GreenStatusBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="GreenStatusOrange">#F0883E</av:Color>
+  <av:Color x:Key="GreenThemeSearchButton">#238636</av:Color>
+  <av:Color x:Key="GreenThemeSearchButtonHover">#2EA043</av:Color>
+  <av:Color x:Key="GreenThemeSearchButtonPressed">#218821</av:Color>
+
+  <av:Color x:Key="BlueThemeBackground">#0D1117</av:Color>
+  <av:Color x:Key="BlueThemeCardBackground">#0D1F2D</av:Color>
+  <av:Color x:Key="BlueThemeElevatedSurface">#163341</av:Color>
+  <av:Color x:Key="BlueThemeBorder">#1A3A4D</av:Color>
+  <av:Color x:Key="BlueThemeTextPrimary">#F0F6FC</av:Color>
+  <av:Color x:Key="BlueThemeTextSecondary">#8B949E</av:Color>
+  <av:Color x:Key="BlueThemeTextMuted">#8D99A7</av:Color>
+  <av:Color x:Key="BlueThemeAccent">#388BFD</av:Color>
+  <av:Color x:Key="BlueThemeAccentHover">#4A9BFF</av:Color>
+  <av:Color x:Key="BlueThemeAccentPressed">#2563EB</av:Color>
+  <av:Color x:Key="BlueThemeButtonBackground">#0D1F2D</av:Color>
+  <av:Color x:Key="BlueThemeButtonHover">#163341</av:Color>
+  <av:Color x:Key="BlueLinkColor">#58A6FF</av:Color>
+  <av:Color x:Key="BlueThemeOverlay">#DD0D1117</av:Color>
+  <av:Color x:Key="BlueThemeSuccessText">#7EE787</av:Color>
+  <av:Color x:Key="BlueThemeWarningText">#FFA657</av:Color>
+  <av:Color x:Key="BlueAccentGreen">#238636</av:Color>
+  <av:Color x:Key="BlueAccentBlue">#388BFD</av:Color>
+  <av:Color x:Key="BlueAccentOrange">#F0883E</av:Color>
+  <av:Color x:Key="BlueAccentPurple">#8957E5</av:Color>
+  <av:Color x:Key="BlueAccentPink">#E91E63</av:Color>
+  <av:Color x:Key="BlueAccentRed">#DA3633</av:Color>
+
+  <!-- Text on different backgrounds (Blue theme) -->
+  <av:Color x:Key="BlueThemeTextOnElevated">#FFFFFF</av:Color>
+  <av:Color x:Key="BlueThemeTextOnTextBox">#FFFFFF</av:Color>
+  <av:Color x:Key="BlueThemeTextOnCard">#FFFFFF</av:Color>
+  <av:Color x:Key="BlueThemeRadioText">#9E9E9E</av:Color>
+  <av:Color x:Key="BlueThemeRadioTextChecked">#FFFFFF</av:Color>
+
+  <av:Color x:Key="BlueThemeMenuForeground">#C9D1D9</av:Color>
+  <av:Color x:Key="BlueThemeMutedText">#7D858F</av:Color>
+  <av:Color x:Key="BlueThemeButtonDefault">#0D1F2D</av:Color>
+  <av:Color x:Key="BlueThemeButtonDefaultHover">#163341</av:Color>
+  <av:Color x:Key="BlueThemeTextBoxBackground">#0D1F2D</av:Color>
+  <av:Color x:Key="BlueThemeBorderAlt">#1A3A4D</av:Color>
+  <av:Color x:Key="BlueStatusGreen">#238636</av:Color>
+  <av:Color x:Key="BlueStatusGreenHover">#2EA043</av:Color>
+  <av:Color x:Key="BlueStatusPurple">#8957E5</av:Color>
+  <av:Color x:Key="BlueStatusRed">#DA3633</av:Color>
+  <av:Color x:Key="BlueStatusBlue">#388BFD</av:Color>
+  <av:Color x:Key="BlueStatusOrange">#F0883E</av:Color>
+  <av:Color x:Key="BlueThemeSearchButton">#238636</av:Color>
+  <av:Color x:Key="BlueThemeSearchButtonHover">#2EA043</av:Color>
+  <av:Color x:Key="BlueThemeSearchButtonPressed">#2563EB</av:Color>
+
+  <av:Color x:Key="OrangeThemeBackground">#0D1117</av:Color>
+  <av:Color x:Key="OrangeThemeCardBackground">#1C1207</av:Color>
+  <av:Color x:Key="OrangeThemeElevatedSurface">#2D1E0A</av:Color>
+  <av:Color x:Key="OrangeThemeBorder">#3D2A15</av:Color>
+  <av:Color x:Key="OrangeThemeTextPrimary">#F0F6FC</av:Color>
+  <av:Color x:Key="OrangeThemeTextSecondary">#8B949E</av:Color>
+  <av:Color x:Key="OrangeThemeTextMuted">#8D99A7</av:Color>
+  <av:Color x:Key="OrangeThemeAccent">#DB6D28</av:Color>
+  <av:Color x:Key="OrangeThemeAccentHover">#ED8038</av:Color>
+  <av:Color x:Key="OrangeThemeAccentPressed">#B85920</av:Color>
+  <av:Color x:Key="OrangeThemeButtonBackground">#1C1207</av:Color>
+  <av:Color x:Key="OrangeThemeButtonHover">#2D1E0A</av:Color>
+  <av:Color x:Key="OrangeLinkColor">#58A6FF</av:Color>
+  <av:Color x:Key="OrangeThemeOverlay">#DD0D1117</av:Color>
+  <av:Color x:Key="OrangeThemeSuccessText">#7EE787</av:Color>
+  <av:Color x:Key="OrangeThemeWarningText">#FFA657</av:Color>
+  <av:Color x:Key="OrangeAccentGreen">#238636</av:Color>
+  <av:Color x:Key="OrangeAccentBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="OrangeAccentOrange">#DB6D28</av:Color>
+  <av:Color x:Key="OrangeAccentPurple">#8957E5</av:Color>
+  <av:Color x:Key="OrangeAccentPink">#E91E63</av:Color>
+  <av:Color x:Key="OrangeAccentRed">#DA3633</av:Color>
+
+  <!-- Text on different backgrounds (Orange theme) -->
+  <av:Color x:Key="OrangeThemeTextOnElevated">#FFFFFF</av:Color>
+  <av:Color x:Key="OrangeThemeTextOnTextBox">#FFFFFF</av:Color>
+  <av:Color x:Key="OrangeThemeTextOnCard">#FFFFFF</av:Color>
+  <av:Color x:Key="OrangeThemeRadioText">#9E9E9E</av:Color>
+  <av:Color x:Key="OrangeThemeRadioTextChecked">#FFFFFF</av:Color>
+
+  <av:Color x:Key="OrangeThemeMenuForeground">#C9D1D9</av:Color>
+  <av:Color x:Key="OrangeThemeMutedText">#7D858F</av:Color>
+  <av:Color x:Key="OrangeThemeButtonDefault">#1C1207</av:Color>
+  <av:Color x:Key="OrangeThemeButtonDefaultHover">#2D1E0A</av:Color>
+  <av:Color x:Key="OrangeThemeTextBoxBackground">#1C1207</av:Color>
+  <av:Color x:Key="OrangeThemeBorderAlt">#3D2A15</av:Color>
+  <av:Color x:Key="OrangeStatusGreen">#238636</av:Color>
+  <av:Color x:Key="OrangeStatusGreenHover">#2EA043</av:Color>
+  <av:Color x:Key="OrangeStatusPurple">#8957E5</av:Color>
+  <av:Color x:Key="OrangeStatusRed">#DA3633</av:Color>
+  <av:Color x:Key="OrangeStatusBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="OrangeStatusOrange">#F0883E</av:Color>
+  <av:Color x:Key="OrangeThemeSearchButton">#238636</av:Color>
+  <av:Color x:Key="OrangeThemeSearchButtonHover">#2EA043</av:Color>
+  <av:Color x:Key="OrangeThemeSearchButtonPressed">#B85920</av:Color>
+
+  <av:Color x:Key="PurpleThemeBackground">#0D1117</av:Color>
+  <av:Color x:Key="PurpleThemeCardBackground">#1A1625</av:Color>
+  <av:Color x:Key="PurpleThemeElevatedSurface">#251F35</av:Color>
+  <av:Color x:Key="PurpleThemeBorder">#2A2540</av:Color>
+  <av:Color x:Key="PurpleThemeTextPrimary">#F0F6FC</av:Color>
+  <av:Color x:Key="PurpleThemeTextSecondary">#8B949E</av:Color>
+  <av:Color x:Key="PurpleThemeTextMuted">#8D99A7</av:Color>
+  <av:Color x:Key="PurpleThemeAccent">#8957E5</av:Color>
+  <av:Color x:Key="PurpleThemeAccentHover">#8050D9</av:Color>
+  <av:Color x:Key="PurpleThemeAccentPressed">#6E40C9</av:Color>
+  <av:Color x:Key="PurpleThemeButtonBackground">#1A1625</av:Color>
+  <av:Color x:Key="PurpleThemeButtonHover">#251F35</av:Color>
+  <av:Color x:Key="PurpleLinkColor">#58A6FF</av:Color>
+  <av:Color x:Key="PurpleThemeOverlay">#DD0D1117</av:Color>
+  <av:Color x:Key="PurpleThemeSuccessText">#7EE787</av:Color>
+  <av:Color x:Key="PurpleThemeWarningText">#FFA657</av:Color>
+  <av:Color x:Key="PurpleAccentGreen">#238636</av:Color>
+  <av:Color x:Key="PurpleAccentBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="PurpleAccentOrange">#F0883E</av:Color>
+  <av:Color x:Key="PurpleAccentPurple">#8957E5</av:Color>
+  <av:Color x:Key="PurpleAccentPink">#E91E63</av:Color>
+  <av:Color x:Key="PurpleAccentRed">#DA3633</av:Color>
+
+  <!-- Text on different backgrounds (Purple theme) -->
+  <av:Color x:Key="PurpleThemeTextOnElevated">#FFFFFF</av:Color>
+  <av:Color x:Key="PurpleThemeTextOnTextBox">#FFFFFF</av:Color>
+  <av:Color x:Key="PurpleThemeTextOnCard">#FFFFFF</av:Color>
+  <av:Color x:Key="PurpleThemeRadioText">#9E9E9E</av:Color>
+  <av:Color x:Key="PurpleThemeRadioTextChecked">#FFFFFF</av:Color>
+
+  <av:Color x:Key="PurpleThemeMenuForeground">#C9D1D9</av:Color>
+  <av:Color x:Key="PurpleThemeMutedText">#7D858F</av:Color>
+  <av:Color x:Key="PurpleThemeButtonDefault">#1A1625</av:Color>
+  <av:Color x:Key="PurpleThemeButtonDefaultHover">#251F35</av:Color>
+  <av:Color x:Key="PurpleThemeTextBoxBackground">#1A1625</av:Color>
+  <av:Color x:Key="PurpleThemeBorderAlt">#2A2540</av:Color>
+  <av:Color x:Key="PurpleStatusGreen">#238636</av:Color>
+  <av:Color x:Key="PurpleStatusGreenHover">#2EA043</av:Color>
+  <av:Color x:Key="PurpleStatusPurple">#8957E5</av:Color>
+  <av:Color x:Key="PurpleStatusRed">#DA3633</av:Color>
+  <av:Color x:Key="PurpleStatusBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="PurpleStatusOrange">#F0883E</av:Color>
+  <av:Color x:Key="PurpleThemeSearchButton">#238636</av:Color>
+  <av:Color x:Key="PurpleThemeSearchButtonHover">#2EA043</av:Color>
+  <av:Color x:Key="PurpleThemeSearchButtonPressed">#6E40C9</av:Color>
+
+  <av:Color x:Key="LightThemeBackground">#FFFFFF</av:Color>
+  <av:Color x:Key="LightThemeCardBackground">#F6F8FA</av:Color>
+  <av:Color x:Key="LightThemeElevatedSurface">#FFFFFF</av:Color>
+  <av:Color x:Key="LightThemeBorder">#D0D7DE</av:Color>
+  <av:Color x:Key="LightThemeTextPrimary">#1F2328</av:Color>
+  <av:Color x:Key="LightThemeTextSecondary">#475057</av:Color>
+  <av:Color x:Key="LightThemeTextMuted">#57636E</av:Color>
+  <av:Color x:Key="LightThemeAccent">#0969DA</av:Color>
+  <av:Color x:Key="LightThemeAccentHover">#0550AE</av:Color>
+  <av:Color x:Key="LightThemeAccentPressed">#0346A8</av:Color>
+  <av:Color x:Key="LightThemeButtonBackground">#F6F8FA</av:Color>
+  <av:Color x:Key="LightThemeButtonHover">#EAECEF</av:Color>
+  <av:Color x:Key="LightThemeSearchButton">#1A7F37</av:Color>
+  <av:Color x:Key="LightThemeSearchButtonHover">#2EA043</av:Color>
+  <av:Color x:Key="LightThemeSearchButtonPressed">#156528</av:Color>
+  <av:Color x:Key="LightLinkColor">#0969DA</av:Color>
+  <av:Color x:Key="LightThemeOverlay">#DD1F2328</av:Color>
+  <av:Color x:Key="LightThemeSuccessText">#1A7F37</av:Color>
+  <av:Color x:Key="LightThemeWarningText">#9B6D00</av:Color>
+  <av:Color x:Key="LightAccentGreen">#1A7F37</av:Color>
+  <av:Color x:Key="LightAccentBlue">#0969DA</av:Color>
+  <av:Color x:Key="LightAccentOrange">#9B6D00</av:Color>
+  <av:Color x:Key="LightAccentPurple">#8250DF</av:Color>
+  <av:Color x:Key="LightAccentPink">#D1242F</av:Color>
+  <av:Color x:Key="LightAccentRed">#CF222E</av:Color>
+
+  <!-- Text on different backgrounds (Light theme) -->
+  <av:Color x:Key="LightThemeTextOnElevated">#1F2328</av:Color>
+  <av:Color x:Key="LightThemeTextOnTextBox">#1F2328</av:Color>
+  <av:Color x:Key="LightThemeTextOnCard">#1F2328</av:Color>
+  <av:Color x:Key="LightThemeRadioText">#59636E</av:Color>
+  <av:Color x:Key="LightThemeRadioTextChecked">#1F2328</av:Color>
+
+  <!-- Additional Light Theme Colors (for styles and UI) -->
+  <av:Color x:Key="LightThemeMenuForeground">#1F2328</av:Color>
+  <av:Color x:Key="LightThemeMutedText">#6B7785</av:Color>
+  <av:Color x:Key="LightThemeButtonDefault">#F6F8FA</av:Color>
+  <av:Color x:Key="LightThemeButtonDefaultHover">#EAECEF</av:Color>
+  <av:Color x:Key="LightThemeTextBoxBackground">#FFFFFF</av:Color>
+  <av:Color x:Key="LightThemeBorderAlt">#D0D7DE</av:Color>
+
+  <!-- Status Colors for Light Theme -->
+  <av:Color x:Key="LightStatusGreen">#1A7F37</av:Color>
+  <av:Color x:Key="LightStatusGreenHover">#2EA043</av:Color>
+  <av:Color x:Key="LightStatusPurple">#8250DF</av:Color>
+  <av:Color x:Key="LightStatusRed">#CF222E</av:Color>
+  <av:Color x:Key="LightStatusBlue">#0969DA</av:Color>
+  <av:Color x:Key="LightStatusOrange">#9B6D00</av:Color>
+
+  <av:Color x:Key="PinkThemeBackground">#FFF0F5</av:Color>
+  <av:Color x:Key="PinkThemeCardBackground">#FFE4EC</av:Color>
+  <av:Color x:Key="PinkThemeElevatedSurface">#FFF5FA</av:Color>
+  <av:Color x:Key="PinkThemeBorder">#E8A0B0</av:Color>
+  <av:Color x:Key="PinkThemeTextPrimary">#4A2535</av:Color>
+  <av:Color x:Key="PinkThemeTextSecondary">#7A4055</av:Color>
+  <av:Color x:Key="PinkThemeTextMuted">#9A6070</av:Color>
+  <av:Color x:Key="PinkThemeAccent">#D81B60</av:Color>
+  <av:Color x:Key="PinkThemeAccentHover">#C2185B</av:Color>
+  <av:Color x:Key="PinkThemeAccentPressed">#AD1457</av:Color>
+  <av:Color x:Key="PinkThemeButtonBackground">#FFD1DC</av:Color>
+  <av:Color x:Key="PinkThemeButtonHover">#FFBCD0</av:Color>
+  <av:Color x:Key="PinkLinkColor">#AD1457</av:Color>
+  <av:Color x:Key="PinkThemeOverlay">#DD4A2535</av:Color>
+  <av:Color x:Key="PinkThemeSuccessText">#2E7D32</av:Color>
+  <av:Color x:Key="PinkThemeWarningText">#B65200</av:Color>
+  <av:Color x:Key="PinkAccentGreen">#2E7D32</av:Color>
+  <av:Color x:Key="PinkAccentBlue">#1565C0</av:Color>
+  <av:Color x:Key="PinkAccentOrange">#B65200</av:Color>
+  <av:Color x:Key="PinkAccentPurple">#7B1FA2</av:Color>
+  <av:Color x:Key="PinkAccentPink">#D81B60</av:Color>
+  <av:Color x:Key="PinkAccentRed">#C62828</av:Color>
+  <av:Color x:Key="PinkThemeMenuForeground">#4A2535</av:Color>
+  <av:Color x:Key="PinkThemeMutedText">#9A6070</av:Color>
+  <av:Color x:Key="PinkThemeButtonDefault">#FFE4EC</av:Color>
+  <av:Color x:Key="PinkThemeButtonDefaultHover">#FFBCD0</av:Color>
+  <av:Color x:Key="PinkThemeTextBoxBackground">#FFF5FA</av:Color>
+  <av:Color x:Key="PinkThemeBorderAlt">#E8A0B0</av:Color>
+  <av:Color x:Key="PinkStatusGreen">#2E7D32</av:Color>
+  <av:Color x:Key="PinkStatusGreenHover">#388E3C</av:Color>
+  <av:Color x:Key="PinkStatusPurple">#7B1FA2</av:Color>
+  <av:Color x:Key="PinkStatusRed">#C62828</av:Color>
+  <av:Color x:Key="PinkStatusBlue">#1565C0</av:Color>
+  <av:Color x:Key="PinkStatusOrange">#B65200</av:Color>
+  <av:Color x:Key="PinkThemeSearchButton">#2E7D32</av:Color>
+  <av:Color x:Key="PinkThemeSearchButtonHover">#388E3C</av:Color>
+  <av:Color x:Key="PinkThemeSearchButtonPressed">#1B5E20</av:Color>
+
+  <!-- Text on different backgrounds (Pink theme) -->
+  <av:Color x:Key="PinkThemeTextOnElevated">#4A2535</av:Color>
+  <av:Color x:Key="PinkThemeTextOnTextBox">#4A2535</av:Color>
+  <av:Color x:Key="PinkThemeTextOnCard">#4A2535</av:Color>
+  <av:Color x:Key="PinkThemeRadioText">#8A6070</av:Color>
+  <av:Color x:Key="PinkThemeRadioTextChecked">#4A2535</av:Color>
+
+  <av:Color x:Key="DarkThemeBackground">#0D1117</av:Color>
+  <av:Color x:Key="DarkThemeCardBackground">#161B22</av:Color>
+  <av:Color x:Key="DarkThemeElevatedSurface">#21262D</av:Color>
+  <av:Color x:Key="DarkThemeBorder">#30363D</av:Color>
+  <av:Color x:Key="DarkThemeTextPrimary">#F0F6FC</av:Color>
+  <av:Color x:Key="DarkThemeTextSecondary">#8B949E</av:Color>
+  <av:Color x:Key="DarkThemeTextMuted">#8D99A7</av:Color>
+  <av:Color x:Key="DarkThemeAccent">#60CDFF</av:Color>
+  <av:Color x:Key="DarkThemeAccentHover">#8AD4FF</av:Color>
+  <av:Color x:Key="DarkThemeAccentPressed">#0078D4</av:Color>
+  <av:Color x:Key="DarkThemeButtonBackground">#21262D</av:Color>
+  <av:Color x:Key="DarkThemeButtonHover">#30363D</av:Color>
+  <av:Color x:Key="DarkLinkColor">#58A6FF</av:Color>
+  <av:Color x:Key="DarkThemeOverlay">#DD0D1117</av:Color>
+  <av:Color x:Key="DarkThemeSuccessText">#7EE787</av:Color>
+  <av:Color x:Key="DarkThemeWarningText">#FFA657</av:Color>
+  <av:Color x:Key="DarkAccentGreen">#238636</av:Color>
+  <av:Color x:Key="DarkAccentBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="DarkAccentOrange">#F0883E</av:Color>
+  <av:Color x:Key="DarkAccentPurple">#8957E5</av:Color>
+  <av:Color x:Key="DarkAccentPink">#E91E63</av:Color>
+  <av:Color x:Key="DarkAccentRed">#DA3633</av:Color>
+
+  <!-- Text on different backgrounds (Dark theme) -->
+  <av:Color x:Key="DarkThemeTextOnElevated">#FFFFFF</av:Color>
+  <av:Color x:Key="DarkThemeTextOnTextBox">#FFFFFF</av:Color>
+  <av:Color x:Key="DarkThemeTextOnCard">#FFFFFF</av:Color>
+  <av:Color x:Key="DarkThemeRadioText">#9E9E9E</av:Color>
+  <av:Color x:Key="DarkThemeRadioTextChecked">#FFFFFF</av:Color>
+
+  <!-- Additional Dark Theme Colors (for styles and UI) -->
+  <av:Color x:Key="DarkThemeMenuForeground">#C9D1D9</av:Color>
+  <av:Color x:Key="DarkThemeMutedText">#7D858F</av:Color>
+  <av:Color x:Key="DarkThemeButtonDefault">#2D2D2D</av:Color>
+  <av:Color x:Key="DarkThemeButtonDefaultHover">#3D3D3D</av:Color>
+  <av:Color x:Key="DarkThemeTextBoxBackground">#1A1A1A</av:Color>
+  <av:Color x:Key="DarkThemeBorderAlt">#454545</av:Color>
+
+  <!-- Status Badge Colors (Dark theme) -->
+  <av:Color x:Key="DarkStatusGreen">#238636</av:Color>
+  <av:Color x:Key="DarkStatusGreenHover">#2EA043</av:Color>
+  <av:Color x:Key="DarkStatusPurple">#8957E5</av:Color>
+  <av:Color x:Key="DarkStatusRed">#DA3633</av:Color>
+  <av:Color x:Key="DarkStatusBlue">#1F6FEB</av:Color>
+  <av:Color x:Key="DarkStatusOrange">#F0883E</av:Color>
+  <av:Color x:Key="DarkThemeSearchButton">#238636</av:Color>
+  <av:Color x:Key="DarkThemeSearchButtonHover">#2EA043</av:Color>
+  <av:Color x:Key="DarkThemeSearchButtonPressed">#238636</av:Color>
+
+  <!-- Button text on accent/elevated backgrounds -->
+  <av:Color x:Key="ThemeAccentButtonForeground">#0D0D0D</av:Color>
+  <av:Color x:Key="ThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="ThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="ThemeActionButtonAccent">#60CDFF</av:Color>
+  <av:Color x:Key="ThemeActionButtonAccentHover">#8AD4FF</av:Color>
+  <av:Color x:Key="ThemeActionButtonAccentPressed">#0078D4</av:Color>
+
+  <av:Color x:Key="DarkThemeAccentButtonForeground">#0D0D0D</av:Color>
+  <av:Color x:Key="DarkThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="DarkThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="DarkThemeActionButtonAccent">#60CDFF</av:Color>
+  <av:Color x:Key="DarkThemeActionButtonAccentHover">#8AD4FF</av:Color>
+  <av:Color x:Key="DarkThemeActionButtonAccentPressed">#0078D4</av:Color>
+
+  <av:Color x:Key="GreenThemeAccentButtonForeground">#0D0D0D</av:Color>
+  <av:Color x:Key="GreenThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="GreenThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="GreenThemeActionButtonAccent">#2EA043</av:Color>
+  <av:Color x:Key="GreenThemeActionButtonAccentHover">#3CB050</av:Color>
+  <av:Color x:Key="GreenThemeActionButtonAccentPressed">#218821</av:Color>
+
+  <av:Color x:Key="BlueThemeAccentButtonForeground">#0D0D0D</av:Color>
+  <av:Color x:Key="BlueThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="BlueThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="BlueThemeActionButtonAccent">#388BFD</av:Color>
+  <av:Color x:Key="BlueThemeActionButtonAccentHover">#4A9BFF</av:Color>
+  <av:Color x:Key="BlueThemeActionButtonAccentPressed">#2563EB</av:Color>
+
+  <av:Color x:Key="OrangeThemeAccentButtonForeground">#0D0D0D</av:Color>
+  <av:Color x:Key="OrangeThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="OrangeThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="OrangeThemeActionButtonAccent">#DB6D28</av:Color>
+  <av:Color x:Key="OrangeThemeActionButtonAccentHover">#ED8038</av:Color>
+  <av:Color x:Key="OrangeThemeActionButtonAccentPressed">#B85920</av:Color>
+
+  <av:Color x:Key="PurpleThemeAccentButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="PurpleThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="PurpleThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="PurpleThemeActionButtonAccent">#8957E5</av:Color>
+  <av:Color x:Key="PurpleThemeActionButtonAccentHover">#8050D9</av:Color>
+  <av:Color x:Key="PurpleThemeActionButtonAccentPressed">#6E40C9</av:Color>
+
+  <av:Color x:Key="LightThemeAccentButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="LightThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="LightThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="LightThemeActionButtonAccent">#0969DA</av:Color>
+  <av:Color x:Key="LightThemeActionButtonAccentHover">#0550AE</av:Color>
+  <av:Color x:Key="LightThemeActionButtonAccentPressed">#0346A8</av:Color>
+
+  <av:Color x:Key="PinkThemeAccentButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="PinkThemeSearchButtonForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="PinkThemeButtonPressedForeground">#FFFFFF</av:Color>
+  <av:Color x:Key="PinkThemeActionButtonAccent">#D81B60</av:Color>
+  <av:Color x:Key="PinkThemeActionButtonAccentHover">#C2185B</av:Color>
+  <av:Color x:Key="PinkThemeActionButtonAccentPressed">#AD1457</av:Color>
+
+  <!-- Grid lines (for DataGrid) -->
+  <av:Color x:Key="ThemeGridLines">#252525</av:Color>
+  <av:Color x:Key="LightThemeGridLines">#D0D7DE</av:Color>
+  <av:Color x:Key="PinkThemeGridLines">#E8A0B0</av:Color>
+  <av:Color x:Key="GreenThemeGridLines">#1B3D1B</av:Color>
+  <av:Color x:Key="BlueThemeGridLines">#1A3A4D</av:Color>
+  <av:Color x:Key="OrangeThemeGridLines">#3D2A15</av:Color>
+  <av:Color x:Key="PurpleThemeGridLines">#2A2540</av:Color>
+
+  <!-- Action button loading background -->
+  <av:Color x:Key="ThemeActionLoadingBackground">#1A1D21</av:Color>
+  <av:Color x:Key="LightThemeActionLoadingBackground">#F0F2F4</av:Color>
+  <av:Color x:Key="PinkThemeActionLoadingBackground">#FFE4EC</av:Color>
+  <av:Color x:Key="GreenThemeActionLoadingBackground">#0D1F12</av:Color>
+  <av:Color x:Key="BlueThemeActionLoadingBackground">#0D1F2D</av:Color>
+  <av:Color x:Key="OrangeThemeActionLoadingBackground">#1C1207</av:Color>
+  <av:Color x:Key="PurpleThemeActionLoadingBackground">#1A1625</av:Color>
+  <av:Color x:Key="DarkThemeGridLines">#252525</av:Color>
+  <av:Color x:Key="DarkThemeActionLoadingBackground">#1A1D21</av:Color>
+
+</ResourceDictionary>

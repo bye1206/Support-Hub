@@ -1,0 +1,37 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          x:Class="GetGroupBoxMember.Views.ThemeRestartDialog"
+          Title="Смена темы"
+          Width="400"
+          Height="220"
+          WindowStartupLocation="CenterScreen"
+          CanResize="False"
+          Background="{DynamicResource ThemeCardBackground}">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Grid.Row="0" Background="{DynamicResource ThemeAccent}" Height="3"/>
+    <StackPanel Grid.Row="1" Spacing="16" VerticalAlignment="Center" Margin="24,20">
+      <StackPanel Spacing="6" HorizontalAlignment="Center">
+        <TextBlock Text="Тема изменена"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   TextAlignment="Center"
+                   Foreground="{DynamicResource ThemeTextPrimary}"/>
+        <TextBlock x:Name="ThemeLabel"
+                   FontSize="14"
+                   TextAlignment="Center"
+                   Foreground="{DynamicResource ThemeAccent}"/>
+      </StackPanel>
+      <TextBlock Text="Для применения темы требуется перезапуск приложения."
+                 FontSize="13"
+                 TextWrapping="Wrap"
+                 TextAlignment="Center"
+                 Foreground="{DynamicResource ThemeTextSecondary}"/>
+    </StackPanel>
+    <Border Grid.Row="2" Background="{DynamicResource ThemeElevatedSurface}" Padding="20,14">
+      <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+        <Button x:Name="RestartButton" Content="Перезапустить" Classes="AccentButton" Padding="24,10" FontSize="14" Click="RestartButton_Click"/>
+        <Button Content="Отмена" Classes="Secondary" Padding="20,10" FontSize="14" Click="CancelButton_Click"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

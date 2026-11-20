@@ -1,0 +1,528 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:vm="using:GetGroupBoxMember.ViewModels"
+         xmlns:models="using:GetGroupBoxMember.Models"
+         xmlns:converters="using:GetGroupBoxMember.Converters"
+         xmlns:behaviors="using:GetGroupBoxMember.Behaviors"
+         xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+         x:Class="GetGroupBoxMember.Views.MainWindow"
+         x:DataType="vm:MainWindowViewModel"
+           Title="GetGroupBoxMember"
+          Width="1200"
+          Height="584"
+          MinWidth="1000"
+          MinHeight="584"
+         Background="{DynamicResource ThemeBackground}"
+         WindowStartupLocation="CenterScreen"
+         KeyDown="OnKeyDown">
+
+  <Window.Resources>
+    <converters:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
+    <converters:StatusBadgeColorConverter x:Key="StatusBadgeColor"/>
+    <converters:PasswordBadgeColorConverter x:Key="PasswordBadgeColor"/>
+    <converters:BoolAndStringMultiConverter x:Key="BoolAndStringMulti"/>
+    <converters:TextToTooltipConverter x:Key="TextToTooltip"/>
+  </Window.Resources>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" x:Name="MainContentGrid">
+
+    <!-- MENU BAR (row 0) -->
+    <Border Grid.Row="0" Background="{DynamicResource ThemeCardBackground}" Padding="0" Height="36">
+      <Menu x:Name="MainMenu" Background="Transparent" Foreground="{DynamicResource ThemeMenuForeground}" FontSize="12" VerticalAlignment="Center">
+        <MenuItem Header="📂 Открыть список" Foreground="{DynamicResource ThemeMenuForeground}">
+          <MenuItem Header="👤 Пользователи/ГПЯ" Command="{Binding OpenUsersListCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+          <Separator Background="{DynamicResource ThemeBorder}" Height="1"/>
+            <MenuItem Header="📁 Группы" Foreground="{DynamicResource ThemeTextSecondary}">
+              <MenuItem Header="• Получить инфо." Command="{Binding GroupGetInfoCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+              <MenuItem Header="• Получить список участников" Command="{Binding OpenGroupsListGetMembersCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+            </MenuItem>
+            <MenuItem Header="📧 Рассылки" Foreground="{DynamicResource ThemeTextSecondary}">
+              <MenuItem Header="• Получить инфо." Command="{Binding MaillistGetInfoCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+              <MenuItem Header="• Получить список участников" Command="{Binding GetMaillistMemberListCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+            </MenuItem>
+          <MenuItem Header="⚡ Динамические рассылки" Foreground="{DynamicResource ThemeTextSecondary}">
+            <MenuItem Header="• Получить инфо." Command="{Binding DynamicGroupGetInfoCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+            <MenuItem Header="• Получить список участников" IsEnabled="False" Foreground="{DynamicResource ThemeMutedText}"/>
+          </MenuItem>
+          <Separator Background="{DynamicResource ThemeBorder}" Height="1"/>
+          <MenuItem Header="💻 ПК" Command="{Binding OpenPcListCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+          <MenuItem Header="🔐 Владельцы ИС" Foreground="{DynamicResource ThemeTextSecondary}">
+            <MenuItem Header="• Поиск по Login/Guid1C/Mail" Command="{Binding OwnerSearchLoginCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+            <MenuItem Header="• Поиск по ФИО" Command="{Binding OwnerSearchFioCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+          </MenuItem>
+        </MenuItem>
+        <MenuItem Header="⚙ Настройки" Command="{Binding OpenSettingsCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+        <MenuItem Header="📜 История" Command="{Binding HistoryCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+        <MenuItem Header="🔄 Сравнение групп" Command="{Binding CompareGroupsCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+        <MenuItem Header="🔍 Поиск по атрибутам" Command="{Binding SearchByAttributesCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+        <MenuItem Header="🔑 Операции с паролем" Command="{Binding PasswordOperationsCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+        <MenuItem Header="📬 Exchange меню" Command="{Binding ExchangeMenuCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+        <MenuItem Header="ℹ О программе" Command="{Binding AboutCommand}" Foreground="{DynamicResource ThemeMenuForeground}"/>
+      </Menu>
+    </Border>
+
+    <!-- SEARCH SECTION (row 1) -->
+    <Grid Grid.Row="1" RowDefinitions="Auto,Auto" Margin="0,4,0,0">
+      <Border Background="{DynamicResource ThemeCardBackground}" Padding="12,8">
+        <StackPanel Spacing="4">
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <RadioButton Content="Пользователь/ГПЯ" IsChecked="{Binding IsUsersSelected}" Foreground="{DynamicResource ThemeMenuForeground}" GroupName="SearchType"/>
+            <RadioButton Content="Группа" IsChecked="{Binding IsGroupsSelected}" Foreground="{DynamicResource ThemeMenuForeground}" GroupName="SearchType"/>
+            <RadioButton Content="Рассылка" IsChecked="{Binding IsMailListsSelected}" Foreground="{DynamicResource ThemeMenuForeground}" GroupName="SearchType"/>
+            <RadioButton Content="Динамическая рассылка" IsChecked="{Binding IsDynamicGroupSelected}" Foreground="{DynamicResource ThemeMenuForeground}" GroupName="SearchType"/>
+            <RadioButton Content="ПК" IsChecked="{Binding IsComputersSelected}" Foreground="{DynamicResource ThemeMenuForeground}" GroupName="SearchType"/>
+          </StackPanel>
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+            <TextBox Grid.Column="0"
+                     x:Name="SearchBox"
+                     Text="{Binding SearchText, Mode=TwoWay}"
+                     PlaceholderText="Логин/Номер телефона/Почта/Вывод. имя/ФИО/guid1C/guidMD/ПК"
+                     FontSize="14"
+                     Padding="8,6"
+                     Margin="0,0,8,0"
+                     TextChanged="SearchBox_TextChanged"
+                     GotFocus="SearchBox_GotFocus"
+                     LostFocus="SearchBox_LostFocus"
+                     behaviors:FocusPreservation.IsEnabled="True"/>
+            <Button Grid.Column="1" Content="↻" Classes="SearchButton" Command="{Binding RefreshCommand}" IsEnabled="{Binding IsRefreshEnabled}" />
+            <Button Grid.Column="2" Content="Инфо" Classes="SearchButton" Command="{Binding GetInfoCommand}" IsEnabled="{Binding IsGetInfoEnabled}" Margin="8,0,0,0" />
+            <Button Grid.Column="3" Content="Иерархия" Classes="SearchButton" Command="{Binding GetHierarchyCommand}" IsEnabled="{Binding IsGetHierarchyEnabled}" Margin="8,0,0,0" />
+            <Button Grid.Column="4" Content="Repadmin" Classes="SearchButton" Command="{Binding OpenRepadminCommand}" IsEnabled="{Binding IsRepadminEnabled}" Margin="8,0,0,0" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- MAIN CONTENT -->
+    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" Padding="4,2" VerticalScrollBarVisibility="Auto" MinHeight="280">
+      <StackPanel Spacing="6" Margin="0">
+
+        <!-- PROFILE CARD - Header -->
+        <Border Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="12" Margin="0,2,0,0">
+          <Grid ColumnDefinitions="Auto,*">
+
+            <!-- Avatar Placeholder -->
+            <Border Grid.Column="0" Width="64" Height="64" CornerRadius="32" Background="{DynamicResource ThemeElevatedSurface}" BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="2" Margin="0,0,12,0" PointerPressed="AvatarBorder_PointerPressed" Cursor="Hand" ClipToBounds="True">
+              <Panel>
+                <TextBlock Text="👤" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding AvatarBitmap, Converter={x:Static ObjectConverters.IsNull}}"/>
+                <Image Source="{Binding AvatarBitmap}" Stretch="Fill" IsVisible="{Binding AvatarBitmap, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+              </Panel>
+            </Border>
+
+            <!-- Name & Login -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="{Binding DisplayName}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimary}" Cursor="Hand" PointerPressed="TextBlock_CopyToClipboard" ToolTip.Tip="Нажмите, чтобы скопировать имя"/>
+              <TextBlock Text="{Binding Login}" FontSize="13" Foreground="{DynamicResource LinkColor}" Cursor="Hand" PointerPressed="TextBlock_CopyToClipboard" ToolTip.Tip="Нажмите, чтобы скопировать логин"/>
+              <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*,*" Margin="0,4,0,0">
+                <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal">
+                  <Border Background="{Binding AccountStatus, Converter={StaticResource StatusBadgeColor}}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0" IsVisible="{Binding AccountStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="🔐" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding AccountStatus}" FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </Border>
+                  <Border Background="{Binding HrStatus, Converter={StaticResource StatusBadgeColor}}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0">
+                    <Border.IsVisible>
+                      <MultiBinding Converter="{StaticResource BoolAndStringMulti}">
+                        <Binding Path="HrStatus"/>
+                        <Binding Path="IsUserBadgeVisible"/>
+                      </MultiBinding>
+                    </Border.IsVisible>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="📋" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding HrStatus}" FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </Border>
+                  <Border Background="{Binding PasswordDays, Converter={StaticResource PasswordBadgeColor}}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0" IsVisible="{Binding PasswordDays, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                      <TextBlock Text="🔑" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding PasswordDays}" FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </Border>
+                  <Border Background="{DynamicResource StatusRed}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0" IsVisible="{Binding PasswordBlocked, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="🚫" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding PasswordBlocked}" FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </Border>
+                  <Border Background="{DynamicResource StatusPurple}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0" IsVisible="{Binding Vladetel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="👤" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold" TextWrapping="Wrap" ToolTip.Tip="{Binding Vladetel, Converter={StaticResource TextToTooltip}}">
+                        <Run Text="Владелец - "/><Run Text="{Binding Vladetel}"/>
+                      </TextBlock>
+                    </StackPanel>
+                  </Border>
+
+                </StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,4,0,0" IsVisible="{Binding IsBadgesTwoRows}">
+                  <Border Background="{Binding StatusSMD, Converter={StaticResource StatusBadgeColor}}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0">
+                    <Border.IsVisible>
+                      <MultiBinding Converter="{StaticResource BoolAndStringMulti}">
+                        <Binding Path="StatusSMD"/>
+                        <Binding Path="IsUserBadgeVisible"/>
+                      </MultiBinding>
+                    </Border.IsVisible>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="🏢" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding StatusSMD}" FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </Border>
+                  <Border Background="{DynamicResource StatusGreen}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0" IsVisible="{Binding LastLogonTime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="🕐" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding LastLogonTime}" FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </Border>
+                  <Border Background="{DynamicResource StatusBlue}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0" IsVisible="{Binding DomainController, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="🔗" FontSize="11" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding DomainController}" FontSize="13" Foreground="{DynamicResource ThemeTextOnElevated}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- CARDS ROW -->
+        <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
+
+          <!-- Card: Основная информация -->
+          <Border Grid.Column="0" Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="10" Margin="0,0,2,0">
+            <StackPanel Spacing="4">
+              <TextBlock Text="📋 Основная информация" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}"/>
+
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0" Grid.Row="0" Text="Логин" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="0" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding Login}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="1" Text="Почта" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="1" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding MailDisplay}" FontSize="13" Classes="MailValue" Classes.FieldWarning="{Binding HasMailWarning}" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="2" Text="Вывод. имя" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="2" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding DisplayName}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="3" Text="Описание" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,0"/>
+                <Border Grid.Column="1" Grid.Row="3" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding Description}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- Card: Рабочая информация -->
+          <Border Grid.Column="1" Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="10" Margin="2,0">
+            <StackPanel Spacing="6">
+              <TextBlock Text="💼 Рабочая информация" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}"/>
+
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0" Grid.Row="0" Text="Департамент" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,6,2"/>
+                <Border Grid.Column="1" Grid.Row="0" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding Department}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="1" Text="Компания" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="1" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding Company}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="2" Text="Должность" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="2" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding Title}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="3" Text="Телефон" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="3" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding Phone}" FontSize="13" Foreground="{DynamicResource ThemeSuccessText}" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="4" Text="Моб." FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="4" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding MobilePhoneDisplay}" FontSize="13" Classes="MobilePhoneValue" Classes.FieldWarning="{Binding HasMobilePhoneWarning}" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="5" Text="Руководитель" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,0"/>
+                <Border Grid.Column="1" Grid.Row="5" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding Manager}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- Card: Почтовый ящик -->
+          <Border Grid.Column="2" Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="10" Margin="4,0,0,0">
+            <StackPanel Spacing="6">
+              <TextBlock Text="📬 Почтовый ящик" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextPrimary}"/>
+
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0" Grid.Row="0" Text="Сервер" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="0" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding MailHost}" FontSize="14" Foreground="{DynamicResource LinkColor}" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="1" Text="Расположение" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="1" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding MailBoxLocation}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="2" Text="База данных" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2" IsVisible="{Binding IsExchangeMailbox}"/>
+                <Border Grid.Column="1" Grid.Row="2" Classes="CopyableValue" IsVisible="{Binding IsExchangeMailbox}" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding QuotaMailBox}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="3" Text="Статус миграции" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2"/>
+                <Border Grid.Column="1" Grid.Row="3" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding MigrateStatus}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="4" Text="Занято" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,2" IsVisible="{Binding IsExchangeMailbox}"/>
+                <Border Grid.Column="1" Grid.Row="4" Classes="CopyableValue" IsVisible="{Binding IsExchangeMailbox}" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding MailboxUsedSize}" FontSize="14" Foreground="{DynamicResource ThemeWarningText}" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+
+                <TextBlock Grid.Column="0" Grid.Row="5" Text="RP" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,10,0" IsVisible="{Binding IsSharedMailbox}"/>
+                <Border Grid.Column="1" Grid.Row="5" Classes="CopyableValue" IsVisible="{Binding IsSharedMailbox}" PointerPressed="TextBlock_CopyToClipboard">
+                  <TextBlock Text="{Binding RetentionPolicy}" FontSize="13" Foreground="{DynamicResource ThemeMenuForeground}" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+                </Border>
+              </Grid>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+          <!-- DN Card (full width) -->
+        <Border Background="{DynamicResource ThemeCardBackground}" CornerRadius="8" Padding="12" Margin="0,2,0,0">
+          <Grid ColumnDefinitions="Auto,*">
+            <TextBlock Grid.Column="0" Text="🔗 DN:" FontSize="14" Foreground="{DynamicResource ThemeTextSecondary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <Border Grid.Column="1" Classes="CopyableValue" PointerPressed="TextBlock_CopyToClipboard">
+              <TextBlock Text="{Binding DistinguishedName}" Classes="dnValue" TextWrapping="Wrap" ToolTip.Tip="ЛКМ — скопировать"/>
+            </Border>
+          </Grid>
+        </Border>
+
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Action Buttons Bar -->
+    <Border Grid.Row="3" Background="{DynamicResource ThemeCardBackground}" Padding="4" Margin="2,1,2,0" Height="100">
+      <Grid x:Name="ActionButtonsGrid" RowDefinitions="Auto,Auto" ColumnDefinitions="*,*,*,*">
+
+        <!-- Row 1: Top buttons -->
+        <Button Grid.Row="0" Grid.Column="0" Classes="ActionButton" Command="{Binding GetEximMembersCommand}" IsEnabled="{Binding IsEximEnabled}" Margin="0,0,2,2">
+          <Panel>
+            <TextBlock Text="Пользователи Exim" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsGetEximUserLoading}"/>
+            <StackPanel IsVisible="{Binding IsGetEximUserLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+        <Button Grid.Row="0" Grid.Column="1" Classes="ActionButton" Command="{Binding GetExchangeMembersCommand}" IsEnabled="{Binding IsExchangeEnabled}" Margin="2,0,2,2">
+          <Panel>
+            <TextBlock Text="Пользователи Exchange" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsGetExchangeUserLoading}"/>
+            <StackPanel IsVisible="{Binding IsGetExchangeUserLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+        <Button Grid.Row="0" Grid.Column="2" Classes="ActionButton" Command="{Binding EximExchangeCommand}" IsEnabled="{Binding IsEximExchangeEnabled}" Margin="2,0,2,2">
+          <Panel>
+            <TextBlock Text="Exim &lt;-&gt; Exchange" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsEximExchangeLoading}"/>
+            <StackPanel IsVisible="{Binding IsEximExchangeLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+        <Button Grid.Row="0" Grid.Column="3" Classes="ActionButton" Command="{Binding GetGroupAccessCommand}" IsEnabled="{Binding IsGroupAccessEnabled}" Margin="2,0,0,2">
+          <Panel>
+            <TextBlock Text="Состоит в ящиках" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsGroupBoxAccessLoading}"/>
+            <StackPanel IsVisible="{Binding IsGroupBoxAccessLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+        <!-- Row 2: Bottom buttons -->
+        <Button Grid.Row="1" Grid.Column="0" Classes="ActionButton" Command="{Binding GetGroupMembersCommand}" IsEnabled="{Binding IsGroupMemberEnabled}" Margin="0,2,2,0">
+          <Panel>
+            <TextBlock Text="Члены группы" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsGroupMemberLoading}"/>
+            <StackPanel IsVisible="{Binding IsGroupMemberLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+        <Button Grid.Row="1" Grid.Column="1" Classes="ActionButton" Command="{Binding FindPcCommand}" IsEnabled="{Binding IsFindPcEnabled}" Margin="2,2,2,0">
+          <Panel>
+            <TextBlock Text="Найти ПК пользователя" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsFindPcLoading}"/>
+            <StackPanel IsVisible="{Binding IsFindPcLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+        <Button Grid.Row="1" Grid.Column="2" Classes="ActionButton" Command="{Binding GetOwnerCommand}" IsEnabled="{Binding IsVladetelIsListEnabled}" Margin="2,2,2,0">
+          <Panel>
+            <TextBlock Text="Владение ИС" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsGetVladetelIsListLoading}"/>
+            <StackPanel IsVisible="{Binding IsGetVladetelIsListLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+        <Button Grid.Row="1" Grid.Column="3" Classes="ActionButton" Command="{Binding GetMailboxAccessCommand}" IsEnabled="{Binding IsMailboxAccessEnabled}" Margin="2,2,0,0">
+          <Panel>
+            <TextBlock Text="Состоит в рассылках" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsMailboxAccessLoading}"/>
+            <StackPanel IsVisible="{Binding IsMailboxAccessLoading}" Spacing="2" VerticalAlignment="Center">
+              <ProgressBar Classes="ActionProgress" IsIndeterminate="True" Height="3"/>
+              <TextBlock Text="Загрузка..." FontSize="9" Foreground="{DynamicResource ThemeTextSecondary}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </Button>
+
+      </Grid>
+    </Border>
+
+    <!-- Search Results ListBox: floats over cards area in Grid.Row=2 -->
+    <Panel Grid.Row="2"
+           VerticalAlignment="Top"
+           HorizontalAlignment="Left"
+           Margin="12,0,12,0"
+           IsVisible="{Binding IsListVisible}"
+           IsHitTestVisible="{Binding IsListVisible}"
+           PointerPressed="SearchResultsOverlay_PointerPressed">
+      <Border Background="{DynamicResource ThemeCardBackground}"
+              CornerRadius="8"
+              Margin="4,4,4,0"
+              Width="600"
+              BoxShadow="0 4 16 #50000000">
+        <Grid RowDefinitions="Auto,*">
+          <!-- Loading indicator -->
+          <Border Grid.Row="0"
+                  Padding="16,12"
+                  IsVisible="{Binding IsSearching}"
+                  Background="{DynamicResource ThemeElevatedSurface}">
+            <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+              <ProgressBar IsIndeterminate="True" Width="100" Height="3"/>
+              <TextBlock Text="{Binding SearchProgress}"
+                         FontSize="12"
+                         Foreground="{DynamicResource ThemeTextSecondary}"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+
+          <!-- Results ListBox -->
+          <ListBox x:Name="SearchResultsListBox"
+                   Grid.Row="1"
+                   ItemsSource="{Binding SearchResults}"
+                   SelectedItem="{Binding SelectedSearchResult}"
+                    Background="Transparent"
+                    MaxHeight="240"
+                   IsVisible="{Binding !IsSearching}"
+                   SelectionChanged="SearchResultsListBox_OnSelectionChanged"
+                   DoubleTapped="SearchResultsListBox_OnDoubleTapped"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                   ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="models:SearchResultItem">
+                <Grid ColumnDefinitions="*,Auto,Auto" Margin="4,6">
+                  <StackPanel Grid.Column="0" Spacing="2" IsVisible="{Binding !IsPlaceholder}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="{Binding DisplayName}"
+                                 Foreground="{DynamicResource ThemeTextPrimary}"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis"
+                                 MaxWidth="300"/>
+                      <Border Background="{DynamicResource StatusPurple}"
+                              CornerRadius="4"
+                              Padding="4,1"
+                              Margin="4,0,0,0"
+                              IsVisible="{Binding Owner, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="ГПЯ" FontSize="9"
+                                   Foreground="{DynamicResource ThemeTextOnCard}"
+                                   FontWeight="Bold"/>
+                      </Border>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Description}"
+                               Foreground="{DynamicResource ThemeTextSecondary}"
+                               FontSize="10"
+                               TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding DisplayName}"
+                             Foreground="{DynamicResource ThemeTextMuted}"
+                             FontStyle="Italic"
+                             FontSize="12"
+                             VerticalAlignment="Center"
+                             HorizontalAlignment="Center"
+                             IsVisible="{Binding IsPlaceholder}"/>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding Login}"
+                             Foreground="{DynamicResource LinkColor}"
+                             FontSize="10"
+                             VerticalAlignment="Center"
+                             Margin="12,0"
+                             IsVisible="{Binding !IsPlaceholder}"/>
+                  <TextBlock Grid.Column="2"
+                             Text="{Binding Email}"
+                             Foreground="{DynamicResource ThemeSuccessText}"
+                             FontSize="10"
+                             VerticalAlignment="Center"
+                             Margin="0,0,8,0"
+                             IsVisible="{Binding !IsPlaceholder}"/>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+      </Border>
+    </Panel>
+
+    <!-- Command Palette Overlay -->
+    <Panel x:Name="CommandPaletteOverlay"
+           Grid.Row="2"
+           HorizontalAlignment="Center"
+           VerticalAlignment="Top"
+           IsVisible="{Binding IsCommandPaletteOpen}"
+           IsHitTestVisible="{Binding IsCommandPaletteOpen}">
+      <Border Background="{DynamicResource ThemeOverlay}" PointerPressed="CommandPaletteOverlay_PointerPressed"/>
+      <controls:CommandPaletteView x:Name="CommandPalette"
+                                   IsVisible="True"
+                                   ItemSelected="CommandPalette_ItemSelected"
+                                   Closed="CommandPalette_Closed"/>
+    </Panel>
+
+    <!-- Copy Feedback Toast -->
+    <Border x:Name="CopyFeedbackBorder"
+            Grid.Row="2"
+            Classes="CopyToast"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="0,12,0,0"
+            IsVisible="False"
+            IsHitTestVisible="False"
+            ZIndex="200">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Text="✓" Foreground="White" FontSize="14" FontWeight="Bold"/>
+        <TextBlock x:Name="CopyFeedbackText" Text="Скопировано" Foreground="White" FontSize="13" FontWeight="SemiBold"/>
+      </StackPanel>
+    </Border>
+
+  </Grid>
+</Window>

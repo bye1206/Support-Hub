@@ -1,0 +1,171 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="using:GetGroupBoxMember.Models"
+             xmlns:controls="using:GetGroupBoxMember.Views.Controls"
+             x:Class="GetGroupBoxMember.Views.Controls.CommandPaletteView"
+             x:DataType="controls:CommandPaletteView">
+
+  <UserControl.Styles>
+    <Style Selector="Border#PaletteContainer">
+      <Setter Property="Background" Value="{DynamicResource ThemeCardBackground}"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="BoxShadow" Value="0 8 30 #50000000"/>
+      <Setter Property="ClipToBounds" Value="True"/>
+    </Style>
+
+    <Style Selector="Border#PaletteContainer:focus-within">
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+    </Style>
+
+    <Style Selector="ListBox#ResultsList /template/ ScrollViewer">
+      <Setter Property="VerticalScrollBarVisibility" Value="Visible"/>
+      <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+    </Style>
+
+    <Style Selector="TextBox#SearchInput">
+      <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorder}"/>
+      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Padding" Value="16,14"/>
+      <Setter Property="CornerRadius" Value="10,10,0,0"/>
+    </Style>
+    <Style Selector="TextBox#SearchInput:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+    </Style>
+
+    <Style Selector="ListBox#ResultsList">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="4"/>
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="Padding" Value="12,10"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Margin" Value="0,1"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="ListBoxItem /template/ ContentPresenter">
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="ListBoxItem:pointerover">
+      <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected">
+      <Setter Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
+    </Style>
+
+    <Style Selector="Button#CloseButton">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeTextSecondary}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="8"/>
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button#CloseButton:pointerover">
+      <Setter Property="Background" Value="{DynamicResource ThemeElevatedSurface}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+    </Style>
+
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="PaletteContainer"
+          Width="580"
+          Height="420"
+          BorderBrush="{DynamicResource ThemeBorder}"
+          BorderThickness="1">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" >
+        <TextBox x:Name="SearchInput"
+                 Grid.Column="0"
+                 PlaceholderText="Поиск пользователей, групп, рассылок..."
+                 Classes="SearchInput"
+                 Text="{Binding SearchText, Mode=TwoWay}"
+                 KeyDown="SearchInput_KeyDown"
+                 TextChanged="SearchInput_TextChanged"/>
+        <Button x:Name="CloseButton"
+                Grid.Column="1"
+                Content="✕"
+                Classes="CloseButton"
+                Click="CloseButton_Click"
+                ToolTip.Tip="Закрыть (Esc)"/>
+      </Grid>
+
+      <ListBox x:Name="ResultsList"
+               Grid.Row="1"
+               Classes="ResultsList"
+               HorizontalAlignment="Stretch"
+               ItemsSource="{Binding FilteredItems}"
+               SelectionMode="Single"
+               SelectionChanged="ResultsList_SelectionChanged"
+               KeyDown="ResultsList_KeyDown">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="models:CommandPaletteItem">
+            <Grid ColumnDefinitions="28,*,90" HorizontalAlignment="Stretch">
+              <TextBlock Grid.Column="0"
+                         Text="{Binding Icon}"
+                         FontSize="16"
+                         VerticalAlignment="Center"
+                         Margin="0,0,8,0"
+                         Classes="SecondaryText"/>
+              <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           Classes="PrimaryText"/>
+                <TextBlock Text="{Binding Description}"
+                           FontSize="11"
+                           TextTrimming="CharacterEllipsis"
+                           Classes="SecondaryText"
+                           IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+              </StackPanel>
+              <Border Grid.Column="2"
+                      Classes="Elevated"
+                      CornerRadius="4"
+                      Padding="6,2"
+                      VerticalAlignment="Center"
+                      HorizontalAlignment="Right"
+                      IsVisible="{Binding Category, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <TextBlock Text="{Binding Category}"
+                           FontSize="10"
+                           TextTrimming="CharacterEllipsis"
+                           Classes="SecondaryText"/>
+              </Border>
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <Border Grid.Row="2"
+              Padding="12,8">
+        <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Border Classes="Elevated" CornerRadius="3" Padding="4,2">
+              <TextBlock Text="↑↓" FontSize="10" Classes="MutedText" FontFamily="Consolas"/>
+            </Border>
+            <TextBlock Text="навигация" FontSize="11" Classes="MutedText"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Border Classes="Elevated" CornerRadius="3" Padding="4,2">
+              <TextBlock Text="Enter" FontSize="10" Classes="MutedText" FontFamily="Consolas"/>
+            </Border>
+            <TextBlock Text="выбрать" FontSize="11" Classes="MutedText"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Border Classes="Elevated" CornerRadius="3" Padding="4,2">
+              <TextBlock Text="Esc" FontSize="10" Classes="MutedText" FontFamily="Consolas"/>
+            </Border>
+            <TextBlock Text="закрыть" FontSize="11" Classes="MutedText"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>

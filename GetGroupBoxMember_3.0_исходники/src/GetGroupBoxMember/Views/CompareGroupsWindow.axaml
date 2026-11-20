@@ -1,0 +1,69 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:GetGroupBoxMember.Views.Controls"
+        xmlns:behaviors="clr-namespace:GetGroupBoxMember.Behaviors"
+        x:Class="GetGroupBoxMember.Views.CompareGroupsWindow"
+        Title="Сравнение групп пользователей"
+         Width="1609"
+         Height="700"
+         MinWidth="1000"
+         MinHeight="500"
+        
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,Auto,*">
+
+    <!-- Menu -->
+    <Menu Grid.Row="0"  Classes="PrimaryText">
+      <MenuItem Header="Файл">
+        <MenuItem Header="Экспорт (.xlsx)" Click="ExportXlsx_Click"/>
+        <MenuItem Header="Экспорт (.txt)" Click="ExportTxt_Click"/>
+        <MenuItem Header="Копировать (таблица)" Click="CopyToClipboard_Click"/>
+        <MenuItem Header="Копировать (форматированный)" Click="CopyFormatted_Click"/>
+      </MenuItem>
+    </Menu>
+
+    <!-- Input Panel -->
+    <Border Classes="Card" Grid.Row="1"  Padding="16,8">
+      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto">
+        <TextBlock Grid.Column="0" Text="Пользователь 1:" VerticalAlignment="Center" Classes="PrimaryText" Margin="0,0,10,0"/>
+        <TextBox Grid.Column="1" x:Name="Login1TextBox" PlaceholderText="Логин первого пользователя" Padding="8" Classes="PrimaryText" behaviors:FocusPreservation.IsEnabled="True"/>
+
+        <TextBlock Grid.Column="2" Text="Пользователь 2:" VerticalAlignment="Center" Classes="PrimaryText" Margin="20,0,10,0"/>
+        <TextBox Grid.Column="3" x:Name="Login2TextBox" PlaceholderText="Логин второго пользователя" Padding="8" Classes="PrimaryText" behaviors:FocusPreservation.IsEnabled="True"/>
+
+        <Button Grid.Column="4" x:Name="CompareButton" Content="Сравнить" Classes="AccentButton" Margin="20,0,0,0" Click="CompareButton_Click"/>
+      </Grid>
+    </Border>
+
+    <!-- Data Grid -->
+    <Grid Grid.Row="2" Margin="8,4,8,8">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <controls:GridTable x:Name="MainGridTable"
+                          Grid.Row="0"
+                          VerticalAlignment="Stretch"
+                          HorizontalAlignment="Stretch"
+                          IsVisible="True"/>
+
+      <!-- Empty State -->
+      <Border Grid.Row="0" x:Name="EmptyStateBorder" IsVisible="True" ZIndex="50">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+          <TextBlock Text="👥" FontSize="48" HorizontalAlignment="Center" Opacity="0.4"/>
+          <TextBlock x:Name="EmptyStateText" Text="Введите логины двух пользователей и нажмите «Сравнить» для отображения групп."
+                     FontSize="15" Foreground="{DynamicResource ThemeTextSecondary}"
+                     TextWrapping="Wrap" TextAlignment="Center" MaxWidth="500" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+
+      <!-- Loading Overlay -->
+      <Border Grid.Row="0" x:Name="LoadingOverlay" Background="{DynamicResource ThemeOverlay}" IsVisible="False" IsHitTestVisible="False" ZIndex="100">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+          <controls:AnimatedGifImage x:Name="LoadingProgressBar" Source="avares://GetGroupBoxMember/Assets/daniel-raftalack.gif" Width="350" Height="350"/>
+          <TextBlock x:Name="LoadingTextBlock" Text="Загрузка данных..." FontSize="14" Foreground="{DynamicResource ThemeTextPrimary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

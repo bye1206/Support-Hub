@@ -1,0 +1,17 @@
+.template_repo: &repo
+  project: &ci_tmpl 'tag-messenger/ci-templates'
+  ref: &ci_tmpl_vers 'v2.3.0'
+
+variables:
+  CI_TMPL_PROJECT: *ci_tmpl
+  CI_TMPL_PROJECT_VERSION: *ci_tmpl_vers
+
+  CI_DOCKER_BUILD_JOBS: ""
+
+include:
+  - { <<: *repo, file: /common.yml }
+  - { <<: *repo, file: /docker/build.yml }
+
+stages:
+  - generate
+  - docker

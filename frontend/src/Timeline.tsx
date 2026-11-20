@@ -302,10 +302,20 @@ function TimelineImpl({
             {author !== "SYSTEM" && (
               <div
                 className={
-                  author === "AI" ? "message-avatar ai" : "message-avatar user"
+                  author === "AI"
+                    ? "message-avatar ai"
+                    : // Owner (2026-11-20): the operator avatar must not
+                      // look like the user's — violet tint + their initials.
+                      author === "OPERATOR"
+                      ? "message-avatar operator"
+                      : "message-avatar user"
                 }
               >
-                {author === "AI" ? "✦" : initials(userLabel)}
+                {author === "AI"
+                  ? "✦"
+                  : author === "OPERATOR"
+                    ? initials(operatorName)
+                    : initials(userLabel)}
               </div>
             )}
             <div className="message-content">

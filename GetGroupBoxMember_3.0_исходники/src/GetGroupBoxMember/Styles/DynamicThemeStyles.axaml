@@ -1,0 +1,19 @@
+<Styles xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ==================== DYNAMIC THEME STYLES ==================== -->
+
+  <!-- Progress bars -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+  </Style>
+  <Style Selector="ProgressBar.ActionProgress">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+  </Style>
+
+  <!-- ListBox -->
+  <Style Selector="ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource ThemeAccent}"/>
+  </Style>
+
+</Styles>
