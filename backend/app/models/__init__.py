@@ -20,6 +20,7 @@ from app.models.message import (
 )
 from app.models.note import InternalNote
 from app.models.operator import Operator, OperatorRole, PresenceStatus
+from app.models.operator_presence import OperatorPresenceLog
 from app.models.outbox import (
     IntegrationEvent,
     IntegrationEventStatus,
@@ -54,6 +55,7 @@ __all__ = [
     "MessageDeliveryState",
     "Operator",
     "OperatorRole",
+    "OperatorPresenceLog",
     "PresenceStatus",
     "OutboxEvent",
     "OutboxStatus",

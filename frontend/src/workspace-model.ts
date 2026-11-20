@@ -26,6 +26,8 @@ export type Ticket = {
   unread_from_user?: number;
   // Owner (2026-11-19): the history shows the operator's name, not a UUID.
   assignee_name?: string | null;
+  // Owner (2026-11-20): the user's login for the history tables.
+  user_login?: string | null;
   // Owner (2026-11-19): operator email + user AD facts for the history aside.
   assignee_email?: string | null;
   user_ad?: {

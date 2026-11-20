@@ -104,6 +104,8 @@ type TeamMember = {
   presence_since: string;
   open_tickets: number;
   max_active_tickets: number;
+  // Owner (2026-11-20): the golden-crown rating next to the profile.
+  avg_rating?: number | null;
 };
 const presenceLabels = {
   ACTIVE: "Активен",
@@ -133,8 +135,21 @@ type OperatorProfile = {
   email: string;
   display_name: string;
   role: string;
+  // Owner (2026-11-20): the golden-crown rating in the footer.
+  avg_rating?: number | null;
 };
 type Theme = "light" | "dark";
+// Owner (2026-11-20): the average rating badge; above 4.7 a golden crown
+// appears over the number.
+function RatingBadge({ value }: { value?: number | null }) {
+  if (value == null) return null;
+  return (
+    <span className="rating-badge" title="Средняя оценка">
+      {value > 4.7 && <span className="rating-crown">👑</span>}
+      <span className="rating-value">{value}</span>
+    </span>
+  );
+}
 type AdGroup = { name: string; description?: string };
 type AdSearchResult = {
   login: string;
@@ -1219,9 +1234,9 @@ export default function App() {
       <main className="auth-screen">
         <section className="auth-card">
           <div className="brand-mark">
-            s<span>•</span>
+            S<span>•</span>
           </div>
-          <p className="eyebrow">SUPPORT HUB · OPERATOR</p>
+          <p className="eyebrow">UPPORT HUB · OPERATOR</p>
           <h1>Рабочее место оператора</h1>
           <p className="auth-copy">
             Войдите доменным логином и паролем. Данные доступны только в
@@ -1488,6 +1503,7 @@ export default function App() {
                   ? ` · ${fmtDuration(nowTs - new Date(presenceSince).getTime())}`
                   : ""}
               </span>
+              <RatingBadge value={profile?.avg_rating} />
             </span>
           </button>
           {profileMenuOpen && profile && (
@@ -2478,6 +2494,18 @@ export default function App() {
             aria-label="Команда"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Owner (2026-11-20): a close button on the team window. */}
+            <button
+              className="modal-close"
+              aria-label="Закрыть"
+              onClick={() => {
+                setTeamOpen(false);
+                setTeamMember(null);
+                setTeamTicket(null);
+              }}
+            >
+              ×
+            </button>
             {teamMember ? (
               teamTicket ? (
                 <>
@@ -2507,11 +2535,14 @@ export default function App() {
                 </>
               ) : (
                 <>
+                  {/* Owner (2026-11-20): back is a small arrow in the
+                      top-left corner of the member view. */}
                   <button
-                    className="quiet-action"
+                    className="modal-arrow"
+                    aria-label="К команде"
                     onClick={() => setTeamMember(null)}
                   >
-                    ← К команде
+                    ←
                   </button>
                   <div className="modal-title">
                     {teamMember.display_name || teamMember.email}
@@ -2532,10 +2563,23 @@ export default function App() {
                       {teamMember.open_tickets}/{teamMember.max_active_tickets}
                     </span>
                     <span className="muted">активных обращений</span>
+                    <RatingBadge value={teamMember.avg_rating} />
                   </div>
                   <div className="modal-title small">Текущие чаты</div>
-                  {teamTickets.length ? (
-                    teamTickets.map((ticket) => (
+                  {/* Owner (2026-11-20): only ACTIVE chats in the team
+                      member view — closed ones live in История. */}
+                  {teamTickets.filter(
+                    (ticket) =>
+                      !["RESOLVED", "CLOSED", "CANCELLED"].includes(ticket.status),
+                  ).length ? (
+                    teamTickets
+                      .filter(
+                        (ticket) =>
+                          !["RESOLVED", "CLOSED", "CANCELLED"].includes(
+                            ticket.status,
+                          ),
+                      )
+                      .map((ticket) => (
                       <button
                         key={ticket.ticket_id}
                         className="past-ticket"
@@ -3163,13 +3207,14 @@ export default function App() {
                         <td>
                           {priorityName[ticket.priority.toUpperCase()] || ticket.priority}
                         </td>
-                        <td>{shortId(ticket.user_id)}</td>
+                        <td>{ticket.user_login || shortId(ticket.user_id)}</td>
                         <td>
-                          {ticket.assignee_id
-                            ? ticket.assignee_id === operatorId
-                              ? "Я"
-                              : shortId(ticket.assignee_id)
-                            : "—"}
+                          {ticket.assignee_name ||
+                            (ticket.assignee_id
+                              ? ticket.assignee_id === operatorId
+                                ? "Я"
+                                : shortId(ticket.assignee_id)
+                              : "—")}
                         </td>
                         <td>{new Date(ticket.created_at).toLocaleString("ru-RU")}</td>
                         <td>{new Date(ticket.updated_at).toLocaleString("ru-RU")}</td>

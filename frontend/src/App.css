@@ -3787,3 +3787,40 @@ button.team-row.clickable:hover {
   border-color: rgba(226, 0, 26, 0.4);
   background: rgba(226, 0, 26, 0.14);
 }
+
+/* Owner (2026-11-20): the rating badge; above 4.7 a golden crown. */
+.rating-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.rating-crown {
+  font-size: 11px;
+  line-height: 1;
+  margin-bottom: 1px;
+}
+.rating-value {
+  font-size: 11px;
+  font-weight: 800;
+  color: #17191d;
+}
+/* Owner (2026-11-20): the back arrow in the team member view. */
+.modal-arrow {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #e4e6ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #17191d;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.modal-arrow:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}

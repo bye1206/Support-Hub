@@ -8,12 +8,14 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
 
+from app.api.operator import _user_login_map
 from app.auth.operators import require_role
 from app.errors import ApiError
 from app.models import (
     AuditActorType,
     AuditLog,
     Operator,
+    OperatorPresenceLog,
     OperatorRole,
     Tag,
     Ticket,
@@ -23,6 +25,7 @@ from app.models import (
     TicketStatus,
     TicketStatusHistory,
 )
+from app.repositories.ratings import TicketRatingRepository
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -48,7 +51,7 @@ class TagWrite(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
 
-def _operator_view(operator: Operator) -> dict[str, str | bool | int | None]:
+def _operator_view(operator: Operator, avg_rating: float | None = None) -> dict[str, object]:
     return {
         "operator_id": str(operator.id),
         "email": operator.email,
@@ -57,6 +60,8 @@ def _operator_view(operator: Operator) -> dict[str, str | bool | int | None]:
         "is_active": operator.is_active,
         "presence_status": operator.presence_status.value,
         "max_active_tickets": operator.max_active_tickets,
+        # Owner (2026-11-20): the golden-crown rating in the Сотрудники tab.
+        "avg_rating": round(avg_rating, 2) if avg_rating is not None else None,
         "created_at": operator.created_at.isoformat(),
     }
 
@@ -82,13 +87,21 @@ async def overview(
 async def list_operators(
     request: Request,
     _actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
-) -> dict[str, list[dict[str, str | bool | int | None]]]:
+) -> dict[str, list[dict[str, object]]]:
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         operators = (
             await session.scalars(select(Operator).order_by(Operator.email))
         ).all()
-    return {"operators": [_operator_view(operator) for operator in operators]}
+        averages = await TicketRatingRepository().avg_by_operators(
+            session, {operator.id for operator in operators}
+        )
+    return {
+        "operators": [
+            _operator_view(operator, averages.get(operator.id))
+            for operator in operators
+        ]
+    }
 
 
 @router.get("/categories")
@@ -504,7 +517,7 @@ async def update_operator_role(
     payload: RoleUpdate,
     request: Request,
     actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
-) -> dict[str, str | bool | int | None]:
+) -> dict[str, object]:
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
         target = await session.scalar(
@@ -553,7 +566,7 @@ async def update_operator_limit(
     payload: OperatorLimit,
     request: Request,
     actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
-) -> dict[str, str | bool | int | None]:
+) -> dict[str, object]:
     """Set the per-operator auto-assignment capacity (D-031 refinement)."""
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
@@ -587,7 +600,7 @@ async def deactivate_operator(
     payload: OperatorDeactivation,
     request: Request,
     actor: Annotated[Operator, Depends(require_role(OperatorRole.ADMIN))],
-) -> dict[str, str | bool | int | None]:
+) -> dict[str, object]:
     """Deactivate only after active assignments have a valid destination."""
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
@@ -800,6 +813,47 @@ async def operator_stats(
     return {"operators": rows}
 
 
+@router.get("/stats/operator/{operator_id}/presence")
+async def operator_stats_presence(
+    request: Request,
+    operator_id: uuid.UUID,
+    _actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> dict[str, float]:
+    """How long the operator was ACTIVE / LUNCH / BREAK / OFFLINE (owner
+    request, 2026-11-20): closed intervals from the presence log plus the
+    still-running interval from operators.presence_since. Seconds."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        operator = await session.get(Operator, operator_id)
+        if operator is None:
+            raise ApiError(
+                code="NOT_FOUND", message="Оператор не найден", status_code=404
+            )
+        rows = await session.execute(
+            select(
+                OperatorPresenceLog.status,
+                OperatorPresenceLog.started_at,
+                OperatorPresenceLog.ended_at,
+            ).where(OperatorPresenceLog.operator_id == operator_id)
+        )
+        durations = {"ACTIVE": 0.0, "LUNCH": 0.0, "BREAK": 0.0, "OFFLINE": 0.0}
+        for status, started, ended in rows:
+            durations[status] = durations.get(status, 0.0) + max(
+                0.0, (ended - started).total_seconds()
+            )
+        durations[str(operator.presence_status)] = durations.get(
+            str(operator.presence_status), 0.0
+        ) + max(
+            0.0,
+            (
+                datetime.now(UTC) - operator.presence_since
+            ).total_seconds(),
+        )
+    return {key: round(value) for key, value in durations.items()}
+
+
 def _period_range(period: str, date: str, month: str) -> tuple[datetime, datetime] | None:
     """[start, end) for the card periods: day / month / all time."""
     from datetime import date as date_type
@@ -945,6 +999,17 @@ async def operator_stats_dialogs(
             query = query.where(TicketRating.score >= min_score)
         if max_score is not None:
             query = query.where(TicketRating.score <= max_score)
+        # Owner (2026-11-20): the table shows the user's login.
+        user_logins = await _user_login_map(
+            session,
+            list(
+                
+                    await session.scalars(
+                        select(Ticket.user_id).where(Ticket.assignee_id == operator_id)
+                    ).distinct()
+                
+            ),
+        )
         rows = (
             await session.execute(
                 query.add_columns(
@@ -957,6 +1022,7 @@ async def operator_stats_dialogs(
             {
                 "ticket_id": str(ticket.id),
                 "status": str(getattr(ticket.status, "value", ticket.status)),
+                "user_login": user_logins.get(ticket.user_id, ""),
                 "created_at": ticket.created_at.isoformat(),
                 "updated_at": ticket.updated_at.isoformat(),
                 "score": score,

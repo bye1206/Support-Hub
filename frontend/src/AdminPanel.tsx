@@ -13,6 +13,8 @@ type Operator = {
   is_active: boolean;
   presence_status?: string;
   max_active_tickets: number;
+  // Owner (2026-11-20): the golden-crown rating in the Сотрудники tab.
+  avg_rating?: number | null;
   created_at: string;
 };
 type AuditEntry = {
@@ -49,6 +51,7 @@ type OperatorDetail = {
 type StatDialog = {
   ticket_id: string;
   status: string;
+  user_login: string;
   created_at: string;
   updated_at: string;
   score: number | null;
@@ -145,6 +148,16 @@ const ticketStatuses: Record<string, string> = {
   CLOSED: "Закрыт",
 };
 
+// Owner (2026-11-20): seconds → "X ч Y мин" for the presence card.
+function fmtSeconds(value: number | undefined): string {
+  if (value == null) return "—";
+  const minutes = Math.floor(value / 60);
+  const hours = Math.floor(minutes / 60);
+  if (hours > 0) return `${hours} ч ${minutes % 60} мин`;
+  if (minutes > 0) return `${minutes} мин`;
+  return "<1 мин";
+}
+
 const authorLabels: Record<string, string> = {
   USER: "Пользователь",
   OPERATOR: "Оператор",
@@ -210,6 +223,8 @@ export function AdminPanel({
   const [chatsData, setChatsData] = useState<OperatorDetail | null>(null);
   const [ratingsData, setRatingsData] = useState<OperatorDetail | null>(null);
   const [slaData, setSlaData] = useState<OperatorDetail | null>(null);
+  // Owner (2026-11-20): the ACTIVE/LUNCH/BREAK/OFFLINE durations card.
+  const [presenceData, setPresenceData] = useState<Record<string, number> | null>(null);
   const [statDialogs, setStatDialogs] = useState<StatDialog[]>([]);
   const [statDialogDay, setStatDialogDay] = useState("");
   const [statDialogScore, setStatDialogScore] = useState("");
@@ -280,12 +295,14 @@ export function AdminPanel({
       adminApi<OperatorDetail>(`${base}?${build(chatsPeriod)}`, auth),
       adminApi<OperatorDetail>(`${base}?${build(ratingsPeriod)}`, auth),
       adminApi<OperatorDetail>(`${base}?${build(slaPeriod)}`, auth),
+      adminApi<Record<string, number>>(`${base}/presence`, auth),
     ])
-      .then(([chats, ratings, sla]) => {
+      .then(([chats, ratings, sla, presence]) => {
         if (!active) return;
         setChatsData(chats);
         setRatingsData(ratings);
         setSlaData(sla);
+        setPresenceData(presence);
       })
       .catch((cause: unknown) =>
         active && setError(cause instanceof Error ? cause.message : "Не удалось загрузить карточки"),
@@ -740,8 +757,8 @@ export function AdminPanel({
             </>}
             {section === "operators" && role === "ADMIN" && <>
               <p className="admin-intro">Профили, роли и лимиты нагрузки. Лимит — сколько активных обращений авто-распределение может назначить сотруднику одновременно (прямая передача не ограничена).</p>
-              <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Лимит</th><th>Статус</th><th>Действие</th></tr></thead><tbody>
-                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><input className="limit-input" type="number" min={1} max={100} defaultValue={operator.max_active_tickets} aria-label={`Лимит обращений ${operator.email}`} disabled={!operator.is_active} onBlur={(event) => void changeLimit(operator, Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") (event.target as HTMLInputElement).blur(); }} /></td><td><span className={`admin-state ${!operator.is_active ? "inactive" : operator.presence_status === "ACTIVE" || !operator.presence_status ? "active" : "away"}`}>{!operator.is_active ? "Отключён" : presenceLabels[operator.presence_status ?? "ACTIVE"]}</span></td><td>{operator.is_active && operator.operator_id !== selfId && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} title="Куда передать активные обращения этого сотрудника при отключении" value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button title="Отключить профиль: сотрудник больше не сможет входить; активные обращения уйдут выбранному сотруднику или в общую очередь" onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
+              <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Ср. оценка</th><th>Лимит</th><th>Статус</th><th>Действие</th></tr></thead><tbody>
+                {operators.map((operator) => <tr key={operator.operator_id}><td><strong>{operator.display_name || operator.email}</strong><span>{operator.email}</span></td><td><select value={operator.role} aria-label={`Роль ${operator.email}`} disabled={!operator.is_active} onChange={(event) => void changeRole(operator, event.target.value as Role)}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td>{operator.avg_rating != null ? <span className="rating-badge" title="Средняя оценка">{operator.avg_rating > 4.7 && <span className="rating-crown">👑</span>}<span className="rating-value">{operator.avg_rating}</span></span> : "—"}</td><td><input className="limit-input" type="number" min={1} max={100} defaultValue={operator.max_active_tickets} aria-label={`Лимит обращений ${operator.email}`} disabled={!operator.is_active} onBlur={(event) => void changeLimit(operator, Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") (event.target as HTMLInputElement).blur(); }} /></td><td><span className={`admin-state ${!operator.is_active ? "inactive" : operator.presence_status === "ACTIVE" || !operator.presence_status ? "active" : "away"}`}>{!operator.is_active ? "Отключён" : presenceLabels[operator.presence_status ?? "ACTIVE"]}</span></td><td>{operator.is_active && operator.operator_id !== selfId && <div className="operator-actions"><select aria-label={`Кому переназначить обращения ${operator.email}`} title="Куда передать активные обращения этого сотрудника при отключении" value={reassignTo[operator.operator_id] || ""} onChange={(event) => setReassignTo((values) => ({ ...values, [operator.operator_id]: event.target.value }))}><option value="">Без переназначения</option>{operators.filter((candidate) => candidate.is_active && candidate.operator_id !== operator.operator_id).map((candidate) => <option key={candidate.operator_id} value={candidate.operator_id}>{candidate.display_name || candidate.email}</option>)}</select><button title="Отключить профиль: сотрудник больше не сможет входить; активные обращения уйдут выбранному сотруднику или в общую очередь" onClick={() => void deactivate(operator)}>Отключить</button></div>}</td></tr>)}
               </tbody></table></div>
             </>}
             {section === "categories" && <>
@@ -872,8 +889,7 @@ export function AdminPanel({
                       <article className="stat-card sla-card-stat">
                         <span className="stat-card-title">SLA</span>
                         <strong className="stat-card-value">{slaData?.sla_breached ?? "—"}</strong>
-                        <span className="stat-card-sub">просрочек</span>
-                        <div className="stat-card-periods">
+                        <span className="stat-card-sub">просрочек</span>                        <div className="stat-card-periods">
                           {([["day", "За день"], ["month", "За месяц"], ["all", "За всё время"]] as const).map(([mode, label]) => (
                             <button key={mode} className={slaPeriod.mode === mode ? "active" : ""} onClick={() => setSlaPeriod({ mode, value: "" })}>{label}</button>
                           ))}
@@ -892,6 +908,17 @@ export function AdminPanel({
                           </div>
                         )}
                       </article>
+                      {/* Owner (2026-11-20): how long the operator was
+                          ACTIVE / on LUNCH / on BREAK / OFFLINE. */}
+                      <article className="stat-card presence-card">
+                        <span className="stat-card-title">Активность</span>
+                        <div className="presence-rows">
+                          <div className="presence-row"><span>Активен</span><strong>{fmtSeconds(presenceData?.ACTIVE)}</strong></div>
+                          <div className="presence-row"><span>На обеде</span><strong>{fmtSeconds(presenceData?.LUNCH)}</strong></div>
+                          <div className="presence-row"><span>На перерыве</span><strong>{fmtSeconds(presenceData?.BREAK)}</strong></div>
+                          <div className="presence-row"><span>Офлайн</span><strong>{fmtSeconds(presenceData?.OFFLINE)}</strong></div>
+                        </div>
+                      </article>
                       <p className="admin-intro">Последние чаты</p>
                       <div className="stats-dialog-filters">
                         <input type="date" value={statDialogDay} onChange={(event) => setStatDialogDay(event.target.value)} />
@@ -900,16 +927,17 @@ export function AdminPanel({
                           {[5, 4, 3, 2, 1].map((score) => <option key={score} value={score}>{score}</option>)}
                         </select>
                       </div>
-                      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Чат</th><th>Статус</th><th>Обновлён</th><th>Оценка</th></tr></thead><tbody>
+                      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Чат</th><th>Пользователь</th><th>Статус</th><th>Обновлён</th><th>Оценка</th></tr></thead><tbody>
                         {statDialogs.map((dialog) => (
                           <tr key={dialog.ticket_id} className="stats-row" onClick={() => void openStatTicket(dialog.ticket_id)}>
                             <td><strong>{dialog.ticket_id.slice(0, 8)}</strong>{dialog.review ? <span className="stats-cell-review"> · {dialog.review.slice(0, 40)}</span> : ""}</td>
+                            <td>{dialog.user_login || "—"}</td>
                             <td>{dialog.status}</td>
                             <td>{new Date(dialog.updated_at).toLocaleString("ru-RU")}</td>
                             <td>{dialog.score ?? "—"}</td>
                           </tr>
                         ))}
-                        {!statDialogs.length && <tr><td colSpan={4}>Чатов не найдено</td></tr>}
+                        {!statDialogs.length && <tr><td colSpan={5}>Чатов не найдено</td></tr>}
                       </tbody></table></div>
                     </>
                   ) : (

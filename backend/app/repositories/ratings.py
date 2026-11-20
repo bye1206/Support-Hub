@@ -50,6 +50,23 @@ class TicketRatingRepository:
         await session.flush()
         return rating
 
+    async def avg_by_operators(
+        self, session: AsyncSession, operator_ids: set[uuid.UUID]
+    ) -> dict[uuid.UUID, float]:
+        """Average score per operator (crown in the team/admin panels)."""
+        if not operator_ids:
+            return {}
+        from sqlalchemy import func
+
+        rows = await session.execute(
+            select(
+                TicketRating.operator_id, func.avg(TicketRating.score)
+            )
+            .where(TicketRating.operator_id.in_(operator_ids))
+            .group_by(TicketRating.operator_id)
+        )
+        return {row[0]: float(row[1]) for row in rows}
+
     async def latest_awaiting_review_for_user(
         self, session: AsyncSession, user_id: uuid.UUID
     ) -> TicketRating | None:

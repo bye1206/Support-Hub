@@ -38,6 +38,7 @@ from app.repositories.attachments import AttachmentRepository
 from app.repositories.categories import TicketCategoryRepository
 from app.repositories.messages import MessageRepository
 from app.repositories.operators import OperatorRepository
+from app.repositories.ratings import TicketRatingRepository
 from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
 from app.services.ad_info import AdInfoService
@@ -51,13 +52,21 @@ router = APIRouter(prefix="/api/v1/operator", tags=["operator"])
 @router.get("/me")
 async def get_current_operator(
     operator: Annotated[Operator, Depends(require_operator)],
-) -> dict[str, str]:
+    request: Request,
+) -> dict[str, str | float | None]:
     """Return the authenticated operator profile for workspace actions."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        averages = await TicketRatingRepository().avg_by_operators(session, {operator.id})
     return {
         "operator_id": str(operator.id),
         "email": operator.email,
         "display_name": operator.display_name or operator.email,
         "role": str(operator.role),
+        # Owner request (2026-11-20): the golden-crown rating in the footer.
+        "avg_rating": (
+            round(averages[operator.id], 2) if operator.id in averages else None
+        ),
     }
 
 
@@ -83,6 +92,7 @@ def _ticket_view(
     user_name: str | None = None,
     unread_from_user: int = 0,
     assignee_name: str | None = None,
+    user_login: str | None = None,
 ) -> dict[str, Any]:
     return {
         "ticket_id": str(ticket.id),
@@ -91,6 +101,8 @@ def _ticket_view(
         # Owner request (2026-11-17): the queue must show the person, not a
         # short UUID — display_name (Tag profile / AD), fallback frontend.
         "user_name": user_name,
+        # Owner request (2026-11-20): the login for the history tables.
+        "user_login": user_login,
         # Owner request (2026-11-18): user messages since the operator's
         # last reply — badge in the queue, resets on the operator's answer.
         "unread_from_user": unread_from_user,
@@ -224,6 +236,34 @@ async def _user_name_map(
     return {row[0]: row[1] for row in rows}
 
 
+async def _user_login_map(
+    session: AsyncSession, user_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """id -> LOGIN for the history/stats tables (owner request, 2026-11-20):
+    the AD login when cached, else the Tag profile name."""
+    if not user_ids:
+        return {}
+    rows = await session.execute(
+        select(User.id, User.ad_info).where(User.id.in_(user_ids))
+    )
+    logins = {
+        row[0]: ((row[1] or {}).get("login") or row[0])
+        for row in rows
+    }
+    missing = [uid for uid in user_ids if isinstance(logins.get(uid), uuid.UUID)]
+    if missing:
+        from app.models import UserIdentity
+
+        identity_rows = await session.execute(
+            select(UserIdentity.user_id, UserIdentity.external_user_name).where(
+                UserIdentity.user_id.in_(missing)
+            )
+        )
+        names = {row[0]: row[1] for row in identity_rows if row[1]}
+        logins.update(names)
+    return {uid: str(login) for uid, login in logins.items()}
+
+
 @router.get("/tickets")
 async def list_tickets(
     request: Request,
@@ -304,6 +344,7 @@ async def list_tickets(
         unread = await MessageRepository().unread_counts(
             session, [t.conversation_id for t in tickets]
         )
+        user_logins = await _user_login_map(session, [t.user_id for t in tickets])
     return {
         "tickets": [
             _ticket_view(
@@ -312,6 +353,7 @@ async def list_tickets(
                 user_name=user_names.get(t.user_id),
                 unread_from_user=unread.get(t.conversation_id, 0),
                 assignee_name=assignee_names.get(t.assignee_id),
+                user_login=user_logins.get(t.user_id),
             )
             for t in tickets
         ],
@@ -776,6 +818,7 @@ async def list_user_tickets(
             )
             for op in rows:
                 assignee_names[op.id] = op.display_name or op.email.split("@")[0]
+        user_logins = await _user_login_map(session, [t.user_id for t in tickets])
     return {
         "tickets": [
             _ticket_view(
@@ -783,6 +826,7 @@ async def list_user_tickets(
                 tags=tag_map.get(ticket.id, []),
                 user_name=user_names.get(ticket.user_id),
                 assignee_name=assignee_names.get(ticket.assignee_id),
+                user_login=user_logins.get(ticket.user_id),
             )
             for ticket in tickets
         ]

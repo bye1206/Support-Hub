@@ -772,3 +772,27 @@
   color: #8a93a2;
   font-weight: 400;
 }
+
+/* Owner (2026-11-20): the presence durations card. */
+.presence-card {
+  margin-bottom: 14px;
+}
+.presence-rows {
+  display: grid;
+  gap: 6px;
+}
+.presence-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: #4a5364;
+  border-bottom: 1px solid #f0f2f5;
+  padding: 4px 0;
+}
+.presence-row:last-child {
+  border-bottom: none;
+}
+.presence-row strong {
+  color: #17191d;
+}

@@ -10,6 +10,7 @@ import base64
 import hmac
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -29,11 +30,13 @@ from app.errors import ApiError
 from app.models import (
     AuditActorType,
     Operator,
+    OperatorPresenceLog,
     OperatorRole,
     PresenceStatus,
     Ticket,
 )
 from app.repositories.operators import OperatorRepository
+from app.repositories.ratings import TicketRatingRepository
 from app.services._tx import unit_of_work
 from app.services.audit import AuditService
 from app.services.tickets import TicketService
@@ -253,6 +256,16 @@ async def update_presence(
     async with deps.db.session_factory() as session:
         async with unit_of_work(session):
             was_active = operator.presence_status == PresenceStatus.ACTIVE
+            # Owner request (2026-11-20): write the finished interval into
+            # the presence log so the stats card can sum ACTIVE/LUNCH/BREAK.
+            session.add(
+                OperatorPresenceLog(
+                    operator_id=operator.id,
+                    status=str(operator.presence_status),
+                    started_at=operator.presence_since,
+                    ended_at=datetime.now(UTC),
+                )
+            )
             await OperatorRepository().set_presence(
                 session, operator.id, status=PresenceStatus(payload.status)
             )
@@ -295,6 +308,11 @@ async def team_overview(
         counts = dict(
             (await session.execute(select(load.c.assignee_id, load.c.load))).all()
         )
+        # Owner request (2026-11-20): the golden-crown rating next to the
+        # operator's profile in the team panel.
+        averages = await TicketRatingRepository().avg_by_operators(
+            session, {member.id for member in operators}
+        )
     return {
         "team": [
             {
@@ -305,6 +323,9 @@ async def team_overview(
                 "presence_since": member.presence_since.isoformat(),
                 "open_tickets": int(counts.get(member.id, 0)),
                 "max_active_tickets": member.max_active_tickets,
+                "avg_rating": (
+                    round(averages[member.id], 2) if member.id in averages else None
+                ),
             }
             for member in operators
         ]
