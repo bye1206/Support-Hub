@@ -60,6 +60,9 @@ _USER_ATTRIBUTES = [
     "pwdLastSet",
     "msDS-UserPasswordExpiryTimeComputed",
     "thumbnailPhoto",
+    # Owner report (2026-11-20): some corp accounts keep the photo only in
+    # jpegPhoto — read it as the fallback when thumbnailPhoto is empty.
+    "jpegPhoto",
 ]
 
 
@@ -250,7 +253,9 @@ class AdDirectory:
 
             groups = self._read_groups(conn, user_dn)
             manager = self._read_manager(conn, entry)
-            photo_raw = _attr_value(entry, "thumbnailPhoto")
+            photo_raw = _attr_value(entry, "thumbnailPhoto") or _attr_value(
+                entry, "jpegPhoto"
+            )
             photo = bytes(photo_raw) if photo_raw else b""
 
             uac = int(_attr_value(entry, "userAccountControl") or 0)

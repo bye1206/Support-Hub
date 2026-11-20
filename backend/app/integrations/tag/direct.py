@@ -472,6 +472,27 @@ async def fetch_bot_user_id(settings: Settings) -> str:
         return str((response.json())["id"])
 
 
+async def fetch_tag_avatar(settings: Settings, external_user_id: str) -> bytes | None:
+    """Mattermost profile image for a Tag user (owner report, 2026-11-20:
+    the avatar fallback when AD keeps no photo for the account)."""
+    if not settings.mattermost_bot_token:
+        return None
+    async with httpx.AsyncClient(
+        base_url=settings.mattermost_base_url.rstrip("/"),
+        timeout=DEFAULT_TIMEOUT_SECONDS,
+        follow_redirects=True,
+        headers={"Authorization": f"Bearer {settings.mattermost_bot_token}"},
+    ) as client:
+        try:
+            response = await client.get(f"/api/v4/users/{external_user_id}/image")
+        except httpx.HTTPError:
+            return None
+        if response.status_code != 200:
+            return None
+        content = response.content
+    return content or None
+
+
 __all__ = [
     "DM_CHANNEL_TYPE",
     "TagDirectError",
@@ -480,6 +501,7 @@ __all__ = [
     "TagDirectSender",
     "TagDirectUnknown",
     "fetch_bot_user_id",
+    "fetch_tag_avatar",
     "ingest_direct_message",
     "parse_posted_event",
 ]

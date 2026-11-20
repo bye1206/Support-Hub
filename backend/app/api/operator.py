@@ -18,9 +18,11 @@ from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.operators import require_operator
+from app.config import get_settings
 from app.errors import ApiError
 from app.infra.file_storage import FileStorageError, LocalFileStorage
 from app.integrations.ad_directory import AdUnavailableError
+from app.integrations.tag.direct import fetch_tag_avatar
 from app.models import (
     AuditLog,
     ConversationSession,
@@ -41,6 +43,7 @@ from app.repositories.operators import OperatorRepository
 from app.repositories.ratings import TicketRatingRepository
 from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
+from app.repositories.users import UserRepository
 from app.services.ad_info import AdInfoService
 from app.services.messages import MessageService
 from app.services.notes import NoteService
@@ -868,6 +871,44 @@ async def user_ad_photo(
             raise ApiError(code="NOT_FOUND", message=str(exc), status_code=404) from exc
     if not photo:
         raise ApiError(code="NOT_FOUND", message="No AD photo", status_code=404)
+    media_type = "image/png" if photo.startswith(b"\x89PNG") else "image/jpeg"
+    return Response(content=photo, media_type=media_type)
+
+
+# Owner report (2026-11-20): when AD keeps no photo the avatar falls back
+# to the Tag profile image. Small self-healing cache keyed by the Tag id.
+_TAG_AVATAR_CACHE: dict[str, bytes] = {}
+_TAG_AVATAR_CACHE_MAX = 256
+
+
+@router.get("/users/{user_id}/tag-avatar")
+async def user_tag_avatar(
+    user_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> Response:
+    """Tag (Mattermost) profile image bytes; 404 when none is available."""
+    settings = get_settings()
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        user = await session.get(User, user_id)
+        if user is None:
+            raise ApiError(code="NOT_FOUND", message="User not found", status_code=404)
+        identities = await UserRepository().list_identities(session, user_id)
+    external_id = next(
+        (i.external_user_id for i in identities if i.external_user_id), None
+    )
+    if not external_id or not settings.tag_direct_mode:
+        raise ApiError(code="NOT_FOUND", message="No Tag avatar", status_code=404)
+    photo = _TAG_AVATAR_CACHE.get(external_id)
+    if photo is None:
+        photo = await fetch_tag_avatar(settings, external_id)
+        if photo and len(_TAG_AVATAR_CACHE) >= _TAG_AVATAR_CACHE_MAX:
+            _TAG_AVATAR_CACHE.clear()
+        if photo:
+            _TAG_AVATAR_CACHE[external_id] = photo
+    if not photo:
+        raise ApiError(code="NOT_FOUND", message="No Tag avatar", status_code=404)
     media_type = "image/png" if photo.startswith(b"\x89PNG") else "image/jpeg"
     return Response(content=photo, media_type=media_type)
 

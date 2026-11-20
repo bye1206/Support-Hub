@@ -436,6 +436,9 @@ export default function App() {
     // details panel shows "Загрузка…" instead of the PREVIOUS ticket's data.
     [detailsStale, setDetailsStale] = useState(false),
     [adPhotos, setAdPhotos] = useState<Record<string, string>>({}),
+    // Owner report (2026-11-20): when AD keeps no photo the avatar falls
+    // back to the Tag profile image.
+    [tagAvatars, setTagAvatars] = useState<Record<string, string>>({}),
     [opPhoto, setOpPhoto] = useState<string | null>(null),
     [notes, setNotes] = useState<Note[]>([]),
     [historyPage, setHistoryPage] = useState(false),
@@ -474,7 +477,8 @@ export default function App() {
     history = useRef<HTMLDivElement>(null),
     historySearchRef = useRef<HTMLInputElement>(null),
     selectedRef = useRef<string | null>(null),
-    adPhotosRef = useRef<Record<string, string>>({});
+    adPhotosRef = useRef<Record<string, string>>({}),
+    tagAvatarsRef = useRef<Record<string, string>>({});
   // Perf round (2026-11-17): WS event bursts coalesce into one sync.
   const syncInFlight = useRef(false),
     syncQueued = useRef(false),
@@ -574,6 +578,21 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Не удалось загрузить очередь");
     }
   }, [auth, ready]);
+  // Owner report (2026-11-20): when AD keeps no photo the avatar falls back
+  // to the Tag profile image (the same picture the colleague sees in chat).
+  const ensureTagAvatar = async (userId: string) => {
+    if (tagAvatarsRef.current[userId]) return;
+    try {
+      const response = await fetch(`/api/v1/operator/users/${userId}/tag-avatar`, {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+      if (!response.ok) return;
+      tagAvatarsRef.current[userId] = URL.createObjectURL(await response.blob());
+      setTagAvatars({ ...tagAvatarsRef.current });
+    } catch {
+      // no Tag avatar either — initials stay
+    }
+  };
   const loadAdInfo = async (userId: string) => {
     // Employee card (P-29): graceful degradation - on any failure the
     // details panel shows the plain user block.
@@ -602,12 +621,14 @@ export default function App() {
           setAdPhotos({ ...adPhotosRef.current });
         }
       }
+      if (!adPhotosRef.current[userId]) void ensureTagAvatar(userId);
     } catch {
       if (adUserRef.current === userId) {
         setAdInfo(null);
         adInfoReadyRef.current = userId;
         setAdInfoReadyFor(userId);
       }
+      void ensureTagAvatar(userId);
     }
   };
   // Owner (2026-11-17): manual refresh — bypasses the 24h cache so a
@@ -640,6 +661,7 @@ export default function App() {
           setAdPhotos({ ...adPhotosRef.current });
         }
       }
+      if (!adPhotosRef.current[userId]) void ensureTagAvatar(userId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось обновить из AD");
     } finally {
@@ -1709,6 +1731,12 @@ export default function App() {
                     src={adPhotos[current.user_id]}
                     alt=""
                   />
+                ) : tagAvatars[current.user_id] ? (
+                  <img
+                    className="user-photo large"
+                    src={tagAvatars[current.user_id]}
+                    alt=""
+                  />
                 ) : (
                   <div className="user-avatar large">
                     {initials(adInfo?.full_name || shortId(current.user_id))}
@@ -1863,6 +1891,12 @@ export default function App() {
                 <img
                   className="user-photo"
                   src={adPhotos[current.user_id]}
+                  alt=""
+                />
+              ) : tagAvatars[current.user_id] ? (
+                <img
+                  className="user-photo"
+                  src={tagAvatars[current.user_id]}
                   alt=""
                 />
               ) : (
