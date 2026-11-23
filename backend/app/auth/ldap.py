@@ -234,22 +234,47 @@ class LdapAuthenticator:
             if not user_dn:
                 raise LdapAuthFailed("user DN not found (check LDAP_BASE_DN / account)")
 
+            # Owner probe (2026-11-23): the AD proxy DENIES reading group
+            # members under the user's own bind — the probe saw the member
+            # list under the service account while the login-time check
+            # under the user bind always came back empty ("not a member").
+            # Group checks therefore run under the service account.
+            svc_conn = ldap3.Connection(
+                server,
+                user=settings.ldap_service_user_dn,
+                password=settings.ldap_service_password,
+                auto_bind=False,
+                receive_timeout=settings.ldap_timeout_seconds,
+            )
+            if settings.ldap_service_user_dn and settings.ldap_service_password:
+                if not svc_conn.bind():
+                    logger.warning(
+                        "LDAP service bind failed: %s",
+                        _bind_failure_reason(dict(svc_conn.result)),
+                    )
+            group_conn = (
+                svc_conn
+                if svc_conn.bound
+                else conn  # no service account: best effort under the user
+            )
             is_admin = self._member_of_any(
-                conn, settings.ldap_group_admin_dn, user_dn
+                group_conn, settings.ldap_group_admin_dn, user_dn
             )
             is_supervisor = bool(settings.ldap_group_supervisor_dn) and (
                 self._member_of_any(
-                    conn, settings.ldap_group_supervisor_dn, user_dn
+                    group_conn, settings.ldap_group_supervisor_dn, user_dn
                 )
             )
             if settings.ldap_group_operator_dn:
                 is_operator = self._member_of_any(
-                    conn, settings.ldap_group_operator_dn, user_dn
+                    group_conn, settings.ldap_group_operator_dn, user_dn
                 )
             else:
                 # No operator group configured: any domain user may operate
                 # (module semantics; set LDAP_GROUP_OPERATOR_DN in shared envs).
                 is_operator = True
+            if svc_conn.bound:
+                svc_conn.unbind()
             conn.unbind()
         except LdapAuthFailed:
             raise
@@ -289,7 +314,28 @@ class LdapAuthenticator:
                 base, f"(member={escaped_dn})", attributes=["cn"], search_scope="BASE"
             )
             if len(conn.entries) > 0:
+                logger.info("LDAP group check: %s is a member of %s", user_dn, base)
                 return True
+            # Owner probe (2026-11-23): the proxy can also hide the member
+            # list — fall back to the USER side (memberOf under the same
+            # service bind; the probe showed it is readable there).
+            conn.search(
+                user_dn,
+                "(objectClass=*)",
+                attributes=["memberOf"],
+                search_scope="BASE",
+            )
+            for entry in conn.entries:
+                member_of = (
+                    [str(v) for v in entry["memberOf"].values]
+                    if "memberOf" in entry
+                    else []
+                )
+                if any(dn.lower() == base.lower() for dn in member_of):
+                    logger.info(
+                        "LDAP group check: %s memberOf %s (user side)", user_dn, base
+                    )
+                    return True
         return False
 
     def _resolve_group(self, conn: Any, name: str) -> str:
