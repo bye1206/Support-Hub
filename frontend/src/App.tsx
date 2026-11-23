@@ -511,20 +511,29 @@ export default function App() {
     const id = window.setInterval(() => setNowTs(Date.now()), 30000);
     return () => window.clearInterval(id);
   }, []);
+  // Owner report (2026-11-23): a colleague who just went ACTIVE appeared in
+  // the team/transfer lists up to 30 s later (team polled every 30 s,
+  // colleagues only on page load). Both lists now ride one 5 s poll with an
+  // overlap guard; hidden tabs skip the roundtrip.
   useEffect(() => {
     if (!ready) return;
-    void api<{ colleagues: Colleague[] }>("/colleagues", auth)
-      .then((data) => setColleagues(data.colleagues ?? []))
-      .catch(() => setColleagues([]));
-  }, [auth, ready]);
-  useEffect(() => {
-    if (!ready) return;
-    const loadTeam = () =>
-      void api<{ team: TeamMember[] }>("/team", auth)
-        .then((data) => setTeam(data.team ?? []))
-        .catch(() => {});
-    loadTeam();
-    const id = window.setInterval(loadTeam, 30000);
+    let inFlight = false;
+    const load = () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      void Promise.all([
+        api<{ team: TeamMember[] }>("/team", auth)
+          .then((data) => setTeam(data.team ?? []))
+          .catch(() => {}),
+        api<{ colleagues: Colleague[] }>("/colleagues", auth)
+          .then((data) => setColleagues(data.colleagues ?? []))
+          .catch(() => {}),
+      ]).finally(() => {
+        inFlight = false;
+      });
+    };
+    load();
+    const id = window.setInterval(load, 5000);
     return () => window.clearInterval(id);
   }, [auth, ready]);
   useEffect(() => {
@@ -1685,7 +1694,14 @@ export default function App() {
                   }
                   aria-label="Передать сотруднику"
                   disabled={currentUnassigned}
-                  onClick={() => setTransferOpen(true)}
+                  onClick={() => {
+                    setTransferOpen(true);
+                    // Owner (2026-11-23): never show a stale list — pull the
+                    // colleagues the moment the modal opens.
+                    void api<{ colleagues: Colleague[] }>("/colleagues", auth)
+                      .then((data) => setColleagues(data.colleagues ?? []))
+                      .catch(() => {});
+                  }}
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="9" cy="8" r="3.2" />
