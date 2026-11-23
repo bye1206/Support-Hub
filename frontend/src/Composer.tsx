@@ -2,6 +2,8 @@ import { memo, useEffect, useRef, useState, type FormEvent } from "react";
 
 type Mode = "reply" | "note";
 
+type KbArticle = { article_id: string; title: string; body: string };
+
 type Props = {
   disabled: boolean;
   // Return true when the message actually went through — the draft is
@@ -11,6 +13,9 @@ type Props = {
   // here (the parent forwards them); the composer merges them into chips.
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
+  // Owner (2026-11-23, plan item 8): knowledge base articles for the
+  // auto-reply insert and the typing hints.
+  kbArticles?: KbArticle[];
 };
 
 // Owns its own draft state (decomposition round 2026-11-17): typing used to
@@ -20,6 +25,7 @@ function ComposerImpl({
   onSend,
   droppedFiles = [],
   onDroppedFilesConsumed,
+  kbArticles = [],
 }: Props) {
   const [mode, setMode] = useState<Mode>("reply");
   const [text, setText] = useState("");
@@ -27,6 +33,37 @@ function ComposerImpl({
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [sending, setSending] = useState(false);
+  // Owner (2026-11-23, plan item 8): typing hints from the knowledge base.
+  // The toggle is personal and survives reloads (localStorage).
+  const [hintsOff, setHintsOff] = useState(() => {
+    try {
+      return localStorage.getItem("sh-kb-hints-off") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleHints = () => {
+    setHintsOff((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("sh-kb-hints-off", next ? "1" : "0");
+      } catch {
+        // storage unavailable — the toggle still works for the session
+      }
+      return next;
+    });
+  };
+  const needle = text.trim().toLowerCase();
+  const suggestions =
+    !hintsOff && mode === "reply" && !disabled && needle.length >= 2
+      ? kbArticles
+          .filter(
+            (article) =>
+              article.title.toLowerCase().includes(needle) ||
+              article.body.toLowerCase().includes(needle),
+          )
+          .slice(0, 4)
+      : [];
   // Owner (2026-11-18): Telegram-style input — starts pill-narrow, grows
   // upward while typing up to ~half the screen, then scrolls its contents.
   // The scrollbar appears ONLY once the cap is reached.
@@ -107,6 +144,26 @@ function ComposerImpl({
                   ×
                 </button>
               </div>
+            ))}
+          </div>
+        )}
+        {suggestions.length > 0 && (
+          <div className="composer-kb" role="listbox" aria-label="Подсказки базы знаний">
+            {suggestions.map((article) => (
+              <button
+                type="button"
+                key={article.article_id}
+                role="option"
+                aria-selected={false}
+                className="composer-kb-item"
+                onClick={() => {
+                  setText(article.body);
+                  areaRef.current?.focus();
+                }}
+              >
+                <strong>{article.title}</strong>
+                <span>{article.body}</span>
+              </button>
             ))}
           </div>
         )}
@@ -221,6 +278,16 @@ function ComposerImpl({
             )}
             <span className="character-count">{text.length}/10000</span>
           </div>
+          {mode === "reply" && !disabled && (
+            <button
+              type="button"
+              className={`composer-kb-toggle ${hintsOff ? "off" : ""}`}
+              title="Подсказки из базы знаний при наборе"
+              onClick={toggleHints}
+            >
+              {hintsOff ? "Подсказки БЗ выкл" : "Подсказки БЗ вкл"}
+            </button>
+          )}
         </div>
       </form>
     </section>

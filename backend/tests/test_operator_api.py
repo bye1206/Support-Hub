@@ -1028,3 +1028,62 @@ async def test_export_respects_the_search_filters(client: TestClient, seed) -> N
 
 def test_export_requires_operator(client: TestClient) -> None:
     assert client.get("/api/v1/operator/tickets/export.xlsx").status_code == 401
+
+
+@pytest.mark.anyio
+async def test_kb_crud_and_operator_read(
+    client: TestClient, session_factory
+) -> None:
+    # Owner (2026-11-23, plan item 8): the knowledge base reference.
+    denied = client.post(
+        "/api/v1/admin/kb",
+        headers=headers(),
+        json={"title": "Как сбросить VPN", "body": "Инструкция…"},
+    )
+    assert denied.status_code == 403
+    async with session_factory() as session:
+        operator = (
+            await session.scalars(
+                select(Operator).where(Operator.email == "op1@corp.test")
+            )
+        ).first()
+        assert operator is not None
+        operator.role = OperatorRole.SUPERVISOR
+        await session.commit()
+    created = client.post(
+        "/api/v1/admin/kb",
+        headers=headers(),
+        json={"title": "Как сбросить VPN", "body": "Пошаговая инструкция…"},
+    )
+    assert created.status_code == 201
+    article_id = created.json()["article_id"]
+    hidden = client.put(
+        f"/api/v1/admin/kb/{article_id}",
+        headers=headers(),
+        json={"is_active": False},
+    )
+    assert hidden.status_code == 200
+    assert hidden.json()["is_active"] is False
+    # Operators only see active articles.
+    listing = client.get("/api/v1/operator/kb", headers=headers())
+    assert listing.status_code == 200
+    assert listing.json()["articles"] == []
+    assert (
+        client.put(
+            f"/api/v1/admin/kb/{article_id}",
+            headers=headers(),
+            json={"is_active": True},
+        ).status_code
+        == 200
+    )
+    visible = client.get("/api/v1/operator/kb", headers=headers())
+    articles = visible.json()["articles"]
+    assert len(articles) == 1
+    assert articles[0]["title"] == "Как сбросить VPN"
+    assert (
+        client.delete(f"/api/v1/admin/kb/{article_id}", headers=headers()).status_code
+        == 204
+    )
+    assert (
+        client.get("/api/v1/operator/kb", headers=headers()).json()["articles"] == []
+    )

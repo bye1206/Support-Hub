@@ -13,6 +13,7 @@ from app.models.conversation import (
     DialogMode,
     SessionStatus,
 )
+from app.models.kb_article import KbArticle
 from app.models.message import (
     Message,
     MessageAuthorType,
@@ -49,6 +50,7 @@ __all__ = [
     "IntegrationEvent",
     "IntegrationEventStatus",
     "InternalNote",
+    "KbArticle",
     "Message",
     "MessageAttachment",
     "MessageAuthorType",

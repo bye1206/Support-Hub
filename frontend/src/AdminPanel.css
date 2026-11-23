@@ -102,6 +102,19 @@
 .directory-list > div:last-child { border-bottom: 0; }
 .directory-list > div > span:nth-child(2) { color: #7e8796; font-size: 10px; }
 .directory-list > div.inactive { color: #949baa; background: #fafbfc; }
+/* Owner (2026-11-23, plan item 8): knowledge base articles. */
+.kb-form input { flex: 1 1 100%; }
+.kb-form textarea { flex: 1 1 100%; min-height: 72px; padding: 8px 10px; border: 1px solid #e4e8ed; border-radius: 7px; background: #fff; color: #4b5566; font: inherit; font-size: 12px; resize: vertical; }
+.kb-row { grid-template-columns: minmax(200px, 3fr) 100px auto !important; }
+.kb-row .kb-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.kb-row .kb-text strong { font-size: 12px; }
+.kb-row .kb-text span { overflow: hidden; color: #7e8796; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.kb-edit { display: flex; flex-direction: column; gap: 8px; grid-column: 1 / -1; }
+.kb-edit input, .kb-edit textarea { padding: 8px 10px; border: 1px solid #e4e8ed; border-radius: 7px; background: #fff; color: #4b5566; font: inherit; font-size: 12px; }
+.kb-edit textarea { min-height: 72px; resize: vertical; }
+.kb-edit { flex-direction: row; flex-wrap: wrap; }
+.kb-edit input { flex: 1 1 100%; }
+.kb-edit textarea { flex: 1 1 100%; }
 .directory-actions { display: flex; justify-content: end; gap: 6px; }
 /* Clickable category name that opens its themes window: fills the whole
    left cell so the click area is as large as the row allows. */

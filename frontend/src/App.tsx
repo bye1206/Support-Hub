@@ -352,6 +352,13 @@ const fmtDuration = (ms: number) => {
   const minutes = total % 60;
   return hours > 0 ? `${hours} ч ${minutes} мин` : `${minutes} мин`;
 };
+type KbArticle = {
+  article_id: string;
+  title: string;
+  body: string;
+  updated_at: string;
+};
+
 async function api<T>(
   path: string,
   auth: Credentials,
@@ -452,6 +459,8 @@ export default function App() {
     // Owner (2026-11-19): files dropped anywhere on the dialog window are
     // forwarded to the composer via this queue.
     [droppedFiles, setDroppedFiles] = useState<File[]>([]),
+    // Owner (2026-11-23, plan item 8): knowledge base articles for hints.
+    [kbArticles, setKbArticles] = useState<KbArticle[]>([]),
     [dragOverConversation, setDragOverConversation] = useState(false),
     [resolveCategoryId, setResolveCategoryId] = useState(""),
     [resolveThemeId, setResolveThemeId] = useState(""),
@@ -556,6 +565,11 @@ export default function App() {
       ticketsRef.current = data.tickets;
       setTickets(data.tickets);
       setError("");
+      // Owner (2026-11-23, plan item 8): knowledge base for the composer
+      // hints — a nicety, never a failure.
+      void api<{ articles: KbArticle[] }>("/kb", auth)
+        .then((kb) => setKbArticles(kb.articles))
+        .catch(() => undefined);
       const selected = selectedRef.current
         ? data.tickets.find((t) => t.ticket_id === selectedRef.current)
         : null;
@@ -1902,6 +1916,7 @@ export default function App() {
               onSend={send}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={() => setDroppedFiles([])}
+              kbArticles={kbArticles}
             />
           </>
         ) : (

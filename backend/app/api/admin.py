@@ -14,6 +14,7 @@ from app.errors import ApiError
 from app.models import (
     AuditActorType,
     AuditLog,
+    KbArticle,
     Operator,
     OperatorPresenceLog,
     OperatorRole,
@@ -26,6 +27,7 @@ from app.models import (
     TicketStatusHistory,
     TicketTag,
 )
+from app.repositories.kb import KbRepository
 from app.repositories.ratings import TicketRatingRepository
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -1192,3 +1194,110 @@ async def total_stats(
         "avg_rating": round(avg, 2) if avg is not None else None,
         "ratings_count": len(all_scores),
     }
+
+
+class KbWrite(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1)
+
+
+class KbPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    body: str | None = Field(default=None, min_length=1)
+    is_active: bool | None = None
+
+
+def _kb_view(article: KbArticle) -> dict[str, object]:
+    return {
+        "article_id": str(article.id),
+        "title": article.title,
+        "body": article.body,
+        "is_active": article.is_active,
+        "updated_at": article.updated_at.isoformat(),
+    }
+
+
+@router.get("/kb")
+async def list_kb_articles(
+    request: Request,
+    _actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> dict[str, object]:
+    """The knowledge base reference (owner request, 2026-11-23, plan 8)."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        articles = await KbRepository().list_all(session)
+    return {"articles": [_kb_view(article) for article in articles]}
+
+
+@router.post("/kb", status_code=201)
+async def create_kb_article(
+    payload: KbWrite,
+    request: Request,
+    actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> dict[str, object]:
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        article = await KbRepository().create(
+            session, title=payload.title, body=payload.body, author=actor
+        )
+        session.add(AuditLog(
+            actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+            action="kb.created", entity_type="kb_article", entity_id=article.id,
+            details={"title": article.title},
+        ))
+    return _kb_view(article)
+
+
+@router.put("/kb/{article_id}")
+async def update_kb_article(
+    article_id: uuid.UUID,
+    payload: KbPatch,
+    request: Request,
+    actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> dict[str, object]:
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        article = await KbRepository().get(session, article_id)
+        if article is None:
+            raise ApiError("KB_NOT_FOUND", "Article was not found", status_code=404)
+        if payload.title is not None:
+            article.title = payload.title.strip()
+        if payload.body is not None:
+            article.body = payload.body.strip()
+        if payload.is_active is not None:
+            article.is_active = payload.is_active
+        if not article.title or not article.body:
+            raise ApiError("INVALID_ARTICLE", "Title and body are required", status_code=422)
+        session.add(AuditLog(
+            actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+            action="kb.updated", entity_type="kb_article", entity_id=article.id,
+            details={"title": article.title},
+        ))
+    return _kb_view(article)
+
+
+@router.delete("/kb/{article_id}", status_code=204)
+async def delete_kb_article(
+    article_id: uuid.UUID,
+    request: Request,
+    actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> None:
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        article = await KbRepository().get(session, article_id)
+        if article is None:
+            raise ApiError("KB_NOT_FOUND", "Article was not found", status_code=404)
+        await KbRepository().delete(session, article)
+        session.add(AuditLog(
+            actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+            action="kb.deleted", entity_type="kb_article", entity_id=article_id,
+            details={"title": article.title},
+        ))

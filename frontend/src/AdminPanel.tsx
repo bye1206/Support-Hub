@@ -80,6 +80,7 @@ type TotalStat = {
 };
 type Category = { category_id: string; name: string; parent_id: string | null; is_active: boolean };
 type Tag = { tag_id: string; name: string; is_active: boolean };
+type KbArticle = { article_id: string; title: string; body: string; is_active: boolean; updated_at: string };
 type Ticket = {
   ticket_id: string;
   user_id: string;
@@ -197,7 +198,7 @@ export function AdminPanel({
   role: Role;
   onRoleChange: (role: Role) => void;
 }) {
-  const [section, setSection] = useState<"overview" | "stats" | "distribution" | "operators" | "categories" | "tags" | "audit">("overview");
+  const [section, setSection] = useState<"overview" | "stats" | "distribution" | "operators" | "categories" | "tags" | "kb" | "audit">("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [operators, setOperators] = useState<Operator[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -218,6 +219,11 @@ export function AdminPanel({
   const categorySearchRef = useRef<HTMLInputElement>(null);
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  // Owner (2026-11-23, plan item 8): knowledge base reference.
+  const [kbArticles, setKbArticles] = useState<KbArticle[]>([]);
+  const [kbTitle, setKbTitle] = useState("");
+  const [kbBody, setKbBody] = useState("");
+  const [editingKb, setEditingKb] = useState<KbArticle | null>(null);
   // Owner (2026-11-20): stats block, loaded lazily when the tab opens.
   const [statOps, setStatOps] = useState<OperatorStat[]>([]);
   const [statAi, setStatAi] = useState<AiStat | null>(null);
@@ -263,6 +269,9 @@ export function AdminPanel({
     requests.push(adminApi<{ entries: AuditEntry[] }>("/audit", auth).then((data) => active && setAudit(data.entries)));
     requests.push(adminApi<{ categories: Category[] }>("/categories", auth).then((data) => active && setCategories(data.categories)));
     requests.push(adminApi<{ tags: Tag[] }>("/tags", auth).then((data) => active && setTags(data.tags)));
+    if (role !== "OPERATOR") {
+      requests.push(adminApi<{ articles: KbArticle[] }>("/kb", auth).then((data) => active && setKbArticles(data.articles)));
+    }
     if (role !== "OPERATOR") {
       requests.push(opApi<{ tickets: Ticket[] }>("/tickets?limit=200", auth).then((data) => active && setTickets(data.tickets)));
       requests.push(opApi<{ colleagues: Colleague[] }>("/colleagues", auth).then((data) => active && setColleagues(data.colleagues)));
@@ -483,6 +492,57 @@ export function AdminPanel({
       setTagName("");
       setError("");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Тег не сохранён"); }
+  };
+
+  // Owner (2026-11-23, plan item 8): knowledge base CRUD.
+  const saveKb = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      const article = await adminApi<KbArticle>("/kb", auth, {
+        method: "POST",
+        body: JSON.stringify({ title: kbTitle, body: kbBody }),
+      });
+      setKbArticles((items) => [...items, article].sort((a, b) => a.title.localeCompare(b.title, "ru")));
+      setKbTitle("");
+      setKbBody("");
+      setError("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Статья не сохранена"); }
+  };
+
+  const updateKb = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingKb) return;
+    try {
+      const updated = await adminApi<KbArticle>(`/kb/${editingKb.article_id}`, auth, {
+        method: "PUT",
+        body: JSON.stringify({ title: editingKb.title, body: editingKb.body }),
+      });
+      setKbArticles((items) => items.map((item) => item.article_id === updated.article_id ? updated : item));
+      setEditingKb(null);
+      setError("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Статья не обновлена"); }
+  };
+
+  const setKbActive = async (article: KbArticle, active: boolean) => {
+    try {
+      const updated = await adminApi<KbArticle>(`/kb/${article.article_id}`, auth, {
+        method: "PUT",
+        body: JSON.stringify({ is_active: active }),
+      });
+      setKbArticles((items) => items.map((item) => item.article_id === updated.article_id ? updated : item));
+      setError("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Изменение не сохранено"); }
+  };
+
+  const deleteKb = async (article: KbArticle) => {
+    if (!window.confirm(`Удалить статью «${article.title}»?`)) return;
+    try {
+      await adminApi(`/kb/${article.article_id}`, auth, { method: "DELETE" });
+      setKbArticles((items) => items.filter((item) => item.article_id !== article.article_id));
+      setToastMessage("Статья удалена");
+      window.setTimeout(() => setToastMessage(""), 4000);
+      setError("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Статья не удалена"); }
   };
 
   const updateCategory = async (event: FormEvent) => {
@@ -727,8 +787,8 @@ export function AdminPanel({
         <div className="admin-header-actions" />
       </header>
       <nav className="admin-nav" aria-label="Разделы панели">
-        {([ ["overview", "Обзор"], ["stats", "Статистика"], ["distribution", "Распределение"], ["operators", "Сотрудники"], ["categories", "Категории"], ["tags", "Теги"], ["audit", "Аудит"] ] as const)
-          .filter(([key]) => (key !== "operators" || role === "ADMIN") && (key !== "categories" && key !== "tags" || role !== "OPERATOR"))
+        {([ ["overview", "Обзор"], ["stats", "Статистика"], ["distribution", "Распределение"], ["operators", "Сотрудники"], ["categories", "Категории"], ["tags", "Теги"], ["kb", "База знаний"], ["audit", "Аудит"] ] as const)
+          .filter(([key]) => (key !== "operators" || role === "ADMIN") && (key !== "categories" && key !== "tags" && key !== "kb" || role !== "OPERATOR"))
           .map(([key, label]) => <button key={key} className={section === key ? "active" : ""} onClick={() => setSection(key)}>{label}</button>)}
       </nav>
       <div className="admin-content">
@@ -890,6 +950,26 @@ export function AdminPanel({
               <div className="directory-list">{tags.map((tag) => <div key={tag.tag_id} className={`directory-row ${!tag.is_active ? "inactive" : ""}`}>
                 {editingTag?.tag_id === tag.tag_id ? <form className="directory-edit" onSubmit={(event) => void updateTag(event)}><input required maxLength={100} value={editingTag.name} onChange={(event) => setEditingTag({ ...editingTag, name: event.target.value })} /><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingTag(null)}>Отмена</button></form> : <><span>{tag.name}</span><span>{tag.is_active ? "Активен" : "Отключён"}</span><div className="directory-actions">{tag.is_active && <button onClick={() => setEditingTag(tag)}>Изменить</button>}<button onClick={() => void setDirectoryActive("tags", tag.tag_id, !tag.is_active)}>{tag.is_active ? "Отключить" : "Включить"}</button><button className="directory-delete" onClick={() => void deleteTag(tag)}>Удалить</button></div></>}
               </div>)}</div>
+            </>}
+            {section === "kb" && <>
+              <p className="admin-intro">Справочник для быстрых ответов: операторы вставляют статьи в ответ и получают подсказки при наборе. Отключённые статьи операторам не видны.</p>
+              <form className="directory-form kb-form" onSubmit={(event) => void saveKb(event)}>
+                <input required maxLength={200} placeholder="Заголовок статьи" value={kbTitle} onChange={(event) => setKbTitle(event.target.value)} />
+                <textarea required maxLength={10000} placeholder="Текст ответа" value={kbBody} onChange={(event) => setKbBody(event.target.value)} rows={3} />
+                <button type="submit">Добавить</button>
+              </form>
+              <div className="directory-list">{kbArticles.map((article) => <div key={article.article_id} className={`directory-row kb-row ${!article.is_active ? "inactive" : ""}`}>
+                {editingKb?.article_id === article.article_id ? <form className="directory-edit kb-edit" onSubmit={(event) => void updateKb(event)}><input required maxLength={200} value={editingKb.title} onChange={(event) => setEditingKb({ ...editingKb, title: event.target.value })} /><textarea required maxLength={10000} rows={3} value={editingKb.body} onChange={(event) => setEditingKb({ ...editingKb, body: event.target.value })} /><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingKb(null)}>Отмена</button></form> : <>
+                  <div className="kb-text"><strong>{article.title}</strong><span>{article.body}</span></div>
+                  <span>{article.is_active ? "Активна" : "Отключена"}</span>
+                  <div className="directory-actions">
+                    {article.is_active && <button onClick={() => setEditingKb(article)}>Изменить</button>}
+                    <button onClick={() => void setKbActive(article, !article.is_active)}>{article.is_active ? "Отключить" : "Включить"}</button>
+                    <button className="directory-delete" onClick={() => void deleteKb(article)}>Удалить</button>
+                  </div>
+                </>}
+              </div>)}</div>
+              {!kbArticles.length && <p className="admin-muted">Статей пока нет</p>}
             </>}
             {section === "stats" && (
               <div className="stats-layout">

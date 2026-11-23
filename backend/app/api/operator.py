@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.repositories.attachments import AttachmentRepository
 from app.repositories.categories import TicketCategoryRepository
+from app.repositories.kb import KbRepository
 from app.repositories.messages import MessageRepository
 from app.repositories.operators import OperatorRepository
 from app.repositories.ratings import TicketRatingRepository
@@ -1227,3 +1228,26 @@ async def remove_ticket_tag(
             )
         except ValueError as exc:
             raise _map_value_error(exc) from exc
+
+
+@router.get("/kb")
+async def list_active_kb_articles(
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Owner (2026-11-23, plan item 8): active knowledge base articles for
+    the composer — manual insert and typing hints."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        articles = await KbRepository().list_active(session)
+    return {
+        "articles": [
+            {
+                "article_id": str(article.id),
+                "title": article.title,
+                "body": article.body,
+                "updated_at": article.updated_at.isoformat(),
+            }
+            for article in articles
+        ]
+    }
