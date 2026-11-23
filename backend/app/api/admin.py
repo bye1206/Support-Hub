@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select
 
 from app.api.operator import _user_login_map
 from app.auth.operators import require_role
@@ -24,6 +24,7 @@ from app.models import (
     TicketRating,
     TicketStatus,
     TicketStatusHistory,
+    TicketTag,
 )
 from app.repositories.ratings import TicketRatingRepository
 
@@ -467,6 +468,46 @@ async def update_tag(
         await session.flush()
         result = {"tag_id": str(tag.id), "name": tag.name, "is_active": tag.is_active}
     return result
+
+
+@router.delete("/tags/{tag_id}")
+async def delete_tag(
+    tag_id: uuid.UUID,
+    request: Request,
+    actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+    force: bool = False,
+) -> dict[str, bool | int]:
+    """Hard delete (owner request, 2026-11-23). An unused tag goes outright;
+    a tag still attached to tickets needs ``?force=true`` — its links are
+    removed (the tags disappear from those tickets) and the row is deleted.
+    Every removal lands in the audit journal."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        tag = await session.scalar(
+            select(Tag).where(Tag.id == tag_id).with_for_update()
+        )
+        if tag is None:
+            raise ApiError("TAG_NOT_FOUND", "Tag was not found", status_code=404)
+        links = await session.scalar(
+            select(func.count()).select_from(TicketTag).where(TicketTag.tag_id == tag_id)
+        ) or 0
+        if links and not force:
+            raise ApiError(
+                "TAG_IN_USE",
+                f"Тег привязан к {links} обращениям — требуется принудительное удаление",
+                status_code=409,
+            )
+        if links:
+            await session.execute(delete(TicketTag).where(TicketTag.tag_id == tag_id))
+        await session.delete(tag)
+        session.add(AuditLog(
+            actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+            action="tag.deleted", entity_type="tag", entity_id=tag_id,
+            details={"name": tag.name, "links_removed": links},
+        ))
+    return {"deleted": True, "links_removed": links}
 
 
 @router.post("/tags/{tag_id}/deactivate")

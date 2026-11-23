@@ -510,6 +510,38 @@ export function AdminPanel({
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Изменение не сохранено"); }
   };
 
+  // Owner (2026-11-23): hard delete for tags — a used tag needs a second,
+  // explicit confirmation (its links to tickets are removed too).
+  const deleteTag = async (tag: Tag) => {
+    const run = (force: boolean) =>
+      adminApi<{ deleted: boolean; links_removed: number }>(
+        `/tags/${tag.tag_id}${force ? "?force=true" : ""}`,
+        auth,
+        { method: "DELETE" },
+      );
+    try {
+      await run(false);
+      setTags((items) => items.filter((item) => item.tag_id !== tag.tag_id));
+      setToastMessage(`Тег «${tag.name}» удалён`);
+      setError("");
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      if (!message.includes("принудительное")) {
+        setError(message || "Тег не удалён");
+        return;
+      }
+      if (!window.confirm(`Тег «${tag.name}» привязан к обращениям. Удалить его и снять с этих обращений?`)) return;
+      try {
+        const result = await run(true);
+        setTags((items) => items.filter((item) => item.tag_id !== tag.tag_id));
+        setToastMessage(`Тег «${tag.name}» удалён${result.links_removed ? `, снят с ${result.links_removed} обращен.` : ""}`);
+        setError("");
+      } catch (causeForce) {
+        setError(causeForce instanceof Error ? causeForce.message : "Тег не удалён");
+      }
+    }
+  };
+
   const confirmCategoryDelete = async (categoryId: string) => {
     try {
       const result = await adminApi<{ deleted: boolean; deactivated: boolean }>(
@@ -844,7 +876,7 @@ export function AdminPanel({
               <p className="admin-intro">Метки для группировки и поиска обращений.</p>
               <form className="directory-form" onSubmit={(event) => void saveTag(event)}><input required maxLength={100} placeholder="Название тега" value={tagName} onChange={(event) => setTagName(event.target.value)} /><button type="submit">Добавить</button></form>
               <div className="directory-list">{tags.map((tag) => <div key={tag.tag_id} className={`directory-row ${!tag.is_active ? "inactive" : ""}`}>
-                {editingTag?.tag_id === tag.tag_id ? <form className="directory-edit" onSubmit={(event) => void updateTag(event)}><input required maxLength={100} value={editingTag.name} onChange={(event) => setEditingTag({ ...editingTag, name: event.target.value })} /><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingTag(null)}>Отмена</button></form> : <><span>{tag.name}</span><span>{tag.is_active ? "Активен" : "Отключён"}</span><div className="directory-actions">{tag.is_active && <button onClick={() => setEditingTag(tag)}>Изменить</button>}<button onClick={() => void setDirectoryActive("tags", tag.tag_id, !tag.is_active)}>{tag.is_active ? "Отключить" : "Включить"}</button></div></>}
+                {editingTag?.tag_id === tag.tag_id ? <form className="directory-edit" onSubmit={(event) => void updateTag(event)}><input required maxLength={100} value={editingTag.name} onChange={(event) => setEditingTag({ ...editingTag, name: event.target.value })} /><button type="submit">Сохранить</button><button type="button" onClick={() => setEditingTag(null)}>Отмена</button></form> : <><span>{tag.name}</span><span>{tag.is_active ? "Активен" : "Отключён"}</span><div className="directory-actions">{tag.is_active && <button onClick={() => setEditingTag(tag)}>Изменить</button>}<button onClick={() => void setDirectoryActive("tags", tag.tag_id, !tag.is_active)}>{tag.is_active ? "Отключить" : "Включить"}</button><button className="directory-delete" onClick={() => void deleteTag(tag)}>Удалить</button></div></>}
               </div>)}</div>
             </>}
             {section === "stats" && (

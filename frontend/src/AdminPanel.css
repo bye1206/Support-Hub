@@ -796,3 +796,8 @@
 .presence-row strong {
   color: #17191d;
 }
+
+/* Owner (2026-11-23): the hard-delete button on tags. */
+.directory-delete {
+  color: #c4001a;
+}
