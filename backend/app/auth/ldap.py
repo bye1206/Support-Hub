@@ -234,47 +234,33 @@ class LdapAuthenticator:
             if not user_dn:
                 raise LdapAuthFailed("user DN not found (check LDAP_BASE_DN / account)")
 
-            # Owner probe (2026-11-23): the AD proxy DENIES reading group
-            # members under the user's own bind — the probe saw the member
-            # list under the service account while the login-time check
-            # under the user bind always came back empty ("not a member").
-            # Group checks therefore run under the service account.
-            svc_conn = ldap3.Connection(
-                server,
-                user=settings.ldap_service_user_dn,
-                password=settings.ldap_service_password,
-                auto_bind=False,
-                receive_timeout=settings.ldap_timeout_seconds,
-            )
-            if settings.ldap_service_user_dn and settings.ldap_service_password:
-                if not svc_conn.bind():
-                    logger.warning(
-                        "LDAP service bind failed: %s",
-                        _bind_failure_reason(dict(svc_conn.result)),
-                    )
-            group_conn = (
-                svc_conn
-                if svc_conn.bound
-                else conn  # no service account: best effort under the user
-            )
+            # Proven module approach (owner's specialists, 2026-11-23): the
+            # group-side check (member=<userDN>) works fine under the USER's
+            # own bind — the earlier "proxy denies it" theory was wrong; the
+            # real cause of the rejections was the logic below.
             is_admin = self._member_of_any(
-                group_conn, settings.ldap_group_admin_dn, user_dn
+                conn, settings.ldap_group_admin_dn, user_dn
             )
             is_supervisor = bool(settings.ldap_group_supervisor_dn) and (
                 self._member_of_any(
-                    group_conn, settings.ldap_group_supervisor_dn, user_dn
+                    conn, settings.ldap_group_supervisor_dn, user_dn
                 )
             )
+            # D-048: the groups only PROMOTE — an admin/supervisor
+            # implicitly carries the operator role, so membership in the
+            # operator group alone must not gate them out.
             if settings.ldap_group_operator_dn:
-                is_operator = self._member_of_any(
-                    group_conn, settings.ldap_group_operator_dn, user_dn
+                is_operator = (
+                    self._member_of_any(
+                        conn, settings.ldap_group_operator_dn, user_dn
+                    )
+                    or is_admin
+                    or is_supervisor
                 )
             else:
                 # No operator group configured: any domain user may operate
                 # (module semantics; set LDAP_GROUP_OPERATOR_DN in shared envs).
                 is_operator = True
-            if svc_conn.bound:
-                svc_conn.unbind()
             conn.unbind()
         except LdapAuthFailed:
             raise
