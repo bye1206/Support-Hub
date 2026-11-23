@@ -25,6 +25,7 @@ Differences from the original module (why a rewrite, not an import):
 import hashlib
 import hmac
 import logging
+import re
 import ssl
 import threading
 import time
@@ -35,6 +36,32 @@ from typing import Any
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
+
+# AD bind sub-error codes (the 'data XXX' in the reject message, MS-ADTS
+# §6.12) — decoded for the sign-in form (owner 2026-11-23: the UI flashed
+# a generic failure and nobody could tell why).
+_AD_SUBERRORS = {
+    "525": "учётная запись не найдена",
+    "52e": "неверный логин или пароль",
+    "531": "вход с этой рабочей станции запрещён",
+    "532": "срок действия пароля истёк",
+    "533": "учётная запись отключена",
+    "701": "срок действия учётной записи истёк",
+    "773": "срок действия пароля истёк — смените пароль и войдите заново",
+    "775": "учётная запись заблокирована",
+}
+
+
+def _bind_failure_reason(result: dict[str, Any]) -> str:
+    """Human-readable AD bind failure ('invalidCredentials' alone is not
+    enough — the sub-error code tells expired password from a typo)."""
+    description = str(result.get("description", "?"))
+    message = str(result.get("message", ""))
+    match = re.search(r"data\s+([0-9A-Fa-f]{3,4})", message)
+    human = _AD_SUBERRORS.get(match.group(1).lower()) if match else None
+    if human:
+        return f"{description} — {human}"
+    return description
 
 try:
     import ldap3
@@ -183,12 +210,9 @@ class LdapAuthenticator:
                 receive_timeout=settings.ldap_timeout_seconds,
             )
             if not conn.bind():
-                description = "?"
-                try:
-                    description = str(conn.result.get("description", "?"))
-                except Exception:  # noqa: BLE001 - ldap3 result shape varies
-                    pass
-                raise LdapAuthFailed(f"bind failed: {description}")
+                reason = _bind_failure_reason(dict(conn.result))
+                logger.warning("LDAP bind failed for %s: %s", upn, reason)
+                raise LdapAuthFailed(f"bind failed: {reason}")
 
             # Self-read under the user's own bind (anonymous search blocked):
             # DN, mail and display name in one query.

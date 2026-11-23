@@ -273,7 +273,8 @@ async def test_unknown_login_is_401(client: TestClient, auth_deps) -> None:
         "/api/v1/operator/auth/session", headers=basic("nobody", "P@ss")
     )
     assert response.status_code == 401
-    assert "group" in response.json()["error"]["message"].lower()
+    # Owner (2026-11-23): the exact rejection reason reaches the form.
+    assert "fake rejection" in response.json()["error"]["message"]
 
 
 @pytest.mark.anyio

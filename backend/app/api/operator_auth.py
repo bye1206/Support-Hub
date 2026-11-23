@@ -112,9 +112,13 @@ async def _resolve_identity(
         return await authenticator.check_credentials(login, password)
     except LdapAuthFailed as exc:
         authenticator.rate_limiter.record_failure(login)
+        # Owner (2026-11-23): the exact reason (expired password, disabled
+        # account, wrong group) must reach the sign-in form — the generic
+        # message made failed logins undiagnosable.
+        logger.warning("Sign-in failed for %s: %s", login, exc)
         raise ApiError(
             code="OPERATOR_UNAUTHORIZED",
-            message="Invalid credentials or insufficient group membership",
+            message=f"Не удалось войти: {exc}",
             status_code=401,
         ) from exc
     except LdapUnavailableError as exc:
