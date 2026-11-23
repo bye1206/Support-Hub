@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.exceptions import StateConflict
@@ -338,18 +339,29 @@ class TicketService:
         self,
         session: AsyncSession,
         conversation_id: uuid.UUID,
-        operator_name: str,
     ) -> None:
         """System message telling the user an operator took the chat.
         Owner request 2026-11-13: the note must reach the user in Tag, so it
-        goes through the outbound outbox like any operator reply."""
+        goes through the outbound outbox like any operator reply.
+        Owner request (2026-11-23): no operator name in the text, and the
+        note goes ONCE per conversation — reassignments stay silent."""
+        text = (
+            "Оператор назначен. "
+            "Он изучит проблему и поможет в ближайшее время."
+        )
+        already = await session.scalar(
+            select(Message.id).where(
+                Message.conversation_id == conversation_id,
+                Message.author_type == MessageAuthorType.SYSTEM,
+                Message.text == text,
+            )
+        )
+        if already is not None:
+            return
         message = await self._create_system_message(
             session,
             conversation_id,
-            (
-                f"Оператор {operator_name} назначен. "
-                "Он изучит проблему и поможет в ближайшее время."
-            ),
+            text,
         )
         await self._outbox.register(
             session,
@@ -620,7 +632,6 @@ class TicketService:
                 await self._notify_assignment(
                     session,
                     ticket.conversation_id,
-                    assignee.display_name or assignee.email,
                 )
             # The previous assignee just lost a slot - deliver their queued
             # tickets. The released ticket itself stays in the common queue
@@ -686,7 +697,7 @@ class TicketService:
                 },
             )
             await self._notify_assignment(
-                session, pending.conversation_id, operator.display_name or operator.email
+                session, pending.conversation_id
             )
 
     async def release_operator_tickets(
@@ -749,9 +760,7 @@ class TicketService:
                 entity_id=ticket.id,
                 details={"assignee_id": str(operator.id), "auto": True},
             )
-            await self._notify_assignment(
-                session, ticket.conversation_id, operator.display_name or operator.email
-            )
+            await self._notify_assignment(session, ticket.conversation_id)
             assigned += 1
         return assigned
 

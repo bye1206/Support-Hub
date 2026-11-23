@@ -77,7 +77,9 @@ export const statusName: Record<Status, string> = {
   AI_PROCESSING: "Обработка ИИ",
   PENDING_USER: "Ждём пользователя",
   RESOLVED: "Решён",
-  CLOSED: "Закрыт",
+  // Owner (2026-11-23): CLOSED practically always means the session
+  // timed out — the label says so instead of a bare "Закрыт".
+  CLOSED: "Таймаут",
 };
 
 export const shortId = (value: string) => value.slice(0, 8).toUpperCase();

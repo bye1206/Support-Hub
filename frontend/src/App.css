@@ -3855,3 +3855,41 @@ button.team-row.clickable:hover {
   border-radius: 50%;
   object-fit: cover;
 }
+
+/* Owner (2026-11-23): the not-ACTIVE warning over the dialog. */
+.offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border: 1px solid rgba(226, 0, 26, 0.35);
+  border-radius: 10px;
+  background: #fdecec;
+  color: #8f0f1d;
+  font-size: 13px;
+  font-weight: 600;
+}
+.offline-banner button {
+  padding: 4px 12px;
+  border: 1px solid rgba(226, 0, 26, 0.35);
+  border-radius: 8px;
+  background: #fff;
+  color: #c4001a;
+  font-weight: 700;
+  cursor: pointer;
+}
+.offline-banner button:hover {
+  background: #c4001a;
+  color: #fff;
+}
+.app-shell[data-theme=dark] .offline-banner {
+  background: #3a1519;
+  border-color: #6e2430;
+  color: #ffb4bc;
+}
+.app-shell[data-theme=dark] .offline-banner button {
+  background: transparent;
+  color: #ffb4bc;
+  border-color: #6e2430;
+}

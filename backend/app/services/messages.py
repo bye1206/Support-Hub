@@ -483,9 +483,11 @@ class MessageService:
         user: Any,
     ) -> Message:
         """Owner flow step 2 (2026-11-13): greeting on the user's first
-        message, addressed by name when the Tag profile provided one."""
-        name = (getattr(user, "display_name", None) or "").strip()
-        salutation = f"Добрый день, {name}!" if name else "Добрый день!"
+        message, addressed by FIRST name only (owner 2026-11-23: no
+        patronymic/surname in the salutation)."""
+        full_name = (getattr(user, "display_name", None) or "").strip()
+        first_name = full_name.split()[0] if full_name.split() else ""
+        salutation = f"Добрый день, {first_name}!" if first_name else "Добрый день!"
         sequence = await self._conversations.allocate_sequence(
             session, conversation_id
         )

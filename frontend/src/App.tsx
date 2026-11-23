@@ -1722,6 +1722,20 @@ export default function App() {
                 )}
               </div>
             </header>
+            {presence !== "ACTIVE" && (
+              // Owner request (2026-11-23): an operator who is not ACTIVE
+              // receives no chats — say it right over the dialog, with a
+              // one-click way back.
+              <div className="offline-banner" role="status">
+                <span>
+                  Вы в статусе «{presenceLabels[presence]}» — новые чаты вам
+                  не приходят.
+                </span>
+                <button onClick={() => void changePresence("ACTIVE")}>
+                  Стать активным
+                </button>
+              </div>
+            )}
             {error && (
               <div className="error-banner">
                 <span>!</span>

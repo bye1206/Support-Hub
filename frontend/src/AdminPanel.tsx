@@ -76,6 +76,7 @@ type Tag = { tag_id: string; name: string; is_active: boolean };
 type Ticket = {
   ticket_id: string;
   user_id: string;
+  user_name?: string | null;
   status: string;
   priority: string;
   assignee_id: string | null;
@@ -144,8 +145,9 @@ const ticketStatuses: Record<string, string> = {
   OPEN: "В работе",
   AI_PROCESSING: "Обработка ИИ",
   PENDING_USER: "Ожидает пользователя",
-  RESOLVED: "Решено",
-  CLOSED: "Закрыт",
+  RESOLVED: "Решён",
+  // Owner (2026-11-23): CLOSED = the session timeout closed it.
+  CLOSED: "Таймаут",
 };
 
 // Owner (2026-11-20): seconds → "X ч Y мин" for the presence card.
@@ -694,7 +696,7 @@ export function AdminPanel({
         >
           <strong>#{shortId(ticket.ticket_id)}</strong>
           <span className="muted">
-            Пользователь {shortId(ticket.user_id)} ·{" "}
+            {ticket.user_name || `Пользователь ${shortId(ticket.user_id)}`} ·{" "}
             {ticketStatuses[ticket.status] || ticket.status}
           </span>
           {ticket.pending_assignee_id && (
@@ -1190,7 +1192,7 @@ export function AdminPanel({
               {ticketStatuses[distTicket.status] || distTicket.status}
             </div>
             <div className="muted history-meta">
-              Пользователь #{shortId(distTicket.user_id)}
+              {distTicket.user_name || `Пользователь #${shortId(distTicket.user_id)}`}
               {" · приоритет: "}
               {distTicket.priority === "URGENT"
                 ? "срочный"
