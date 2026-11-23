@@ -960,3 +960,25 @@ def test_ws_rejects_bad_token(operator_env, api_deps) -> None:
             with client.websocket_connect("/ws?token=wrong"):
                 pass
     asyncio.run(real_redis.close())
+
+
+@pytest.mark.anyio
+async def test_total_stats_endpoint(
+    client: TestClient, session_factory, seed
+) -> None:
+    # Owner (2026-11-23): whole-support totals — supervisor only.
+    denied = client.get("/api/v1/admin/stats/total", headers=headers())
+    assert denied.status_code == 403
+    async with session_factory() as session:
+        operator = (
+            await session.scalars(
+                select(Operator).where(Operator.email == "op1@corp.test")
+            )
+        ).first()
+        assert operator is not None
+        operator.role = OperatorRole.SUPERVISOR
+        await session.commit()
+    await seed()
+    payload = client.get("/api/v1/admin/stats/total", headers=headers()).json()
+    assert payload["chats_total"] >= 1
+    assert payload["chats_total"] == payload["chats_open"] + payload["chats_closed"]

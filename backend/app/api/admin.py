@@ -1159,3 +1159,36 @@ async def ai_stats(
         "chats_no_handoff": max(0, closed_total - handed_off),
         "handoffs": handed_off,
     }
+
+
+@router.get("/stats/total")
+async def total_stats(
+    request: Request,
+    _actor: Annotated[
+        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
+    ],
+) -> dict[str, object]:
+    """Whole-support totals (owner request, 2026-11-23): a third column
+    next to the AI bot — every dialog, not just the AI's share."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        chats_total = await session.scalar(
+            select(func.count()).select_from(Ticket)
+        ) or 0
+        terminal = [TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value]
+        chats_closed = await session.scalar(
+            select(func.count())
+            .select_from(Ticket)
+            .where(Ticket.status.in_(terminal))
+        ) or 0
+        all_scores = (
+            await session.scalars(select(TicketRating.score))
+        ).all()
+        avg = sum(all_scores) / len(all_scores) if all_scores else None
+    return {
+        "chats_total": chats_total,
+        "chats_open": max(0, chats_total - chats_closed),
+        "chats_closed": chats_closed,
+        "avg_rating": round(avg, 2) if avg is not None else None,
+        "ratings_count": len(all_scores),
+    }

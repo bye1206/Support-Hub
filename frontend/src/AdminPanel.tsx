@@ -71,6 +71,13 @@ type AiStat = {
   chats_no_handoff: number;
   handoffs: number;
 };
+type TotalStat = {
+  chats_total: number;
+  chats_open: number;
+  chats_closed: number;
+  avg_rating: number | null;
+  ratings_count: number;
+};
 type Category = { category_id: string; name: string; parent_id: string | null; is_active: boolean };
 type Tag = { tag_id: string; name: string; is_active: boolean };
 type Ticket = {
@@ -214,6 +221,7 @@ export function AdminPanel({
   // Owner (2026-11-20): stats block, loaded lazily when the tab opens.
   const [statOps, setStatOps] = useState<OperatorStat[]>([]);
   const [statAi, setStatAi] = useState<AiStat | null>(null);
+  const [statTotal, setStatTotal] = useState<TotalStat | null>(null);
   const [statDate] = useState("");
   // Owner (2026-11-20): the two-column stats — operator picker, per-card
   // periods (day / month / all), SLA breaches and the dialogs mini-table.
@@ -273,11 +281,13 @@ export function AdminPanel({
     void Promise.all([
       adminApi<{ operators: OperatorStat[] }>(`/stats/operators${query}`, auth),
       adminApi<AiStat>("/stats/ai", auth),
+      adminApi<TotalStat>("/stats/total", auth),
     ])
-      .then(([ops, ai]) => {
+      .then(([ops, ai, total]) => {
         if (!active) return;
         setStatOps(ops.operators);
         setStatAi(ai);
+        setStatTotal(total);
       })
       .catch((cause: unknown) =>
         active && setError(cause instanceof Error ? cause.message : "Не удалось загрузить статистику"),
@@ -1028,6 +1038,19 @@ export function AdminPanel({
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+                {/* Owner (2026-11-23): whole-support totals, third column. */}
+                <div className="stats-total">
+                  <p className="admin-intro">Всего по поддержке</p>
+                  <div className="admin-stats">
+                    <article><span>Чатов всего</span><strong>{statTotal?.chats_total ?? "—"}</strong></article>
+                    <article><span>Открыто сейчас</span><strong>{statTotal?.chats_open ?? "—"}</strong></article>
+                    <article><span>Закрыто чатов</span><strong>{statTotal?.chats_closed ?? "—"}</strong></article>
+                    <article><span>Средняя оценка</span><strong>{statTotal?.avg_rating ?? "—"}</strong></article>
+                  </div>
+                  {statTotal && statTotal.ratings_count > 0 && (
+                    <p className="admin-muted">Оценок учтено: {statTotal.ratings_count}</p>
                   )}
                 </div>
               </div>

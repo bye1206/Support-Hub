@@ -649,7 +649,8 @@
 /* Owner (2026-11-20): the two-column stats — people left, AI right. */
 .stats-layout {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(240px, 3fr);
+  /* Owner (2026-11-23): people | AI bot | whole-support totals. */
+  grid-template-columns: minmax(0, 6fr) minmax(210px, 2.5fr) minmax(210px, 2.5fr);
   gap: 20px;
   align-items: start;
 }
