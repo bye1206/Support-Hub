@@ -30,6 +30,7 @@ from app.domain.state_machines import (
     next_ticket_status,
 )
 from app.infra.file_storage import LocalFileStorage
+from app.integrations.ai.triggers import operator_requested
 from app.models import (
     AuditActorType,
     Conversation,
@@ -216,6 +217,9 @@ class MessageService:
                         "greeting_stage": True,
                     },
                 )
+                # Owner (2026-11-23): "оператор" as the very first message
+                # must not sit in the AI stage waiting for a roundtrip.
+                await self._maybe_instant_handoff(session, routing, message)
                 return IngestResult(
                     message=message,
                     conversation=routing.conversation,
@@ -225,6 +229,31 @@ class MessageService:
                     ticket_reopened=False,
                 )
             await self._apply_ticket_transition(session, routing)
+            # Owner (2026-11-23): an explicit operator request ("оператор",
+            # "позовите человека"...) hands the dialog over IMMEDIATELY —
+            # no gateway roundtrip (worst case there: 115 s RAG timeout).
+            if await self._maybe_instant_handoff(session, routing, message):
+                await self._audit.log(
+                    session,
+                    actor_type=AuditActorType.USER,
+                    action="message.created",
+                    entity_type="message",
+                    entity_id=message.id,
+                    actor_id=user.id,
+                    details={
+                        "conversation_id": str(routing.conversation.id),
+                        "sequence_no": sequence,
+                        "instant_handoff": True,
+                    },
+                )
+                return IngestResult(
+                    message=message,
+                    conversation=routing.conversation,
+                    ticket=routing.ticket,
+                    session=active_session,
+                    conversation_created=routing.conversation_created,
+                    ticket_reopened=routing.ticket_reopened,
+                )
             await self._outbox.register(
                 session,
                 event_type="message.user_received",
@@ -256,6 +285,24 @@ class MessageService:
                 conversation_created=routing.conversation_created,
                 ticket_reopened=routing.ticket_reopened,
             )
+
+    async def _maybe_instant_handoff(
+        self,
+        session: AsyncSession,
+        routing: Any,
+        message: Message,
+    ) -> bool:
+        """Owner (2026-11-23): when the message itself asks for an operator,
+        hand the dialog to a human at once (see AiRunService.instant_handoff).
+        Returns True when the intercept fired."""
+        if not operator_requested(message.text or ""):
+            return False
+        # Local import: ai_runs imports this module (circular at module level).
+        from app.services.ai_runs import AiRunService
+
+        return await AiRunService().instant_handoff(
+            session, conversation=routing.conversation, message=message
+        )
 
     async def add_ai_reply(
         self,

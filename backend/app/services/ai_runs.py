@@ -343,12 +343,35 @@ class AiRunService:
             session, conversation.id, action="ai.resolved", run_id=run.id
         )
 
+    async def instant_handoff(
+        self,
+        session: AsyncSession,
+        *,
+        conversation: Conversation,
+        message: Message,
+    ) -> bool:
+        """Owner (2026-11-23): the user's explicit operator request escalates
+        RIGHT HERE — the run is registered (audit trail + dedup), the dialog
+        is handed to a human and routed; the gateway is never called (its
+        worst case is a 115 s RAG timeout). No-op when the dialog is not in
+        the AI stage anymore. Caller's transaction."""
+        run = await self.register_run(
+            session, conversation=conversation, message=message
+        )
+        if run is None:
+            return False
+        await self._apply_handoff(session, run, conversation, chat_id=None)
+        logger.info(
+            "Instant operator-request handoff for message %s", message.id
+        )
+        return True
+
     async def _apply_handoff(
         self,
         session: AsyncSession,
         run: AiProcessingRun,
         conversation: Conversation,
-        chat_id: int,
+        chat_id: int | None = None,
     ) -> None:
         """Trigger `operator`: the dialog goes to a human (D-014, one way).
 

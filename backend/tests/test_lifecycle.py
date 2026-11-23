@@ -141,7 +141,9 @@ async def test_ai_reply_opens_new_ticket(session_factory) -> None:
 async def test_operator_reply_pends_user_and_takes_over_dialog(session_factory) -> None:
     service = MessageService()
     async with session_factory() as session:
-        first = await start_dialog(session, "Нужен человек")
+        # Neutral question: the operator-request detector (2026-11-23) must
+        # not fire — this test exercises the reply FSM, not the trigger.
+        first = await start_dialog(session, "Не работает принтер")
         ticket_id = first.ticket.id
 
     async with session_factory() as session:

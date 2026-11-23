@@ -12,6 +12,7 @@ Detection policy (PROPOSED, owner confirmation pending):
 """
 
 import logging
+import re
 
 from app.config import get_settings
 
@@ -46,3 +47,56 @@ def detect_trigger(answer: str) -> str | None:
         # A rotated/unrecognized code: do not act on it, do not hide it.
         logger.warning("Unrecognized trigger-like gateway answer (len=%s)", len(code))
     return None
+
+
+# Owner (2026-11-23): an explicit operator request escalates INSTANTLY on
+# ingest — the gateway roundtrip (worst case: a 115 s RAG timeout) must not
+# stand between the user and a human. The message must be a short request
+# built from operator words and politeness filler; a message that merely
+# MENTIONS an operator ("оператор сотовой связи не работает") does not match.
+_OPERATOR_STEMS = (
+    "оператор",
+    "человек",
+    "люд",
+    "специалист",
+)
+_OPERATOR_FILLERS = frozenset(
+    {
+        "позовите",
+        "позов",
+        "дайте",
+        "дай",
+        "мне",
+        "нужен",
+        "нужна",
+        "нужны",
+        "пожалуйста",
+        "пж",
+        "живой",
+        "живого",
+        "реальный",
+        "реального",
+        "хочу",
+        "общаться",
+        "поговорить",
+        "со",
+        "с",
+        "и",
+        "а",
+    }
+)
+_OPERATOR_REQUEST_MAX_WORDS = 6
+
+
+def operator_requested(text: str) -> bool:
+    """True when the message is itself a request for a human operator."""
+    words = re.findall(r"[а-яёa-z]+", text.lower())
+    if not words or len(words) > _OPERATOR_REQUEST_MAX_WORDS:
+        return False
+    has_operator_word = False
+    for word in words:
+        if word.startswith(_OPERATOR_STEMS):
+            has_operator_word = True
+        elif word not in _OPERATOR_FILLERS:
+            return False
+    return has_operator_word
