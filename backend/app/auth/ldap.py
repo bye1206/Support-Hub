@@ -24,6 +24,7 @@ Differences from the original module (why a rewrite, not an import):
 
 import hashlib
 import hmac
+import logging
 import ssl
 import threading
 import time
@@ -32,6 +33,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.config import Settings
+
+logger = logging.getLogger(__name__)
 
 try:
     import ldap3
@@ -95,6 +98,8 @@ class LdapAuthenticator:
         self._settings = settings
         self._cache: dict[tuple[str, str], tuple[LdapIdentity, float]] = {}
         self._cache_lock = threading.Lock()
+        # CN -> DN cache for bare group names (2026-11-20).
+        self._group_dns: dict[str, str] = {}
         self.rate_limiter = AuthRateLimiter(
             settings.auth_rate_limit_max, settings.auth_rate_limit_window_seconds
         )
@@ -243,18 +248,44 @@ class LdapAuthenticator:
         """Group check from the GROUP side: (member=<userDN>), scope BASE.
 
         ``group_dns`` may hold several DNs separated by ';' (a DN itself
-        contains commas, so ';' is the only safe separator).
+        contains commas, so ';' is the only safe separator). A value without
+        '=' is a bare group NAME (owner 2026-11-20: AD admins granted
+        support_hub_operator / support_hub_admin without a DN) — it is
+        resolved by CN under the base DN and cached for the process.
         """
         for group_dn in (part.strip() for part in group_dns.split(";")):
             if not group_dn:
                 continue
+            base = group_dn if "=" in group_dn else self._resolve_group(conn, group_dn)
+            if not base:
+                logger.warning("LDAP group %r not found under the base DN", group_dn)
+                continue
             escaped_dn = user_dn.replace("\\", "\\\\")
             conn.search(
-                group_dn, f"(member={escaped_dn})", attributes=["cn"], search_scope="BASE"
+                base, f"(member={escaped_dn})", attributes=["cn"], search_scope="BASE"
             )
             if len(conn.entries) > 0:
                 return True
         return False
+
+    def _resolve_group(self, conn: Any, name: str) -> str:
+        """CN -> distinguishedName, resolved once per process."""
+        cached = self._group_dns.get(name.lower())
+        if cached:
+            return cached
+        escaped = ldap3.utils.conv.escape_filter_chars(name)
+        conn.search(
+            self._settings.ldap_base_dn,
+            f"(&(objectClass=group)(cn={escaped}))",
+            attributes=["distinguishedName"],
+            search_scope="SUBTREE",
+        )
+        for entry in conn.entries:
+            dn = str(entry.entry_dn)
+            self._group_dns[name.lower()] = dn
+            logger.info("LDAP group %r resolved to %s", name, dn)
+            return dn
+        return ""
 
 
 class LdapAuthFailed(Exception):
