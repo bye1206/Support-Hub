@@ -1035,10 +1035,24 @@ export default function App() {
       bytes.forEach((b) => {
         binary += String.fromCharCode(b);
       });
-      const data = await api<{ session_token: string }>("/auth/session", { token: "" }, {
+      // Owner (2026-11-23): the sign-in POST must NOT go through api() —
+      // its 401 means "wrong credentials", not "session expired", and
+      // api()'s reload made the error flash for a millisecond.
+      const response = await fetch("/api/v1/operator/auth/session", {
         method: "POST",
         headers: { Authorization: `Basic ${btoa(binary)}` },
       });
+      if (!response.ok) {
+        let msg = `Ошибка ${response.status}`;
+        try {
+          const body = await response.json();
+          msg = body?.error?.message || body?.detail || msg;
+        } catch {
+          /* no response body */
+        }
+        throw Error(msg);
+      }
+      const data = (await response.json()) as { session_token: string };
       const next = { token: data.session_token };
       sessionStorage.setItem("support-hub-operator", JSON.stringify(next));
       setAuth(next);
