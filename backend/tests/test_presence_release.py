@@ -181,12 +181,20 @@ def test_leaving_active_releases_chats_to_free_operator(
 ) -> None:
     ids, logins = asyncio.run(_seed_scenario())
     # Sign in as the busy operator (dev token) to switch their presence.
+    # Login starts OFFLINE (owner 2026-11-20): restore ACTIVE first, like a
+    # working session, then go to LUNCH.
     session = client.post(
         "/api/v1/operator/auth/session",
         auth=(logins["busy"], TOKEN),
     )
     assert session.status_code == 201
     token = session.json()["session_token"]
+    active = client.post(
+        "/api/v1/operator/presence",
+        json={"status": "ACTIVE"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert active.status_code == 200
 
     response = client.post(
         "/api/v1/operator/presence",
@@ -249,6 +257,14 @@ def test_offline_release_waits_for_a_freed_slot(client: TestClient) -> None:
         auth=(logins["busy"], TOKEN),
     )
     token = session.json()["session_token"]
+    # Login starts OFFLINE (owner 2026-11-20): a real working session is
+    # ACTIVE first — restore it before leaving for OFFLINE.
+    active = client.post(
+        "/api/v1/operator/presence",
+        json={"status": "ACTIVE"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert active.status_code == 200
     released = client.post(
         "/api/v1/operator/presence",
         json={"status": "OFFLINE"},
@@ -266,6 +282,14 @@ def test_offline_release_waits_for_a_freed_slot(client: TestClient) -> None:
         auth=(logins["free"], TOKEN),
     )
     free_token = free_session.json()["session_token"]
+    # Login starts OFFLINE (owner 2026-11-20): the working operator is
+    # ACTIVE, restore before the resolve frees a slot.
+    free_active = client.post(
+        "/api/v1/operator/presence",
+        json={"status": "ACTIVE"},
+        headers={"Authorization": f"Bearer {free_token}"},
+    )
+    assert free_active.status_code == 200
     free_state = client.get(
         "/api/v1/operator/tickets",
         params={"assignee": "me"},

@@ -307,7 +307,8 @@ async def test_malformed_basic_is_401(client: TestClient) -> None:
 async def test_presence_team_and_logout(
     client: TestClient, auth_deps, session_factory
 ) -> None:
-    """Sign-in sets ACTIVE; presence switch and team listing; logout revokes."""
+    """Sign-in starts OFFLINE (owner 2026-11-20: chats only after going
+    active); presence switch and team listing; logout revokes."""
     auth_deps.ldap.users["ivanov"] = ("i.ivanov@corp.tander.ru", None, False)
     data = _sign_in(client)
     headers = {"Authorization": f"Bearer {data['session_token']}"}
@@ -319,7 +320,7 @@ async def test_presence_team_and_logout(
         for member in team.json()["team"]
         if member["email"] == "i.ivanov@corp.tander.ru"
     )
-    assert me["presence_status"] == "ACTIVE"
+    assert me["presence_status"] == "OFFLINE"
 
     lunch = client.post(
         "/api/v1/operator/presence", json={"status": "LUNCH"}, headers=headers

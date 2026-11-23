@@ -171,8 +171,11 @@ async def create_session(
                 operator.role = role
             if identity.display_name and operator.display_name != identity.display_name:
                 operator.display_name = identity.display_name
+            # Owner (2026-11-20): the operator must not be thrown into the
+            # auto-routing pool the second he signs in — every login starts
+            # OFFLINE; he goes ACTIVE (and starts receiving chats) himself.
             await OperatorRepository().set_presence(
-                session, operator.id, status=PresenceStatus.ACTIVE
+                session, operator.id, status=PresenceStatus.OFFLINE
             )
             await AuditService().log(
                 session,
