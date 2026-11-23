@@ -3935,3 +3935,38 @@ button.team-row.clickable:hover {
   color: #ffb4bc;
   border-color: #6e2430;
 }
+/* Owner (2026-11-23, plan item 7): invited specialists. */
+.specialists-row {
+  padding: 6px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  color: #7e8796;
+  font-size: 11px;
+}
+.specialist-leave {
+  padding: 5px 10px;
+  border: 1px solid #e4e8ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #7e8796;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.specialist-leave:hover {
+  border-color: #e2001a;
+  color: #e2001a;
+}
+.app-shell[data-theme=dark] .specialists-row {
+  border-color: #333a49;
+  color: #a8b1c2;
+}
+.app-shell[data-theme=dark] .specialist-leave {
+  background: transparent;
+  border-color: #3a4149;
+  color: #a8b1c2;
+}
+.resolve-submit.secondary {
+  background: #fff;
+  border: 1px solid #d7dbe2;
+  color: #394456;
+}

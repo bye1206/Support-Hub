@@ -13,6 +13,7 @@ from app.models.conversation import (
     DialogMode,
     SessionStatus,
 )
+from app.models.dialog_participant import DialogParticipant
 from app.models.kb_article import KbArticle
 from app.models.message import (
     Message,
@@ -46,6 +47,7 @@ __all__ = [
     "ConversationSession",
     "CorporateAccount",
     "DialogMode",
+    "DialogParticipant",
     "HandoffReason",
     "IntegrationEvent",
     "IntegrationEventStatus",

@@ -24,12 +24,14 @@ from app.infra.file_storage import FileStorageError, LocalFileStorage
 from app.integrations.ad_directory import AdUnavailableError
 from app.integrations.tag.direct import fetch_tag_avatar
 from app.models import (
+    AuditActorType,
     AuditLog,
     ConversationSession,
     InternalNote,
     Message,
     MessageAttachment,
     Operator,
+    OperatorRole,
     SessionStatus,
     Tag,
     Ticket,
@@ -41,6 +43,7 @@ from app.repositories.categories import TicketCategoryRepository
 from app.repositories.kb import KbRepository
 from app.repositories.messages import MessageRepository
 from app.repositories.operators import OperatorRepository
+from app.repositories.participants import ParticipantRepository
 from app.repositories.ratings import TicketRatingRepository
 from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
@@ -98,6 +101,8 @@ def _ticket_view(
     unread_from_user: int = 0,
     assignee_name: str | None = None,
     user_login: str | None = None,
+    specialists: list[str] | None = None,
+    is_specialist: bool = False,
 ) -> dict[str, Any]:
     return {
         "ticket_id": str(ticket.id),
@@ -132,6 +137,10 @@ def _ticket_view(
                 ticket.sla_breached_at.isoformat() if ticket.sla_breached_at else None
             ),
         },
+        # Owner (2026-11-23, plan item 7): invited specialists (names for the
+        # header) and whether the CURRENT operator is one of them.
+        "specialists": specialists or [],
+        "is_specialist": is_specialist,
     }
 
 
@@ -350,6 +359,10 @@ async def list_tickets(
             session, [t.conversation_id for t in tickets]
         )
         user_logins = await _user_login_map(session, [t.user_id for t in tickets])
+        # Owner (2026-11-23, plan item 7): invited specialists per dialog.
+        participant_map = await ParticipantRepository().active_operators(
+            session, [t.conversation_id for t in tickets]
+        )
     return {
         "tickets": [
             _ticket_view(
@@ -359,6 +372,12 @@ async def list_tickets(
                 unread_from_user=unread.get(t.conversation_id, 0),
                 assignee_name=assignee_names.get(t.assignee_id),
                 user_login=user_logins.get(t.user_id),
+                specialists=[
+                    operator.display_name or operator.email.split("@")[0]
+                    for operator in participant_map.get(t.conversation_id, [])
+                ],
+                is_specialist=operator.id
+                in {op.id for op in participant_map.get(t.conversation_id, [])},
             )
             for t in tickets
         ],
@@ -489,12 +508,21 @@ async def get_ticket(
         # Owner (2026-11-19): the history aside shows the person blocks —
         # user (FIO/login/email/manager) and operator (FIO/login/email).
         user_ad = (ticket_user.ad_info or {}) if ticket_user else {}
+        participant_ops = await ParticipantRepository().active_operators(
+            session, [ticket.conversation_id]
+        )
+        conv_participants = participant_ops.get(ticket.conversation_id, [])
     return {
         **_ticket_view(
             ticket,
             tags=tags,
             user_name=ticket_user.display_name if ticket_user else None,
             assignee_name=assignee_name,
+            specialists=[
+                operator.display_name or operator.email.split("@")[0]
+                for operator in conv_participants
+            ],
+            is_specialist=operator.id in {op.id for op in conv_participants},
         ),
         "assignee_email": assignee_email,
         "user_ad": {
@@ -615,9 +643,108 @@ async def download_attachment(
     )
 
 
-@router.post("/tickets/{ticket_id}/replies")
-async def reply_to_ticket(
+class InviteSpecialistIn(BaseModel):
+    operator_id: uuid.UUID
+
+
+@router.post("/tickets/{ticket_id}/specialists")
+async def invite_specialist(
     ticket_id: uuid.UUID,
+    payload: InviteSpecialistIn,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Owner (2026-11-23, plan item 7): invite a colleague as a specialist.
+
+    They write from their own profile and can leave; the user is NOT
+    notified. Allowed: the assignee, an active specialist, supervisor+.
+    """
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session, session.begin():
+        ticket = await TicketRepository().get(session, ticket_id)
+        if ticket is None:
+            raise ApiError(code="NOT_FOUND", message="Ticket not found", status_code=404)
+        allowed = (
+            ticket.assignee_id == operator.id
+            or operator.role != OperatorRole.OPERATOR
+            or await ParticipantRepository().is_active_participant(
+                session,
+                conversation_id=ticket.conversation_id,
+                operator_id=operator.id,
+            )
+        )
+        if not allowed:
+            raise ApiError(
+                code="FORBIDDEN",
+                message="Приглашать специалистов может назначенный сотрудник",
+                status_code=403,
+            )
+        invitee = await session.get(Operator, payload.operator_id)
+        if invitee is None or not invitee.is_active:
+            raise ApiError(
+                code="NOT_FOUND", message="Сотрудник не найден", status_code=404
+            )
+        if invitee.id == ticket.assignee_id:
+            raise ApiError(
+                code="STATE_CONFLICT",
+                message="Сотрудник уже ведёт этот чат",
+                status_code=409,
+            )
+        await ParticipantRepository().invite(
+            session, conversation_id=ticket.conversation_id, operator_id=invitee.id
+        )
+        session.add(
+            AuditLog(
+                actor_type=AuditActorType.OPERATOR,
+                actor_id=operator.id,
+                action="specialist.invited",
+                entity_type="conversation",
+                entity_id=ticket.conversation_id,
+                details={"specialist": invitee.email},
+            )
+        )
+    await _notify_workspace(request)
+    return {"ticket_id": str(ticket_id), "specialist_id": str(invitee.id)}
+
+
+@router.post("/tickets/{ticket_id}/leave")
+async def leave_as_specialist(
+    ticket_id: uuid.UUID,
+    operator: Annotated[Operator, Depends(require_operator)],
+    request: Request,
+) -> dict[str, Any]:
+    """Owner (2026-11-23, plan item 7): a specialist leaves the dialog —
+    silently, without notifying the user."""
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session, session.begin():
+        ticket = await TicketRepository().get(session, ticket_id)
+        if ticket is None:
+            raise ApiError(code="NOT_FOUND", message="Ticket not found", status_code=404)
+        left = await ParticipantRepository().leave(
+            session, conversation_id=ticket.conversation_id, operator_id=operator.id
+        )
+        if not left:
+            raise ApiError(
+                code="STATE_CONFLICT",
+                message="Вы не участник этого чата",
+                status_code=409,
+            )
+        session.add(
+            AuditLog(
+                actor_type=AuditActorType.OPERATOR,
+                actor_id=operator.id,
+                action="specialist.left",
+                entity_type="conversation",
+                entity_id=ticket.conversation_id,
+                details={},
+            )
+        )
+    await _notify_workspace(request)
+    return {"ticket_id": str(ticket_id), "left": True}
+
+
+@router.post("/tickets/{ticket_id}/replies")
+async def reply_to_ticket(    ticket_id: uuid.UUID,
     payload: ReplyIn,
     operator: Annotated[Operator, Depends(require_operator)],
     request: Request,

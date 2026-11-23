@@ -923,7 +923,12 @@ export default function App() {
     const active = tickets.filter(
       (t) => t.status !== "RESOLVED" && t.status !== "CLOSED",
     );
-    const mine = active.filter((t) => t.assignee_id === operatorId);
+    // Owner (2026-11-23, plan item 7): invited specialist chats land in
+    // "Мои" too — the specialist works with them like the assignee, but
+    // they are NOT counted in the routing load (no assignee change).
+    const mine = active.filter(
+      (t) => t.assignee_id === operatorId || t.is_specialist,
+    );
     // Owner (2026-11-18): a ticket claimed from the queue is in work even
     // before the first reply — status stays NEW until the user writes again,
     // and it must not fall out of "В работе".
@@ -1044,7 +1049,10 @@ export default function App() {
   };
   // Owner request 2026-11-13: an unassigned chat is read-only for operators -
   // nobody may reply until the ticket has an assignee (grayed, composer off).
-  const currentUnassigned = current !== null && !current.assignee_id;
+  // Owner (2026-11-23, plan item 7): a specialist can write too — locked
+  // only when the chat has neither an assignee nor my participation.
+  const currentUnassigned =
+    current !== null && !current.assignee_id && !current.is_specialist;
   const timeline = useMemo(
     () => [
       ...(current?.messages ?? []).map((item) => ({
@@ -1228,6 +1236,36 @@ export default function App() {
       await sync();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Действие не выполнено");
+    }
+  };
+  // Owner (2026-11-23, plan item 7): invite a colleague as a specialist —
+  // they keep their own voice in the chat and can leave; the user is not
+  // notified (unlike a transfer).
+  const inviteSpecialist = async (targetOperatorId: string) => {
+    if (!current) return;
+    try {
+      await api(`/tickets/${current.ticket_id}/specialists`, auth, {
+        method: "POST",
+        body: JSON.stringify({ operator_id: targetOperatorId }),
+      });
+      setToast("Специалист приглашён в чат");
+      setTransferOpen(false);
+      setTransferConfirm(null);
+      await sync();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось пригласить специалиста");
+    }
+  };
+  const leaveAsSpecialist = async () => {
+    if (!current) return;
+    try {
+      await api(`/tickets/${current.ticket_id}/leave`, auth, { method: "POST" });
+      setToast("Вы покинули чат");
+      setSelectedId(null);
+      setCurrent(null);
+      await sync();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось покинуть чат");
     }
   };
   const transferToPerson = async (targetOperatorId: string) => {
@@ -1778,8 +1816,22 @@ export default function App() {
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
                   </button>
                 )}
+                {current?.is_specialist && (
+                  <button
+                    className="specialist-leave"
+                    title="Покинуть чат (пользователь не узнает)"
+                    onClick={() => void leaveAsSpecialist()}
+                  >
+                    Покинуть чат
+                  </button>
+                )}
               </div>
             </header>
+            {current?.specialists && current.specialists.length > 0 && (
+              <div className="specialists-row" role="status">
+                Специалисты: {current.specialists.join(", ")}
+              </div>
+            )}
             {presence !== "ACTIVE" && (
               // Owner request (2026-11-23): an operator who is not ACTIVE
               // receives no chats — say it right over the dialog, with a
@@ -2322,6 +2374,12 @@ export default function App() {
               onClick={() => void transferToPerson(transferConfirm.operator_id)}
             >
               Да, передать
+            </button>
+            <button
+              className="resolve-submit secondary"
+              onClick={() => void inviteSpecialist(transferConfirm.operator_id)}
+            >
+              Пригласить специалистом
             </button>
             <button className="quiet-action" onClick={() => setTransferConfirm(null)}>
               Отмена

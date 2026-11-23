@@ -28,6 +28,10 @@ export type Ticket = {
   assignee_name?: string | null;
   // Owner (2026-11-20): the user's login for the history tables.
   user_login?: string | null;
+  // Owner (2026-11-23, plan item 7): invited specialists (names) and
+  // whether the CURRENT operator is one of them.
+  specialists?: string[];
+  is_specialist?: boolean;
   // Owner (2026-11-19): operator email + user AD facts for the history aside.
   assignee_email?: string | null;
   user_ad?: {

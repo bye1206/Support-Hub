@@ -1033,8 +1033,7 @@ def test_export_requires_operator(client: TestClient) -> None:
 @pytest.mark.anyio
 async def test_kb_crud_and_operator_read(
     client: TestClient, session_factory
-) -> None:
-    # Owner (2026-11-23, plan item 8): the knowledge base reference.
+) -> None:    # Owner (2026-11-23, plan item 8): the knowledge base reference.
     denied = client.post(
         "/api/v1/admin/kb",
         headers=headers(),
@@ -1087,3 +1086,77 @@ async def test_kb_crud_and_operator_read(
     assert (
         client.get("/api/v1/operator/kb", headers=headers()).json()["articles"] == []
     )
+
+
+def _self_operator_id(client: TestClient) -> str:
+    me = client.get("/api/v1/operator/me", headers=headers())
+    assert me.status_code == 200
+    return me.json()["operator_id"]
+
+
+@pytest.mark.anyio
+async def test_specialist_invite_reply_and_leave(
+    client: TestClient, session_factory, seed
+) -> None:
+    # Owner (2026-11-23, plan item 7): specialists write as themselves and
+    # can leave; the user is never notified (no outbound message).
+    await seed()
+    async with session_factory() as session:
+        colleague = Operator(
+            email="spec@corp.test",
+            display_name=uuid.uuid4().hex[:10],
+            role=OperatorRole.OPERATOR,
+        )
+        session.add(colleague)
+        await session.commit()
+        colleague_id = str(colleague.id)
+    ticket_id = _first_ticket_id(client)
+    assigned = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/assign",
+        headers=headers(),
+        json={"assignee_id": _self_operator_id(client)},
+    )
+    assert assigned.status_code == 200
+    invited = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/specialists",
+        headers=headers(),
+        json={"operator_id": colleague_id},
+    )
+    assert invited.status_code == 200
+    # The specialist sees the dialog marked and writes from their profile.
+    spec_headers = headers(email="spec@corp.test")
+    card = client.get(
+        f"/api/v1/operator/tickets/{ticket_id}", headers=spec_headers
+    ).json()
+    assert card["is_specialist"] is True
+    assert card["assignee_id"] != colleague_id
+    reply = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/replies",
+        headers=spec_headers,
+        json={"text": "Привет, я специалист"},
+    )
+    assert reply.status_code == 200
+    card = client.get(
+        f"/api/v1/operator/tickets/{ticket_id}", headers=spec_headers
+    ).json()
+    assert any("специалист" in (m.get("text") or "") for m in card["messages"])
+    # Re-invite is idempotent.
+    again = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/specialists",
+        headers=headers(),
+        json={"operator_id": colleague_id},
+    )
+    assert again.status_code == 200
+    # Leaving works and is audited; a second leave conflicts.
+    left = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/leave", headers=spec_headers
+    )
+    assert left.status_code == 200
+    again_left = client.post(
+        f"/api/v1/operator/tickets/{ticket_id}/leave", headers=spec_headers
+    )
+    assert again_left.status_code == 409
+    card = client.get(
+        f"/api/v1/operator/tickets/{ticket_id}", headers=headers()
+    ).json()
+    assert card["specialists"] == []
