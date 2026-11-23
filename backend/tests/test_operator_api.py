@@ -982,3 +982,49 @@ async def test_total_stats_endpoint(
     payload = client.get("/api/v1/admin/stats/total", headers=headers()).json()
     assert payload["chats_total"] >= 1
     assert payload["chats_total"] == payload["chats_open"] + payload["chats_closed"]
+
+
+@pytest.mark.anyio
+async def test_export_xlsx_roundtrip(client: TestClient, seed) -> None:
+    # Owner (2026-11-23, plan item 6): history search downloads as .xlsx.
+    import io
+
+    from openpyxl import load_workbook
+
+    await seed()
+    response = client.get("/api/v1/operator/tickets/export.xlsx", headers=headers())
+    assert response.status_code == 200
+    assert (
+        response.headers["Content-Type"]
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    workbook = load_workbook(io.BytesIO(response.content))
+    sheet = workbook.active
+    assert sheet.title == "Обращения"
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0] == (
+        "ID", "Статус", "Пользователь", "Оператор", "Создано", "Обновлено", "Закрыто",
+    )
+    assert len(rows) >= 2
+    # The seeded ticket sits in AI_PROCESSING — no closed time yet.
+    assert rows[1][1] == "Обработка ИИ"
+    assert (rows[1][6] or "") == ""
+
+
+@pytest.mark.anyio
+async def test_export_respects_the_search_filters(client: TestClient, seed) -> None:
+    import io
+
+    from openpyxl import load_workbook
+
+    await seed()
+    response = client.get(
+        "/api/v1/operator/tickets/export.xlsx?q=00000000", headers=headers()
+    )
+    assert response.status_code == 200
+    workbook = load_workbook(io.BytesIO(response.content))
+    assert len(list(workbook.active.iter_rows(values_only=True))) == 1
+
+
+def test_export_requires_operator(client: TestClient) -> None:
+    assert client.get("/api/v1/operator/tickets/export.xlsx").status_code == 401

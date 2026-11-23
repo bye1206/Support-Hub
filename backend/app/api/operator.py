@@ -45,6 +45,7 @@ from app.repositories.tags import TagRepository
 from app.repositories.tickets import TicketRepository
 from app.repositories.users import UserRepository
 from app.services.ad_info import AdInfoService
+from app.services.export import build_tickets_xlsx
 from app.services.messages import MessageService
 from app.services.notes import NoteService
 from app.services.tickets import TicketService
@@ -363,6 +364,65 @@ async def list_tickets(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/tickets/export.xlsx")
+async def export_tickets_xlsx(
+    request: Request,
+    operator: Annotated[Operator, Depends(require_operator)],
+    status: TicketStatus | None = None,
+    assignee: str | None = Query(default=None, description="operator id, 'me' or 'unassigned'"),
+    created_from: Annotated[datetime | None, Query(description="ISO date/time from")] = None,
+    created_to: Annotated[datetime | None, Query(description="ISO date/time to")] = None,
+    user: Annotated[
+        str | None, Query(description="user UUID, login or name fragment")
+    ] = None,
+    q: Annotated[
+        str | None, Query(description="ticket UUID or short-id prefix")
+    ] = None,
+    text: Annotated[
+        str | None, Query(description="substring of any message in the chat")
+    ] = None,
+    limit: int = Query(default=5000, ge=1, le=5000),
+) -> Response:
+    """Owner (2026-11-23, plan item 6): the history search results as .xlsx.
+
+    Same filters as GET /tickets; the closed time comes from the ticket's
+    status history (latest RESOLVED/CLOSED transition)."""
+    assignee_id: uuid.UUID | None = None
+    unassigned_only = False
+    if assignee == "me":
+        assignee_id = operator.id
+    elif assignee == "unassigned":
+        unassigned_only = True
+    elif assignee is not None:
+        try:
+            assignee_id = uuid.UUID(assignee)
+        except ValueError as exc:
+            raise ApiError(
+                code="VALIDATION_ERROR", message="Bad assignee filter", status_code=422
+            ) from exc
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session:
+        content, filename = await build_tickets_xlsx(
+            session,
+            status=status,
+            assignee_id=assignee_id,
+            unassigned_only=unassigned_only,
+            created_from=created_from,
+            created_to=created_to,
+            user_query=user,
+            ticket_query=q,
+            text_query=text,
+            limit=limit,
+        )
+    return Response(
+        content=content,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/tickets/{ticket_id}")

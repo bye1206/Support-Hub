@@ -935,6 +935,34 @@ export default function App() {
       queueAll: [...unassigned, ...ai],
     };
   }, [tickets, operatorId]);
+  // Owner (2026-11-23, plan item 6): download the search results as .xlsx —
+  // the same filters as runHistorySearch, minus the 100-row page limit.
+  const exportHistory = async () => {
+    const q = new URLSearchParams({ limit: "5000" });
+    if (historyFilters.from) q.set("created_from", `${historyFilters.from}T00:00:00`);
+    if (historyFilters.to) q.set("created_to", `${historyFilters.to}T23:59:59.999`);
+    const query = historyFilters.query.trim();
+    if (query) {
+      if (historyFilters.searchType === "text") q.set("text", query);
+      else if (historyFilters.searchType === "id") q.set("q", query);
+      else q.set("user", query);
+    }
+    if (historyFilters.operator === "me") q.set("assignee", "me");
+    else if (historyFilters.operator === "unassigned") q.set("assignee", "unassigned");
+    else if (historyFilters.operator) q.set("assignee", historyFilters.operator);
+    const response = await fetch(`/api/v1/operator/tickets/export.xlsx?${q}`, {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
+    if (!response.ok) throw new Error("Не удалось выгрузить Excel");
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = match ? match[1] : "tickets_export.xlsx";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
   const runHistorySearch = async () => {
     setHistoryLoading(true);
     setHistorySearched(true);
@@ -3057,6 +3085,17 @@ export default function App() {
                 onClick={() => void runHistorySearch()}
               >
                 Найти
+              </button>
+              <button
+                type="button"
+                className="history-find"
+                disabled={historyLoading}
+                title="Скачать результаты поиска в Excel"
+                onClick={() => void exportHistory().catch((cause: unknown) =>
+                  setError(cause instanceof Error ? cause.message : "Не удалось выгрузить Excel"),
+                )}
+              >
+                Excel
               </button>
               <button
                 type="button"
