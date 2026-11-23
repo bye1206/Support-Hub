@@ -263,6 +263,7 @@ async def update_presence(
     async with deps.db.session_factory() as session:
         async with unit_of_work(session):
             was_active = operator.presence_status == PresenceStatus.ACTIVE
+            became_active = payload.status == "ACTIVE" and not was_active
             # Owner request (2026-11-20): write the finished interval into
             # the presence log so the stats card can sum ACTIVE/LUNCH/BREAK.
             session.add(
@@ -287,6 +288,16 @@ async def update_presence(
             )
             if was_active and payload.status != "ACTIVE":
                 await TicketService().release_operator_tickets(session, operator.id)
+            elif became_active:
+                # Owner bug report (2026-11-23): with every operator offline
+                # a new chat lands unassigned and stays there when the only
+                # operator goes ACTIVE. Going active now sweeps the queue.
+                routed = await TicketService().route_unassigned(session)
+                if routed:
+                    logger.info(
+                        "Presence ACTIVE sweep: routed %s unassigned ticket(s)",
+                        routed,
+                    )
     try:
         await deps.redis.publish_event(json.dumps({"type": "tickets.changed"}))
     except Exception:  # noqa: BLE001 - redis trouble must not break the API
