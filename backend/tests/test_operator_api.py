@@ -1031,6 +1031,26 @@ def test_export_requires_operator(client: TestClient) -> None:
 
 
 @pytest.mark.anyio
+async def test_export_falls_back_to_csv_without_openpyxl(
+    client: TestClient, seed, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # RAG Orchestrator pattern (ТЕХДОК_ВЫГРУЗКА_EXCEL.md): no openpyxl on
+    # the VM must not break the export — CSV with BOM and ';' instead.
+    import sys
+
+    await seed()
+    monkeypatch.setitem(sys.modules, "openpyxl", None)
+    response = client.get("/api/v1/operator/tickets/export.xlsx", headers=headers())
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/csv")
+    assert response.headers["Content-Disposition"].endswith('.csv"')
+    body = response.content.decode("utf-8-sig")
+    lines = body.splitlines()
+    assert lines[0] == "ID;Статус;Пользователь;Оператор;Создано;Обновлено;Закрыто"
+    assert len(lines) >= 2
+
+
+@pytest.mark.anyio
 async def test_kb_crud_and_operator_read(
     client: TestClient, session_factory
 ) -> None:    # Owner (2026-11-23, plan item 8): the knowledge base reference.

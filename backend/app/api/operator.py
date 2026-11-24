@@ -424,7 +424,7 @@ async def export_tickets_xlsx(
             ) from exc
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
-        content, filename = await build_tickets_xlsx(
+        content, filename, media_type = await build_tickets_xlsx(
             session,
             status=status,
             assignee_id=assignee_id,
@@ -438,9 +438,7 @@ async def export_tickets_xlsx(
         )
     return Response(
         content=content,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
