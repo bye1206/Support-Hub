@@ -32,6 +32,8 @@ export type Ticket = {
   // whether the CURRENT operator is one of them.
   specialists?: string[];
   is_specialist?: boolean;
+  // Owner (2026-11-25): the user's rating stars on the ticket card.
+  user_rating?: number | null;
   // Owner (2026-11-19): operator email + user AD facts for the history aside.
   assignee_email?: string | null;
   user_ad?: {

@@ -35,6 +35,7 @@ from app.models import (
     SessionStatus,
     Tag,
     Ticket,
+    TicketRating,
     TicketStatus,
     User,
 )
@@ -103,6 +104,7 @@ def _ticket_view(
     user_login: str | None = None,
     specialists: list[str] | None = None,
     is_specialist: bool = False,
+    user_rating: int | None = None,
 ) -> dict[str, Any]:
     return {
         "ticket_id": str(ticket.id),
@@ -141,6 +143,8 @@ def _ticket_view(
         # header) and whether the CURRENT operator is one of them.
         "specialists": specialists or [],
         "is_specialist": is_specialist,
+        # Owner (2026-11-25): the user's rating stars on the ticket card.
+        "user_rating": user_rating,
     }
 
 
@@ -363,6 +367,15 @@ async def list_tickets(
         participant_map = await ParticipantRepository().active_operators(
             session, [t.conversation_id for t in tickets]
         )
+        # Owner (2026-11-25): the user's rating per ticket (unique per ticket).
+        rating_map: dict[Any, int] = {}
+        if tickets:
+            rating_rows = await session.execute(
+                select(TicketRating.ticket_id, TicketRating.score).where(
+                    TicketRating.ticket_id.in_([t.id for t in tickets])
+                )
+            )
+            rating_map = dict(rating_rows.all())
     return {
         "tickets": [
             _ticket_view(
@@ -378,6 +391,7 @@ async def list_tickets(
                 ],
                 is_specialist=operator.id
                 in {op.id for op in participant_map.get(t.conversation_id, [])},
+                user_rating=rating_map.get(t.id),
             )
             for t in tickets
         ],
@@ -510,6 +524,9 @@ async def get_ticket(
             session, [ticket.conversation_id]
         )
         conv_participants = participant_ops.get(ticket.conversation_id, [])
+        user_rating = await session.scalar(
+            select(TicketRating.score).where(TicketRating.ticket_id == ticket.id)
+        )
     return {
         **_ticket_view(
             ticket,
@@ -521,6 +538,7 @@ async def get_ticket(
                 for operator in conv_participants
             ],
             is_specialist=operator.id in {op.id for op in conv_participants},
+            user_rating=user_rating,
         ),
         "assignee_email": assignee_email,
         "user_ad": {

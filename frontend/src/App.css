@@ -3942,6 +3942,17 @@ button.team-row.clickable:hover {
   color: #ffb4bc;
   border-color: #6e2430;
 }
+/* Owner (2026-11-25, ratings): the user's stars on the ticket card. */
+.user-rating-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.user-rating-stars {
+  color: #d99a26;
+  font-size: 16px;
+  letter-spacing: 2px;
+}
 /* Owner (2026-11-23, plan item 7): invited specialists. */
 .specialists-row {
   padding: 6px 14px;

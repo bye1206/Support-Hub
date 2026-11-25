@@ -3345,7 +3345,19 @@ export default function App() {
                   </div>
                 </section>
                 <section className="detail-section">
-                  <div className="detail-label">ПЕРЕМЕЩЕНИЯ</div>
+              {current?.user_rating ? (
+                <section className="detail-section">
+                  <div className="detail-label">ОЦЕНКА ПОЛЬЗОВАТЕЛЯ</div>
+                  <div className="user-rating-row">
+                    <span className="user-rating-stars">
+                      {"★".repeat(current.user_rating)}
+                      {"☆".repeat(5 - current.user_rating)}
+                    </span>
+                    <span className="muted">{current.user_rating}/5</span>
+                  </div>
+                </section>
+              ) : null}
+              <div className="detail-label">ПЕРЕМЕЩЕНИЯ</div>
                   <div className="assignment-history">
                     <span className="history-line" />
                     {(historyMovesExpanded
