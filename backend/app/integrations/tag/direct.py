@@ -121,13 +121,18 @@ class TagDirectSender:
             if file_ids:
                 body["file_ids"] = file_ids
             # Owner request (2026-11-19): the closure note carries five
-            # interactive rating buttons (5..1); Mattermost calls our
-            # /integrations/tag/rating endpoint with the button context.
+            # interactive rating buttons (5..1); Mattermost calls the
+            # integration URL with the button context. Owner (2026-11-25):
+            # the Tag team's recommended setup routes clicks through THEIR
+            # working rating endpoint (public HTTPS, trusted cert — direct
+            # calls to our internal IP are blocked by Mattermost), so the
+            # button URL is overridable via TAG_RATING_BUTTON_URL; the
+            # context format (ticket_id + score) stays ours either way.
             if payload.get("rating_request"):
                 from app.config import get_settings
 
                 settings = get_settings()
-                rating_url = (
+                rating_url = settings.tag_rating_button_url or (
                     f"{settings.app_base_url.rstrip('/')}/api/v1/integrations/"
                     f"tag/rating?token={settings.bot_webhook_token}"
                 )

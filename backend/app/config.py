@@ -182,6 +182,14 @@ class Settings(BaseSettings):
     # (set ldap_ca_cert_file to enforce CERT_REQUIRED).
     ldap_tls_verify: bool = False
     ldap_ca_cert_file: str = ""
+    # Owner (2026-11-25): the rating-button integration URL. Mattermost's
+    # server calls it on click; the Tag team's proven setup routes clicks
+    # through THEIR public-HTTPS endpoint (our internal IP is blocked by
+    # Mattermost's untrusted-connection protection). Set it to the
+    # orchestrator's rating webhook (with its secret in the query) and the
+    # orchestrator relays the click to our /api/v1/integrations/tag/rating.
+    # Empty = direct buttons at app_base_url (needs the whitelist above).
+    tag_rating_button_url: str = ""
     # Break-glass account for AD outages (stored in the vault, not in git).
     auth_local_user: str = ""
     auth_local_pass: str = ""
