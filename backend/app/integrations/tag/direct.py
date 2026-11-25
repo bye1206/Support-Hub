@@ -166,6 +166,21 @@ class TagDirectSender:
             # Never log user text; status is enough for the outbox retry.
             raise TagDirectRejected(f"Mattermost answered HTTP {response.status_code}")
 
+    async def replace_post_card(self, post_id: str, text: str) -> None:
+        """Owner (2026-11-25, ratings): after a rating click, replace the
+        button card with a thank-you note — Mattermost requires the post id
+        IN THE BODY (not only in the URL) and empty props drop the buttons.
+        Best-effort by the caller: a failed edit leaves the buttons, which
+        only means a repeat click overwrites the score."""
+        response = await self._client.put(
+            f"{POSTS_PATH}/{post_id}",
+            json={"id": post_id, "message": text, "props": {}},
+        )
+        if response.status_code // 100 != 2:
+            raise TagDirectRejected(
+                f"Mattermost card edit answered HTTP {response.status_code}"
+            )
+
     async def _resolve(
         self, payload: dict[str, Any]
     ) -> tuple[str, str, list[tuple[str, str, str]]]:

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.errors import ApiError
 from app.infra.file_storage import FileStorageError, LocalFileStorage
+from app.integrations.tag.direct import TagDirectSender
 from app.integrations.tag.schemas import TagMessageIn
 from app.repositories.attachments import AttachmentRepository
 from app.repositories.channels import ChannelRepository
@@ -245,4 +246,21 @@ async def rating_button(
         if ticket is None:
             return {}
         await RatingService().capture_score(session, ticket, parsed.score)
+    # Owner (2026-11-25): replace the button card with a thank-you note —
+    # the orchestrator relays the click WITH post_id, we own the bot token.
+    # Best-effort: a failed edit leaves the buttons, a repeat click just
+    # overwrites the score. Must not break the <=5s response contract.
+    card_post_id = str(body.get("post_id") or "")
+    if card_post_id:
+        try:
+            sender = TagDirectSender(get_settings())
+            try:
+                await sender.replace_post_card(
+                    card_post_id,
+                    f"Спасибо за оценку {parsed.score}/5!",
+                )
+            finally:
+                await sender.aclose()
+        except Exception:  # noqa: BLE001 - cosmetic, never fails the click
+            pass
     return {}
