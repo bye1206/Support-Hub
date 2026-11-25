@@ -250,7 +250,11 @@ async def rating_button(
         logger.warning("Rating click: unparsable context, dropped")
         return {}
     deps = request.app.state.deps
-    async with deps.db.session_factory() as session:
+    # Owner bugfix (2026-11-25): this used to be a plain session without a
+    # transaction - capture_score flushed the rating, the session closed,
+    # and the INSERT ROLLED BACK. Ratings never persisted at all (the
+    # owner's 'оценок нигде нет'). Explicit commit like every other route.
+    async with deps.db.session_factory() as session, session.begin():
         ticket = await TicketRepository().get(session, parsed.ticket_id)
         if ticket is None:
             logger.warning(
