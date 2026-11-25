@@ -137,7 +137,29 @@ type AssignmentEvent = {
   actor_name?: string | null;
   assignee_id: string | null;
   assignee_name?: string | null;
+  // Owner (2026-11-25): specialist invite/leave events.
+  specialist_name?: string | null;
   created_at: string;
+};
+// Shared move renderer: the details panel (3 last), the full moves modal
+// and the history page all speak the same wording.
+const moveText = (event: AssignmentEvent, fallbackName: (id: string) => string) => {
+  if (event.action === "specialist.invited")
+    return `${event.actor_name || "Оператор"} пригласил ${
+      event.specialist_name || "коллегу"
+    } специалистом`;
+  if (event.action === "specialist.left")
+    return `${event.specialist_name || event.actor_name || "Специалист"} покинул чат`;
+  if (event.action === "handoff.accepted") return "Принято у ИИ";
+  if (event.action === "ticket.assignment_queued")
+    return `Отложено: ожидает места у ${
+      event.assignee_name || fallbackName(event.assignee_id || "")
+    }`;
+  if (event.assignee_id)
+    return `Назначено оператору ${
+      event.assignee_name || fallbackName(event.assignee_id)
+    }`;
+  return "Снято назначение";
 };
 type TicketTag = { tag_id: string; name: string };
 type OperatorProfile = {
@@ -586,7 +608,10 @@ export default function App() {
         selected &&
         selected.assignee_id &&
         operatorIdRef.current &&
-        selected.assignee_id !== operatorIdRef.current
+        selected.assignee_id !== operatorIdRef.current &&
+        // Owner (2026-11-25): an invited specialist KEEPS the dialog open —
+        // the assignee is someone else on purpose, that is not a steal.
+        !selected.is_specialist
       ) {
         // Owner (2026-11-18): the AI handed the chat off and it was routed
         // to another operator (or another operator claimed the unassigned
@@ -888,6 +913,17 @@ export default function App() {
                   : "Новое сообщение от пользователя",
               );
             }
+            // Owner (2026-11-25): the invitee learns about the invitation
+            // right away — a personal toast (payload carries operator_id).
+            if (
+              v.type === "specialist.invited" &&
+              v.payload?.operator_id === operatorIdRef.current
+            ) {
+              playPing();
+              setToast(
+                `${v.payload.invited_by || "Коллега"} пригласил вас специалистом в чат #${shortId(v.payload.ticket_id)}`,
+              );
+            }
           }
         } catch {
           scheduleSync();
@@ -926,8 +962,11 @@ export default function App() {
     // Owner (2026-11-23, plan item 7): invited specialist chats land in
     // "Мои" too — the specialist works with them like the assignee, but
     // they are NOT counted in the routing load (no assignee change).
-    const mine = active.filter(
-      (t) => t.assignee_id === operatorId || t.is_specialist,
+    // Owner (2026-11-25): invited chats get their OWN group — "Приглашённые"
+    // — the assignee's "В работе"/"Ожидают" stay untouched.
+    const mine = active.filter((t) => t.assignee_id === operatorId);
+    const invited = active.filter(
+      (t) => t.is_specialist && t.assignee_id !== operatorId,
     );
     // Owner (2026-11-18): a ticket claimed from the queue is in work even
     // before the first reply — status stays NEW until the user writes again,
@@ -948,6 +987,7 @@ export default function App() {
     return {
       mineWorking,
       mineWaiting,
+      mineInvited: invited,
       mineAll: [...mineWorking, ...mineWaiting],
       queueUnassigned: unassigned,
       queueAI: ai,
@@ -1551,12 +1591,19 @@ export default function App() {
             const groups =
               queueTab === "mine"
                 ? [
-                    { key: "all", label: "Все обращения", items: columns.mineAll },
+                    { key: "all", label: "Все обращения", items: [...columns.mineAll, ...columns.mineInvited] },
                     { key: "working", label: "В работе", items: columns.mineWorking },
                     {
                       key: "waiting",
                       label: "Ожидает пользователя",
                       items: columns.mineWaiting,
+                    },
+                    // Owner (2026-11-25): chats where I was invited as a
+                    // specialist — separate from the ones I own.
+                    {
+                      key: "invited",
+                      label: "Приглашённые",
+                      items: columns.mineInvited,
                     },
                   ]
                 : [
@@ -2239,19 +2286,7 @@ export default function App() {
                       className="history-event"
                       key={`${event.created_at}-${event.actor_id}`}
                     >
-                      {event.action === "handoff.accepted"
-                        ? "Принято у ИИ"
-                        : event.action === "ticket.assignment_queued"
-                          ? `Отложено: ожидает места у ${
-                              event.assignee_name ||
-                              assignmentName(event.assignee_id)
-                            }`
-                          : event.assignee_id
-                            ? `Назначено оператору ${
-                                event.assignee_name ||
-                                assignmentName(event.assignee_id)
-                              }`
-                            : "Снято назначение"}
+                      {moveText(event, assignmentName)}
                       <time>{ago(event.created_at)}</time>
                     </div>
                   ))
@@ -2422,19 +2457,7 @@ export default function App() {
                   className="history-event"
                   key={`${event.created_at}-${event.actor_id}`}
                 >
-                  {event.action === "handoff.accepted"
-                    ? "Принято у ИИ"
-                    : event.action === "ticket.assignment_queued"
-                      ? `Отложено: ожидает места у ${
-                          event.assignee_name ||
-                          assignmentName(event.assignee_id)
-                        }`
-                      : event.assignee_id
-                        ? `Назначено оператору ${
-                            event.assignee_name ||
-                            assignmentName(event.assignee_id)
-                          }`
-                        : "Снято назначение"}
+                  {moveText(event, assignmentName)}
                   <time>
                     {new Date(event.created_at).toLocaleString("ru-RU")}
                   </time>
@@ -2824,7 +2847,11 @@ export default function App() {
                 <div className="modal-title">
                   Команда · статусы и нагрузка
                 </div>
-                {team.map((member) => (
+                 {/* Owner (2026-11-25): OFFLINE colleagues are hidden —
+                     only Активен / Обед / Перерыв are listed. */}
+                {team
+                  .filter((member) => member.presence_status !== "OFFLINE")
+                  .map((member) => (
                   <button
                     key={member.operator_id}
                     className="team-row clickable"
@@ -2857,6 +2884,9 @@ export default function App() {
                     </span>
                   </button>
                 ))}
+                {!team.some((member) => member.presence_status !== "OFFLINE") && (
+                  <div className="past-empty">Все сотрудники сейчас офлайн.</div>
+                )}
               </>
             )}
             <button className="quiet-action" onClick={() => setTeamOpen(false)}>
@@ -3321,24 +3351,12 @@ export default function App() {
                     {(historyMovesExpanded
                       ? historyMoves
                       : historyMoves.slice(0, 3)
-                    ).map((event) => (
+                      ).map((event) => (
                       <div
                         className="history-event"
                         key={`${event.created_at}-${event.actor_id}`}
                       >
-                        {event.action === "handoff.accepted"
-                          ? "Принято у ИИ"
-                          : event.action === "ticket.assignment_queued"
-                            ? `Отложено: ожидает места у ${
-                                event.assignee_name ||
-                                shortId(event.assignee_id || "")
-                              }`
-                            : event.assignee_id
-                              ? `Назначено оператору ${
-                                  event.assignee_name ||
-                                  shortId(event.assignee_id)
-                                }`
-                              : "Снято назначение"}
+                        {moveText(event, (id) => shortId(id))}
                         <time>{ago(event.created_at)}</time>
                       </div>
                     ))}

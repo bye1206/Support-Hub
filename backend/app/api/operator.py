@@ -702,6 +702,24 @@ async def invite_specialist(
             )
         )
     await _notify_workspace(request)
+    # Owner (2026-11-25): the invitee gets a personal nudge — a toast on
+    # their workspace (the payload is filtered client-side by operator_id).
+    try:
+        await deps.redis.publish_event(
+            json.dumps(
+                {
+                    "type": "specialist.invited",
+                    "payload": {
+                        "operator_id": str(invitee.id),
+                        "ticket_id": str(ticket_id),
+                        "invited_by": operator.display_name
+                        or operator.email.split("@")[0],
+                    },
+                }
+            )
+        )
+    except Exception:  # noqa: BLE001 - redis trouble must not break the API
+        pass
     return {"ticket_id": str(ticket_id), "specialist_id": str(invitee.id)}
 
 
@@ -1221,12 +1239,30 @@ async def ticket_assignment_history(
                         AuditLog.entity_id == ticket.conversation_id,
                         AuditLog.action == "handoff.accepted",
                     ),
+                    and_(
+                        AuditLog.entity_type == "conversation",
+                        AuditLog.entity_id == ticket.conversation_id,
+                        # Owner (2026-11-25): specialist moves are visible too.
+                        AuditLog.action.in_(
+                            ("specialist.invited", "specialist.left")
+                        ),
+                    ),
                 )
             )
             .order_by(desc(AuditLog.created_at))
         )
         events = list((await session.scalars(stmt)).all())
         # Owner request (2026-11-17): movements must show WHO, not "5D…".
+        specialist_emails = [
+            (event.details or {}).get("specialist", "")
+            for event in events
+            if (event.details or {}).get("specialist")
+        ]
+        specialist_rows = (
+            await session.scalars(
+                select(Operator).where(Operator.email.in_(specialist_emails))
+            )
+        ).all() if specialist_emails else []
         operator_ids = {
             event.actor_id
             for event in events
@@ -1235,7 +1271,7 @@ async def ticket_assignment_history(
             uuid.UUID(event.details["assignee_id"])
             for event in events
             if (event.details or {}).get("assignee_id")
-        }
+        } | {operator.id for operator in specialist_rows}
         operator_names = {
             operator.id: operator.display_name or operator.email
             for operator in (
@@ -1250,6 +1286,13 @@ async def ticket_assignment_history(
                 return None
             return operator_names.get(uuid.UUID(value), None)
 
+        email_names = {
+            operator.email: operator.display_name or operator.email.split("@")[0]
+            for operator in (
+                await session.scalars(select(Operator))
+            ).all()
+        }
+
     return {
         "events": [
             {
@@ -1258,6 +1301,10 @@ async def ticket_assignment_history(
                 "actor_name": _name(str(event.actor_id)) if event.actor_id else None,
                 "assignee_id": (event.details or {}).get("assignee_id"),
                 "assignee_name": _name((event.details or {}).get("assignee_id")),
+                # Owner (2026-11-25): who was invited as a specialist.
+                "specialist_name": email_names.get(
+                    (event.details or {}).get("specialist", "")
+                ),
                 "created_at": event.created_at.isoformat(),
             }
             for event in events
