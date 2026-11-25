@@ -7,6 +7,7 @@ MessageService (unit_of_work); this module only opens the session.
 
 import base64
 import hmac
+import json
 import logging
 import uuid
 from typing import Annotated
@@ -139,6 +140,16 @@ async def receive_message(request: Request, event: TagMessageIn) -> TagMessageRe
             channel_id=channel.id,
             files=files,
         )
+    # Owner (2026-11-25): the instant operator-request handoff must be
+    # visible to operators NOW - nudge open workspaces to resync (the
+    # queue otherwise waits for the 15 s safety poll).
+    if result.instant_handoff:
+        try:
+            await request.app.state.deps.redis.publish_event(
+                json.dumps({"type": "tickets.changed"})
+            )
+        except Exception:  # noqa: BLE001 - redis trouble must not break ingress
+            pass
     return TagMessageResult(
         message_id=str(result.message.id),
         conversation_id=str(result.conversation.id),
@@ -261,7 +272,9 @@ async def rating_button(
                 "Rating click: ticket %s not found, dropped", parsed.ticket_id
             )
             return {}
-        await RatingService().capture_score(session, ticket, parsed.score)
+        await RatingService().capture_score(
+            session, ticket, parsed.score, send_note=False
+        )
     logger.info(
         "Rating click: captured score=%s ticket=%s", parsed.score, parsed.ticket_id
     )

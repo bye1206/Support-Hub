@@ -75,6 +75,10 @@ class IngestResult:
     conversation_created: bool
     ticket_reopened: bool
     deduplicated: bool = False
+    # Owner (2026-11-25): the instant operator-request handoff fired — the
+    # ingress pings open workspaces so the chat lands in the queue NOW
+    # (otherwise the queue only learns via the 15 s safety poll).
+    instant_handoff: bool = False
 
 
 class MessageService:
@@ -219,7 +223,9 @@ class MessageService:
                 )
                 # Owner (2026-11-23): "оператор" as the very first message
                 # must not sit in the AI stage waiting for a roundtrip.
-                await self._maybe_instant_handoff(session, routing, message)
+                handoff_fired = await self._maybe_instant_handoff(
+                    session, routing, message
+                )
                 return IngestResult(
                     message=message,
                     conversation=routing.conversation,
@@ -227,12 +233,14 @@ class MessageService:
                     session=active_session,
                     conversation_created=True,
                     ticket_reopened=False,
+                    instant_handoff=handoff_fired,
                 )
             await self._apply_ticket_transition(session, routing)
             # Owner (2026-11-23): an explicit operator request ("оператор",
             # "позовите человека"...) hands the dialog over IMMEDIATELY —
             # no gateway roundtrip (worst case there: 115 s RAG timeout).
-            if await self._maybe_instant_handoff(session, routing, message):
+            handoff_fired = await self._maybe_instant_handoff(session, routing, message)
+            if handoff_fired:
                 await self._audit.log(
                     session,
                     actor_type=AuditActorType.USER,
@@ -253,6 +261,7 @@ class MessageService:
                     session=active_session,
                     conversation_created=routing.conversation_created,
                     ticket_reopened=routing.ticket_reopened,
+                    instant_handoff=True,
                 )
             await self._outbox.register(
                 session,

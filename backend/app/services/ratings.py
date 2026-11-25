@@ -60,11 +60,21 @@ class RatingService:
         return message
 
     async def capture_score(
-        self, session: AsyncSession, ticket: Ticket, score: int
-    ) -> Message:
+        self,
+        session: AsyncSession,
+        ticket: Ticket,
+        score: int,
+        *,
+        send_note: bool = True,
+    ) -> Message | None:
         """Store the score (idempotent: the first one wins) and answer the
-        user; low scores ask for a review. Returns the reply message.
-        Caller's transaction."""
+        user; low scores ask for a review. Returns the reply message
+        (None when the caller opted out of the note). Caller's transaction.
+
+        Owner (2026-11-25): the button path edits the card itself to
+        'Спасибо за оценку N/5' — the extra bot note duplicated it, so the
+        button click passes send_note=False. The digit fallback keeps the
+        note (there is no card to edit)."""
         if score < 1 or score > 5:
             raise ValueError(f"Score {score} out of range")
         rating = await self._ratings.for_ticket(session, ticket.id)
@@ -88,6 +98,8 @@ class RatingService:
             return await self._send_bot_note(
                 session, ticket.conversation_id, ASK_REVIEW_TEXT
             )
+        if not send_note:
+            return None
         return await self._send_bot_note(
             session, ticket.conversation_id, SCORE_THANKS_TEXT
         )
