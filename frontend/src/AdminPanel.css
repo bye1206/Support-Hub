@@ -109,6 +109,7 @@
 .kb-row .kb-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .kb-row .kb-text strong { font-size: 12px; }
 .kb-row .kb-text span { overflow: hidden; color: #7e8796; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.kb-row .kb-text .kb-attribution { color: #949baa; font-size: 10px; white-space: normal; }
 .kb-edit { display: flex; flex-direction: column; gap: 8px; grid-column: 1 / -1; }
 .kb-edit input, .kb-edit textarea { padding: 8px 10px; border: 1px solid #e4e8ed; border-radius: 7px; background: #fff; color: #4b5566; font: inherit; font-size: 12px; }
 .kb-edit textarea { min-height: 72px; resize: vertical; }

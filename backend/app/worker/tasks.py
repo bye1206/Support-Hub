@@ -137,6 +137,20 @@ async def check_sla_breaches(ctx: dict[str, Any]) -> int:
     return breached
 
 
+async def purge_kb_archive(ctx: dict[str, Any]) -> int:
+    """Owner rule (2026-11-25): a knowledge-base article deleted by an
+    operator sits in 'Недавно удалённые' for 14 days, then disappears
+    for good. This daily sweep does the disappearing."""
+    from app.repositories.kb import KbRepository
+
+    async with _session_factory(ctx)() as session:
+        purged = await KbRepository().purge_expired(session)
+        await session.commit()
+    if purged:
+        logger.info("KB archive purged: %s article(s)", purged)
+    return purged
+
+
 async def refresh_ad_info_backfill(ctx: dict[str, Any], batch_size: int = 5) -> int:
     """Owner report (2026-11-20): a brand-new user sits in the queue with
     only the Tag name — AD data appears only after an operator opens the

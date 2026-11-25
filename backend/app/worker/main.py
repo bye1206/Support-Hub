@@ -13,6 +13,7 @@ from app.worker.tasks import (
     expire_sessions,
     process_ai_runs,
     process_outbox,
+    purge_kb_archive,
     refresh_ad_info_backfill,
 )
 
@@ -89,6 +90,9 @@ class WorkerSettings:
         # Owner report (2026-11-20): prefetch AD cards for new users so the
         # queue shows the full profile without a manual "Обновить из AD".
         cron(refresh_ad_info_backfill, minute=set(range(0, 60, 5))),
+        # Owner rule (2026-11-25): the KB archive keeps deleted articles
+        # for 14 days; the daily sweep purges what is older.
+        cron(purge_kb_archive, hour=3, minute=17),
     ]
 
     on_startup: Any = _startup

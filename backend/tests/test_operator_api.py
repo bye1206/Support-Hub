@@ -1049,26 +1049,12 @@ async def test_export_falls_back_to_csv_without_openpyxl(
     assert lines[0] == "ID;Статус;Пользователь;Оператор;Создано;Обновлено;Закрыто"
     assert len(lines) >= 2
 
-
 @pytest.mark.anyio
-async def test_kb_crud_and_operator_read(
+async def test_kb_crud_archive_and_operator_read(
     client: TestClient, session_factory
-) -> None:    # Owner (2026-11-23, plan item 8): the knowledge base reference.
-    denied = client.post(
-        "/api/v1/admin/kb",
-        headers=headers(),
-        json={"title": "Как сбросить VPN", "body": "Инструкция…"},
-    )
-    assert denied.status_code == 403
-    async with session_factory() as session:
-        operator = (
-            await session.scalars(
-                select(Operator).where(Operator.email == "op1@corp.test")
-            )
-        ).first()
-        assert operator is not None
-        operator.role = OperatorRole.SUPERVISOR
-        await session.commit()
+) -> None:
+    # Owner (2026-11-25): ANY operator maintains the base; deletes are soft
+    # (14-day archive) and the article shows who added/edited it.
     created = client.post(
         "/api/v1/admin/kb",
         headers=headers(),
@@ -1076,14 +1062,16 @@ async def test_kb_crud_and_operator_read(
     )
     assert created.status_code == 201
     article_id = created.json()["article_id"]
-    hidden = client.put(
+    assert created.json()["created_by"] == "Operator One"
+    edited = client.put(
         f"/api/v1/admin/kb/{article_id}",
         headers=headers(),
         json={"is_active": False},
     )
-    assert hidden.status_code == 200
-    assert hidden.json()["is_active"] is False
-    # Operators only see active articles.
+    assert edited.status_code == 200
+    assert edited.json()["is_active"] is False
+    assert edited.json()["updated_by"] == "Operator One"
+    # Inactive articles are hidden from the composer feed.
     listing = client.get("/api/v1/operator/kb", headers=headers())
     assert listing.status_code == 200
     assert listing.json()["articles"] == []
@@ -1096,15 +1084,31 @@ async def test_kb_crud_and_operator_read(
         == 200
     )
     visible = client.get("/api/v1/operator/kb", headers=headers())
-    articles = visible.json()["articles"]
-    assert len(articles) == 1
-    assert articles[0]["title"] == "Как сбросить VPN"
+    assert len(visible.json()["articles"]) == 1
+    # Soft delete: gone from the reference, present in the archive.
     assert (
         client.delete(f"/api/v1/admin/kb/{article_id}", headers=headers()).status_code
         == 204
     )
+    reference = client.get("/api/v1/admin/kb", headers=headers()).json()
+    assert reference["articles"] == []
+    archive = client.get("/api/v1/admin/kb/archive", headers=headers()).json()
+    assert [a["article_id"] for a in archive["articles"]] == [article_id]
+    assert archive["articles"][0]["deleted_by"] == "Operator One"
     assert (
         client.get("/api/v1/operator/kb", headers=headers()).json()["articles"] == []
+    )
+    # Restore puts it back into the reference.
+    restored = client.post(
+        f"/api/v1/admin/kb/{article_id}/restore", headers=headers()
+    )
+    assert restored.status_code == 200
+    assert (
+        client.get("/api/v1/admin/kb", headers=headers()).json()["articles"] != []
+    )
+    assert (
+        client.get("/api/v1/admin/kb/archive", headers=headers()).json()["articles"]
+        == []
     )
 
 

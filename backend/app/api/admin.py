@@ -7,9 +7,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.operator import _user_login_map
-from app.auth.operators import require_role
+from app.auth.operators import require_operator, require_role
 from app.errors import ApiError
 from app.models import (
     AuditActorType,
@@ -1207,38 +1208,78 @@ class KbPatch(BaseModel):
     is_active: bool | None = None
 
 
-def _kb_view(article: KbArticle) -> dict[str, object]:
+async def _operator_name_map(
+    session: AsyncSession, operator_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    if not operator_ids:
+        return {}
+    rows = await session.scalars(
+        select(Operator).where(Operator.id.in_(operator_ids))
+    )
+    return {
+        operator.id: operator.display_name or operator.email.split("@")[0]
+        for operator in rows
+    }
+
+
+def _kb_view(article: KbArticle, names: dict[uuid.UUID, str]) -> dict[str, object]:
     return {
         "article_id": str(article.id),
         "title": article.title,
         "body": article.body,
         "is_active": article.is_active,
+        "created_at": article.created_at.isoformat(),
         "updated_at": article.updated_at.isoformat(),
+        # Owner (2026-11-25): attribution — who added, who edited last.
+        "created_by": names.get(article.created_by) if article.created_by else None,
+        "updated_by": names.get(article.updated_by) if article.updated_by else None,
+        "deleted_at": article.deleted_at.isoformat() if article.deleted_at else None,
+        "deleted_by": names.get(article.deleted_by) if article.deleted_by else None,
     }
 
 
 @router.get("/kb")
 async def list_kb_articles(
     request: Request,
-    _actor: Annotated[
-        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
-    ],
+    _actor: Annotated[Operator, Depends(require_operator)],
 ) -> dict[str, object]:
-    """The knowledge base reference (owner request, 2026-11-23, plan 8)."""
+    """The knowledge base reference (owner request, 2026-11-23, plan 8;
+    2026-11-25: readable by every operator — they maintain it too)."""
     db = request.app.state.deps.db
     async with db.session_factory() as session:
         articles = await KbRepository().list_all(session)
-    return {"articles": [_kb_view(article) for article in articles]}
+        names = await _operator_name_map(
+            session,
+            {a.created_by for a in articles if a.created_by}
+            | {a.updated_by for a in articles if a.updated_by},
+        )
+    return {"articles": [_kb_view(article, names) for article in articles]}
+
+
+@router.get("/kb/archive")
+async def list_kb_archive(
+    request: Request,
+    _actor: Annotated[Operator, Depends(require_operator)],
+) -> dict[str, object]:
+    """Owner (2026-11-25): 'Недавно удалённые' — restorable for 14 days."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        articles = await KbRepository().list_archive(session)
+        names = await _operator_name_map(
+            session,
+            {a.created_by for a in articles if a.created_by}
+            | {a.deleted_by for a in articles if a.deleted_by},
+        )
+    return {"articles": [_kb_view(article, names) for article in articles]}
 
 
 @router.post("/kb", status_code=201)
 async def create_kb_article(
     payload: KbWrite,
     request: Request,
-    actor: Annotated[
-        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
-    ],
+    actor: Annotated[Operator, Depends(require_operator)],
 ) -> dict[str, object]:
+    """Owner (2026-11-25): ANY operator can add articles to the base."""
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
         article = await KbRepository().create(
@@ -1249,7 +1290,10 @@ async def create_kb_article(
             action="kb.created", entity_type="kb_article", entity_id=article.id,
             details={"title": article.title},
         ))
-    return _kb_view(article)
+        names = await _operator_name_map(
+            session, {article.created_by} if article.created_by else set()
+        )
+    return _kb_view(article, names)
 
 
 @router.put("/kb/{article_id}")
@@ -1257,9 +1301,7 @@ async def update_kb_article(
     article_id: uuid.UUID,
     payload: KbPatch,
     request: Request,
-    actor: Annotated[
-        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
-    ],
+    actor: Annotated[Operator, Depends(require_operator)],
 ) -> dict[str, object]:
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
@@ -1274,30 +1316,60 @@ async def update_kb_article(
             article.is_active = payload.is_active
         if not article.title or not article.body:
             raise ApiError("INVALID_ARTICLE", "Title and body are required", status_code=422)
+        article.updated_by = actor.id
         session.add(AuditLog(
             actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
             action="kb.updated", entity_type="kb_article", entity_id=article.id,
             details={"title": article.title},
         ))
-    return _kb_view(article)
+        names = await _operator_name_map(
+            session,
+            {article.created_by, article.updated_by} - {None},  # type: ignore[arg-type]
+        )
+    return _kb_view(article, names)
 
 
 @router.delete("/kb/{article_id}", status_code=204)
 async def delete_kb_article(
     article_id: uuid.UUID,
     request: Request,
-    actor: Annotated[
-        Operator, Depends(require_role(OperatorRole.SUPERVISOR, OperatorRole.ADMIN))
-    ],
+    actor: Annotated[Operator, Depends(require_operator)],
 ) -> None:
+    """Owner (2026-11-25): soft delete — the article sits in the archive
+    for 14 days, then the worker purges it. Anyone can delete; restoring
+    is always possible from 'Недавно удалённые'."""
     db = request.app.state.deps.db
     async with db.session_factory() as session, session.begin():
         article = await KbRepository().get(session, article_id)
-        if article is None:
+        if article is None or article.deleted_at is not None:
             raise ApiError("KB_NOT_FOUND", "Article was not found", status_code=404)
-        await KbRepository().delete(session, article)
+        await KbRepository().soft_delete(session, article, actor)
         session.add(AuditLog(
             actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
             action="kb.deleted", entity_type="kb_article", entity_id=article_id,
             details={"title": article.title},
         ))
+
+
+@router.post("/kb/{article_id}/restore")
+async def restore_kb_article(
+    article_id: uuid.UUID,
+    request: Request,
+    actor: Annotated[Operator, Depends(require_operator)],
+) -> dict[str, object]:
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        article = await KbRepository().get(session, article_id)
+        if article is None or article.deleted_at is None:
+            raise ApiError("KB_NOT_FOUND", "Article is not in the archive", status_code=404)
+        await KbRepository().restore(session, article)
+        session.add(AuditLog(
+            actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+            action="kb.restored", entity_type="kb_article", entity_id=article_id,
+            details={"title": article.title},
+        ))
+        names = await _operator_name_map(
+            session,
+            {article.created_by, article.updated_by} - {None},  # type: ignore[arg-type]
+        )
+    return _kb_view(article, names)
