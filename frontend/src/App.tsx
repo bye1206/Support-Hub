@@ -379,7 +379,49 @@ type KbArticle = {
   title: string;
   body: string;
   updated_at: string;
+  is_active?: boolean;
+  created_by?: string | null;
+  created_at?: string;
+  updated_by?: string | null;
+  deleted_by?: string | null;
+  deleted_at?: string | null;
 };
+
+async function adminApi<T>(
+  path: string,
+  auth: Credentials,
+  init?: RequestInit,
+): Promise<T> {
+  // Owner (2026-11-25): the knowledge base moved out of the admin panel
+  // into the workspace rail — every operator manages it here, so the
+  // workspace needs the admin endpoints too (they accept operator
+  // tokens; write access is enforced server-side).
+  const response = await fetch(`/api/v1/admin${path}`, {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${auth.token}`,
+      ...init?.headers,
+    },
+  });
+  if (!response.ok) {
+    if (response.status === 401) {
+      sessionStorage.removeItem("support-hub-operator");
+      window.location.reload();
+      throw Error("Сессия истекла — войдите заново");
+    }
+    let msg = `Ошибка ${response.status}`;
+    try {
+      const body = await response.json();
+      msg = body?.error?.message || body?.detail || msg;
+    } catch {
+      /* no response body */
+    }
+    throw Error(msg);
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
 
 async function api<T>(
   path: string,
@@ -483,6 +525,14 @@ export default function App() {
     [droppedFiles, setDroppedFiles] = useState<File[]>([]),
     // Owner (2026-11-23, plan item 8): knowledge base articles for hints.
     [kbArticles, setKbArticles] = useState<KbArticle[]>([]),
+    // Owner (2026-11-25): the KB library lives in the workspace rail —
+    // search, add, edit, delete, restore (out of the admin panel).
+    [kbLibraryOpen, setKbLibraryOpen] = useState(false),
+    [kbQuery, setKbQuery] = useState(""),
+    [kbNewTitle, setKbNewTitle] = useState(""),
+    [kbNewBody, setKbNewBody] = useState(""),
+    [kbEditing, setKbEditing] = useState<KbArticle | null>(null),
+    [kbArchive, setKbArchive] = useState<KbArticle[]>([]),
     [dragOverConversation, setDragOverConversation] = useState(false),
     [resolveCategoryId, setResolveCategoryId] = useState(""),
     [resolveThemeId, setResolveThemeId] = useState(""),
@@ -1308,6 +1358,110 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Не удалось покинуть чат");
     }
   };
+
+  // Owner (2026-11-25): the KB library in the rail — the same CRUD the
+  // admin panel used to have, for every operator.
+  const kbStamp = (value: string) =>
+    new Intl.DateTimeFormat("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  const openKbLibrary = () => {
+    setKbLibraryOpen(true);
+    void adminApi<{ articles: KbArticle[] }>("/kb", auth)
+      .then((data) => setKbArticles(data.articles))
+      .catch(() => undefined);
+    void adminApi<{ articles: KbArticle[] }>("/kb/archive", auth)
+      .then((data) => setKbArchive(data.articles))
+      .catch(() => undefined);
+  };
+  const saveKbArticle = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      const article = await adminApi<KbArticle>("/kb", auth, {
+        method: "POST",
+        body: JSON.stringify({ title: kbNewTitle, body: kbNewBody }),
+      });
+      setKbArticles((items) =>
+        [...items, article].sort((a, b) => a.title.localeCompare(b.title, "ru")),
+      );
+      setKbNewTitle("");
+      setKbNewBody("");
+      setToast("Статья добавлена");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Статья не сохранена");
+    }
+  };
+  const updateKbArticle = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!kbEditing) return;
+    try {
+      const updated = await adminApi<KbArticle>(
+        `/kb/${kbEditing.article_id}`,
+        auth,
+        {
+          method: "PUT",
+          body: JSON.stringify({ title: kbEditing.title, body: kbEditing.body }),
+        },
+      );
+      setKbArticles((items) =>
+        items.map((item) =>
+          item.article_id === updated.article_id ? updated : item,
+        ),
+      );
+      setKbEditing(null);
+      setToast("Статья обновлена");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Статья не обновлена");
+    }
+  };
+  const deleteKbArticle = async (article: KbArticle) => {
+    if (
+      !window.confirm(
+        `Удалить статью «${article.title}»? Её можно восстановить в течение 14 дней.`,
+      )
+    )
+      return;
+    try {
+      await adminApi(`/kb/${article.article_id}`, auth, { method: "DELETE" });
+      setKbArticles((items) =>
+        items.filter((item) => item.article_id !== article.article_id),
+      );
+      setKbArchive((items) => [
+        {
+          ...article,
+          deleted_at: new Date().toISOString(),
+          deleted_by: "вы",
+        },
+        ...items,
+      ]);
+      setToast("Статья удалена — 14 дней можно восстановить");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Статья не удалена");
+    }
+  };
+  const restoreKbArticle = async (article: KbArticle) => {
+    try {
+      const restored = await adminApi<KbArticle>(
+        `/kb/${article.article_id}/restore`,
+        auth,
+        { method: "POST" },
+      );
+      setKbArchive((items) =>
+        items.filter((item) => item.article_id !== article.article_id),
+      );
+      setKbArticles((items) =>
+        [...items, restored].sort((a, b) =>
+          a.title.localeCompare(b.title, "ru"),
+        ),
+      );
+      setToast("Статья восстановлена");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Статья не восстановлена");
+    }
+  };
   const transferToPerson = async (targetOperatorId: string) => {
     if (!current) return;
     try {
@@ -1479,6 +1633,7 @@ export default function App() {
           onClick={() => {
             setHistoryPage(false);
             setAdminOpen(false);
+            setKbLibraryOpen(false);
           }}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1493,6 +1648,7 @@ export default function App() {
           onClick={() => {
             setHistoryPage(true);
             setAdminOpen(false);
+            setKbLibraryOpen(false);
             setProfileMenuOpen(false);
           }}
         >
@@ -1501,13 +1657,24 @@ export default function App() {
             <path d="M12 7v5l3.5 2" />
           </svg>
         </button>
-        <button className="rail-button" disabled title="База знаний (скоро)" aria-label="База знаний">
+        <button
+          className={`rail-button ${kbLibraryOpen ? "active" : ""}`}
+          title="База знаний"
+          aria-label="База знаний"
+          onClick={() => {
+            setKbLibraryOpen(true);
+            setHistoryPage(false);
+            setAdminOpen(false);
+            setProfileMenuOpen(false);
+            openKbLibrary();
+          }}
+        >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 19V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2Zm0 0a2 2 0 0 0 2 2h13" />
             <path d="M9 8h6M9 11h6" />
           </svg>
         </button>
-        {operatorRole !== "OPERATOR" && (
+        {operatorRole === "ADMIN" && (
           <button className={`rail-button ${adminOpen ? "active" : ""}`} title="Панель управления" aria-label="Открыть панель управления"           onClick={() => {
             setAdminOpen(true);
             setHistoryPage(false);
@@ -2432,6 +2599,151 @@ export default function App() {
             </button>
             <button className="quiet-action" onClick={() => setTransferConfirm(null)}>
               Отмена
+            </button>
+          </div>
+        </div>
+      )}
+      {kbLibraryOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setKbLibraryOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="modal kb-library"
+            role="dialog"
+            aria-label="База знаний"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">База знаний</div>
+            <p className="admin-muted" style={{ margin: 0 }}>
+              Справочник для быстрых ответов: статьи может добавлять и менять
+              любой оператор, автор и время видны под статьёй.
+            </p>
+            <input
+              className="kb-search"
+              placeholder="Поиск по статьям"
+              value={kbQuery}
+              onChange={(event) => setKbQuery(event.target.value)}
+            />
+            <form className="kb-add-form" onSubmit={(event) => void saveKbArticle(event)}>
+              <input
+                required
+                maxLength={200}
+                placeholder="Заголовок статьи"
+                value={kbNewTitle}
+                onChange={(event) => setKbNewTitle(event.target.value)}
+              />
+              <textarea
+                required
+                maxLength={10000}
+                placeholder="Текст ответа"
+                value={kbNewBody}
+                onChange={(event) => setKbNewBody(event.target.value)}
+                rows={3}
+              />
+              <button type="submit">Добавить</button>
+            </form>
+            <div className="kb-library-list">
+              {kbArticles
+                .filter((article) => {
+                  const needle = kbQuery.trim().toLowerCase();
+                  if (!needle) return true;
+                  return (
+                    article.title.toLowerCase().includes(needle) ||
+                    article.body.toLowerCase().includes(needle)
+                  );
+                })
+                .map((article) => (
+                  <div
+                    key={article.article_id}
+                    className={`kb-library-row ${article.is_active === false ? "inactive" : ""}`}
+                  >
+                    {kbEditing?.article_id === article.article_id ? (
+                      <form
+                        className="kb-edit-form"
+                        onSubmit={(event) => void updateKbArticle(event)}
+                      >
+                        <input
+                          required
+                          maxLength={200}
+                          value={kbEditing.title}
+                          onChange={(event) =>
+                            setKbEditing({ ...kbEditing, title: event.target.value })
+                          }
+                        />
+                        <textarea
+                          required
+                          maxLength={10000}
+                          rows={3}
+                          value={kbEditing.body}
+                          onChange={(event) =>
+                            setKbEditing({ ...kbEditing, body: event.target.value })
+                          }
+                        />
+                        <div className="kb-actions">
+                          <button type="submit">Сохранить</button>
+                          <button type="button" onClick={() => setKbEditing(null)}>
+                            Отмена
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="kb-library-text">
+                          <strong>{article.title}</strong>
+                          <span>{article.body}</span>
+                          <span className="kb-attribution">
+                            Добавил: {article.created_by || "—"} ·{" "}
+                            {article.created_at ? kbStamp(article.created_at) : "—"}
+                            {article.updated_by
+                              ? ` · Изменял: ${article.updated_by} · ${kbStamp(article.updated_at)}`
+                              : ""}
+                          </span>
+                        </div>
+                        <div className="kb-actions">
+                          <button onClick={() => setKbEditing(article)}>Изменить</button>
+                          <button
+                            className="kb-danger"
+                            onClick={() => void deleteKbArticle(article)}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              {!kbArticles.length && (
+                <p className="admin-muted">Статей пока нет</p>
+              )}
+              {kbArchive.length > 0 && (
+                <>
+                  <p className="admin-muted" style={{ marginTop: 12 }}>
+                    Недавно удалённые — восстановить можно в течение 14 дней,
+                    потом удалятся насовсем
+                  </p>
+                  {kbArchive.map((article) => (
+                    <div key={article.article_id} className="kb-library-row">
+                      <div className="kb-library-text">
+                        <strong>{article.title}</strong>
+                        <span className="kb-attribution">
+                          Удалил: {article.deleted_by || "—"} ·{" "}
+                          {article.deleted_at ? kbStamp(article.deleted_at) : "—"}
+                        </span>
+                      </div>
+                      <div className="kb-actions">
+                        <button onClick={() => void restoreKbArticle(article)}>
+                          Восстановить
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+            <button className="quiet-action" onClick={() => setKbLibraryOpen(false)}>
+              Закрыть
             </button>
           </div>
         </div>

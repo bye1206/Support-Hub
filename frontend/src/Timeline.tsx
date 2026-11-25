@@ -318,7 +318,10 @@ function TimelineImpl({
                 {author === "AI" ? (
                   "✦"
                 ) : author === "OPERATOR" ? (
-                  initials(operatorName)
+                  // Owner (2026-11-25): specialists write here too — show
+                  // the message author's own initials, not the current
+                  // operator's (that made Ivan's messages look like mine).
+                  initials(m.author_name || operatorName)
                 ) : userAvatarUrl ? (
                   <img
                     className="message-avatar-photo"
@@ -339,7 +342,7 @@ function TimelineImpl({
                       ? "AI-помощник"
                       : author === "SYSTEM"
                         ? ""
-                        : operatorName}
+                        : m.author_name || operatorName}
                 </strong>
                 <time>
                   {new Intl.DateTimeFormat("ru-RU", {

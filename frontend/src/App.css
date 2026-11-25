@@ -2199,6 +2199,111 @@
   display: block;
   margin: 10px auto 0;
 }
+
+/* Owner (2026-11-25): the knowledge base library lives in the workspace
+   rail — search, add, edit, delete and restore articles. */
+.kb-library {
+  width: min(680px, 92vw);
+  max-height: 84vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+}
+.kb-search {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.kb-add-form {
+  display: grid;
+  gap: 8px;
+}
+.kb-add-form input,
+.kb-add-form textarea,
+.kb-edit-form input,
+.kb-edit-form textarea {
+  padding: 7px 10px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+}
+.kb-add-form button,
+.kb-edit-form button,
+.kb-actions button {
+  min-height: 30px;
+  padding: 6px 12px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.kb-add-form button:hover,
+.kb-actions button:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.kb-add-form button {
+  justify-self: start;
+  background: #e2001a;
+  border-color: #e2001a;
+  color: #fff;
+}
+.kb-add-form button:hover {
+  background: #c40017;
+  border-color: #c40017;
+}
+.kb-library-list {
+  display: grid;
+  gap: 8px;
+}
+.kb-library-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+}
+.kb-library-row.inactive {
+  opacity: 0.55;
+}
+.kb-library-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.kb-library-text strong {
+  font-size: 12.5px;
+}
+.kb-library-text > span {
+  font-size: 11.5px;
+  color: #4d5560;
+  white-space: pre-wrap;
+}
+.kb-attribution {
+  font-size: 10.5px !important;
+  color: #8b93a1 !important;
+}
+.kb-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.kb-danger {
+  color: #e2001a;
+}
+.kb-edit-form {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+}
 .action-section button {
   min-height: 34px;
   border: 0;
