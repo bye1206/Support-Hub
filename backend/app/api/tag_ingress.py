@@ -7,6 +7,7 @@ MessageService (unit_of_work); this module only opens the session.
 
 import base64
 import hmac
+import logging
 import uuid
 from typing import Annotated
 
@@ -25,6 +26,8 @@ from app.services.messages import IncomingFile, MessageService
 from app.services.ratings import RatingService
 
 router = APIRouter(prefix="/api/v1/integrations/tag", tags=["tag-integration"])
+
+logger = logging.getLogger(__name__)
 
 
 async def require_bot_token(
@@ -236,16 +239,28 @@ async def rating_button(
     except Exception:
         body = {}
     context = body.get("context") or {}
+    logger.info(
+        "Rating click: context keys=%s post_id=%s",
+        sorted(context.keys()),
+        bool(body.get("post_id")),
+    )
     try:
         parsed = RatingButtonContext.model_validate(context)
     except Exception:
+        logger.warning("Rating click: unparsable context, dropped")
         return {}
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         ticket = await TicketRepository().get(session, parsed.ticket_id)
         if ticket is None:
+            logger.warning(
+                "Rating click: ticket %s not found, dropped", parsed.ticket_id
+            )
             return {}
         await RatingService().capture_score(session, ticket, parsed.score)
+    logger.info(
+        "Rating click: captured score=%s ticket=%s", parsed.score, parsed.ticket_id
+    )
     # Owner (2026-11-25): replace the button card with a thank-you note —
     # the orchestrator relays the click WITH post_id, we own the bot token.
     # Best-effort: a failed edit leaves the buttons, a repeat click just
