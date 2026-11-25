@@ -1985,6 +1985,20 @@ export default function App() {
                 ? "Переписка и детали появятся здесь"
                 : "Новые обращения появятся здесь, когда пользователь напишет в поддержку"}
             </p>
+            {presence !== "ACTIVE" && (
+              // Owner request (2026-11-25): the same banner on the main
+              // screen — an operator who just logged in or went offline
+              // must see right away that chats are not coming.
+              <div className="offline-banner centered" role="status">
+                <span>
+                  Вы в статусе «{presenceLabels[presence]}» — новые чаты вам
+                  не приходят.
+                </span>
+                <button onClick={() => void changePresence("ACTIVE")}>
+                  Стать активным
+                </button>
+              </div>
+            )}
             {error && (
               <div className="error-banner centered">
                 {error}

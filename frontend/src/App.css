@@ -3912,6 +3912,13 @@ button.team-row.clickable:hover {
   font-size: 13px;
   font-weight: 600;
 }
+/* Owner (2026-11-25): the same banner on the welcome screen. */
+.offline-banner.centered {
+  max-width: 480px;
+  margin: 18px auto 0;
+  flex-wrap: wrap;
+  text-align: center;
+}
 .offline-banner button {
   padding: 4px 12px;
   border: 1px solid rgba(226, 0, 26, 0.35);

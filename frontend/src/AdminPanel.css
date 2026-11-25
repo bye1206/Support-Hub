@@ -663,9 +663,19 @@
 .stats-layout {
   display: grid;
   /* Owner (2026-11-23): people | AI bot | whole-support totals. */
-  grid-template-columns: minmax(0, 6fr) minmax(210px, 2.5fr) minmax(210px, 2.5fr);
+  grid-template-columns: minmax(0, 6fr) minmax(200px, 2.5fr) minmax(200px, 2.5fr);
   gap: 20px;
   align-items: start;
+}
+/* Owner (2026-11-25): the side blocks stack their cards — the 2-column
+   card grid has a 394px minimum and was overlapping the neighbors. */
+.stats-ai .admin-stats,
+.stats-total .admin-stats {
+  grid-template-columns: 1fr;
+}
+@media (max-width: 1400px) {
+  .stats-layout { grid-template-columns: minmax(0, 1fr) minmax(200px, 2.5fr); }
+  .stats-people { grid-column: 1 / -1; }
 }
 @media (max-width: 1000px) {
   .stats-layout { grid-template-columns: 1fr; }
