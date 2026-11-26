@@ -177,7 +177,16 @@ function RatingBadge({ value }: { value?: number | null }) {
   if (value == null) return null;
   return (
     <span className="rating-badge" title="Средняя оценка">
-      {value > 4.7 && <span className="rating-crown">👑</span>}
+      {value > 4.7 && (
+        // Owner (2026-11-26): a drawn crown (not the emoji) so the badge
+        // reads as ONE symbol: crown + digits side by side, aligned.
+        <svg className="rating-crown" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M2.5 7.5l5 4.2L12 4.5l4.5 7.2 5-4.2-1.8 11H4.3L2.5 7.5Z"
+            fill="#f0b429"
+          />
+        </svg>
+      )}
       <span className="rating-value">{value}</span>
     </span>
   );
@@ -1853,7 +1862,12 @@ export default function App() {
               )}
             </span>
             <span className="profile-copy">
-              <strong>{profile?.display_name || "Оператор"}</strong>
+              {/* Owner (2026-11-26): the rating sits next to the name and
+                  must not shift the status / activity line below it. */}
+              <strong>
+                {profile?.display_name || "Оператор"}
+                <RatingBadge value={profile?.avg_rating} />
+              </strong>
               <span>
                 <i className={`presence-dot ${presence.toLowerCase()}`} />{" "}
                 {presenceLabels[presence]}
@@ -1861,7 +1875,6 @@ export default function App() {
                   ? ` · ${fmtDuration(nowTs - new Date(presenceSince).getTime())}`
                   : ""}
               </span>
-              <RatingBadge value={profile?.avg_rating} />
             </span>
           </button>
           {profileMenuOpen && profile && (
@@ -2604,22 +2617,20 @@ export default function App() {
         </div>
       )}
       {kbLibraryOpen && (
-        <div
-          className="modal-backdrop"
-          onClick={() => setKbLibraryOpen(false)}
-          role="presentation"
-        >
-          <div
-            className="modal kb-library"
-            role="dialog"
-            aria-label="База знаний"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-title">База знаний</div>
-            <p className="admin-muted" style={{ margin: 0 }}>
-              Справочник для быстрых ответов: статьи может добавлять и менять
-              любой оператор, автор и время видны под статьёй.
-            </p>
+        // Owner (2026-11-26): the KB is a full page (like the queue and
+        // the admin panel), not a modal on top of the workspace.
+        <div className="kb-page" role="region" aria-label="База знаний">
+          <header className="history-page-header">
+            <div>
+              <p className="eyebrow">SUPPORT HUB</p>
+              <h1>База знаний</h1>
+            </div>
+          </header>
+          <p className="kb-page-intro">
+            Справочник для быстрых ответов: статьи может добавлять и менять
+            любой оператор, автор и время видны под статьёй.
+          </p>
+          <div className="kb-page-tools">
             <input
               className="kb-search"
               placeholder="Поиск по статьям"
@@ -2644,7 +2655,8 @@ export default function App() {
               />
               <button type="submit">Добавить</button>
             </form>
-            <div className="kb-library-list">
+          </div>
+          <div className="kb-library-list">
               {kbArticles
                 .filter((article) => {
                   const needle = kbQuery.trim().toLowerCase();
@@ -2719,7 +2731,7 @@ export default function App() {
               )}
               {kbArchive.length > 0 && (
                 <>
-                  <p className="admin-muted" style={{ marginTop: 12 }}>
+                  <p className="kb-archive-title">
                     Недавно удалённые — восстановить можно в течение 14 дней,
                     потом удалятся насовсем
                   </p>
@@ -2742,10 +2754,6 @@ export default function App() {
                 </>
               )}
             </div>
-            <button className="quiet-action" onClick={() => setKbLibraryOpen(false)}>
-              Закрыть
-            </button>
-          </div>
         </div>
       )}
       {movesOpen && current && (
