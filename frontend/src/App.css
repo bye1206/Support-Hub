@@ -2256,10 +2256,11 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 20px 14px;
+  padding: 20px 14px 48px;
   border-right: 1px solid #e6e9ee;
   background: #fafbfc;
   overflow-y: auto;
+  position: relative;
 }
 .kb-search {
   min-height: 34px;
@@ -2328,23 +2329,23 @@
   letter-spacing: 0.4px;
   color: #8b93a1;
 }
-/* Owner (2026-11-26): the trash icon — bottom-left of the KB sidebar,
-   a plain clickable icon (no box). */
+/* Owner (2026-11-26): the trash icon — pinned bottom-left of the KB
+   sidebar, a plain clickable icon (no box). */
 .kb-trash {
-  margin-top: auto;
-  align-self: flex-start;
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: #9aa3b0;
   cursor: pointer;
-  position: relative;
 }
 .kb-trash:hover {
   color: #e2001a;
@@ -2354,14 +2355,14 @@
   color: #17191d;
   background: #eef0f4;
 }
-.kb-trash:hover {
-  border-color: rgba(226, 0, 26, 0.25);
-  background: #fdecec;
-}
-.kb-trash.active {
-  background: #17191d;
-  border-color: #17191d;
-  color: #fff;
+.kb-trash svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .kb-trash svg {
   width: 14px;
@@ -2450,6 +2451,23 @@ button.kb-attachment-chip {
 button.kb-attachment-chip:hover {
   border-color: rgba(226, 0, 26, 0.25);
   background: #fdecec;
+}
+.kb-attachment-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.kb-attachment-name:hover {
+  color: #e2001a;
+}
+.kb-editor-body.kb-drag-over,
+.kb-view-body.kb-drag-over {
+  outline: 2px dashed rgba(226, 0, 26, 0.4);
+  outline-offset: -4px;
+  background: #fffafa;
 }
 .kb-inline-image {
   display: block;
@@ -3672,14 +3690,18 @@ body:has(.app-shell[data-theme="dark"]) {
   gap: 2px;
   min-width: 0;
 }
-/* Owner (2026-11-26): the rating emblem aligns with the NAME line. */
+/* Owner (2026-11-26): the rating emblem aligns with the NAME line —
+   the row has a fixed height and BOTH the name text and the emblem are
+   centered on the same axis; the span rule below must not reach into
+   the badge (it set gap/font on the crown stack). */
 .profile-button .profile-copy strong {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
+  height: 18px;
   line-height: 1;
 }
-.profile-button .profile-copy span {
+.profile-button .profile-copy > span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -4333,9 +4355,9 @@ button.team-row.clickable:hover {
 .rating-crown {
   /* Owner (2026-11-26): the crown sits ON the capsule edge — one emblem,
      not a floating icon. */
-  width: 11px;
+  width: 12px;
   height: 7px;
-  margin-bottom: -2px;
+  margin-bottom: -3px;
   position: relative;
   z-index: 1;
 }
@@ -4343,8 +4365,8 @@ button.team-row.clickable:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1px 7px;
-  border: 1.4px solid #e8a10e;
+  padding: 0 6px;
+  border: 1.3px solid #e8a10e;
   border-radius: 999px;
 }
 .app-shell[data-theme="dark"] .rating-capsule {

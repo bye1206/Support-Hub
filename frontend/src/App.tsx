@@ -188,7 +188,7 @@ function RatingBadge({ value }: { value?: number | null }) {
     // golden capsule with the digits, one ornamental emblem.
     <span className="rating-badge" title="Средняя оценка">
       <span className="rating-crown-stack">
-        <svg className="rating-crown" viewBox="0 0 24 16" aria-hidden="true">
+        <svg className="rating-crown" viewBox="2 2 20 12" aria-hidden="true">
           <path
             d="M2.5 5.5l5 4.2L12 2.5l4.5 7.2 5-4.2-1.8 8H4.3l-1.8-8Z"
             fill="#e8a10e"
@@ -2895,19 +2895,7 @@ export default function App() {
               )}
             </button>
           </aside>
-          <section
-            className={`kb-content ${kbDragOver ? "kb-drag-over" : ""}`}
-            onDragOver={(event) => {
-              if (!kbTarget || kbMode === "archive") return;
-              event.preventDefault();
-              setKbDragOver(true);
-            }}
-            onDragLeave={(event) => {
-              if (event.currentTarget === event.target) setKbDragOver(false);
-            }}
-            onDrop={handleKbDrop}
-            onPaste={handleKbPaste}
-          >
+          <section className="kb-content">
             {kbMode === "archive" ? (
               <div className="kb-archive-page">
                 <input
@@ -2997,11 +2985,18 @@ export default function App() {
                   />
                   <textarea
                     ref={kbBodyRef}
-                    className="kb-editor-body"
+                    className={`kb-editor-body ${kbDragOver ? "kb-drag-over" : ""}`}
                     required
                     maxLength={10000}
                     rows={14}
                     value={kbEditing.body}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setKbDragOver(true);
+                    }}
+                    onDragLeave={() => setKbDragOver(false)}
+                    onDrop={handleKbDrop}
+                    onPaste={handleKbPaste}
                     onChange={(event) =>
                       setKbEditing({ ...kbEditing, body: event.target.value })
                     }
@@ -3065,7 +3060,16 @@ export default function App() {
                         : ""}
                     </p>
                   )}
-                  <div className="kb-view-body">
+                  <div
+                    className={`kb-view-body ${kbDragOver ? "kb-drag-over" : ""}`}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setKbDragOver(true);
+                    }}
+                    onDragLeave={() => setKbDragOver(false)}
+                    onDrop={handleKbDrop}
+                    onPaste={handleKbPaste}
+                  >
                     {kbSelected.body
                       .split(/(attachment:[0-9a-fA-F-]{36})/)
                       .map((part, index) => {
@@ -3101,15 +3105,33 @@ export default function App() {
                   {(kbSelected.attachments?.length ?? 0) > 0 && (
                     <div className="kb-attachments">
                       {kbSelected.attachments!.map((item) => (
-                        <button
+                        <span
                           key={item.attachment_id}
                           className="kb-attachment-chip"
-                          title="Скачать"
-                          onClick={() => void downloadKbAttachment(item)}
                         >
-                          {item.file_name} ·{" "}
-                          {Math.max(1, Math.round(item.size_bytes / 1024))} КБ
-                        </button>
+                          <button
+                            className="kb-attachment-name"
+                            title="Скачать"
+                            onClick={() => void downloadKbAttachment(item)}
+                          >
+                            {item.file_name} ·{" "}
+                            {Math.max(1, Math.round(item.size_bytes / 1024))} КБ
+                          </button>
+                          {/* Owner (2026-11-26): insert from the view too —
+                              switches to the editor with the marker added. */}
+                          <button
+                            type="button"
+                            title="Вставить в текст"
+                            onClick={() => {
+                              setKbEditing({
+                                ...kbSelected,
+                                body: `${kbSelected.body} attachment:${item.attachment_id}`,
+                              });
+                            }}
+                          >
+                            В текст
+                          </button>
+                        </span>
                       ))}
                     </div>
                   )}
