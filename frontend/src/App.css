@@ -2328,22 +2328,31 @@
   letter-spacing: 0.4px;
   color: #8b93a1;
 }
-/* Owner (2026-11-26): the trash icon — bottom-left of the KB sidebar. */
+/* Owner (2026-11-26): the trash icon — bottom-left of the KB sidebar,
+   a plain clickable icon (no box). */
 .kb-trash {
   margin-top: auto;
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid #e9ecf1;
+  border: 0;
   border-radius: 7px;
-  background: #fff;
-  color: #707b8b;
+  background: transparent;
+  color: #9aa3b0;
   cursor: pointer;
   position: relative;
+}
+.kb-trash:hover {
+  color: #e2001a;
+  background: #fdecec;
+}
+.kb-trash.active {
+  color: #17191d;
+  background: #eef0f4;
 }
 .kb-trash:hover {
   border-color: rgba(226, 0, 26, 0.25);

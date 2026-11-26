@@ -585,7 +585,12 @@ export default function App() {
     // forwarded to the composer via this queue.
     [droppedFiles, setDroppedFiles] = useState<File[]>([]),
     // Owner (2026-11-23, plan item 8): knowledge base articles for hints.
+    // Owner (2026-11-26): the KB PAGE list (kbArticles) and the composer
+    // hints (kbHints) are SEPARATE — the 5 s queue poll used to overwrite
+    // the page list with /operator/kb (active-only), which could make
+    // freshly created articles vanish in front of the operator.
     [kbArticles, setKbArticles] = useState<KbArticle[]>([]),
+    [kbHints, setKbHints] = useState<KbArticle[]>([]),
     // Owner (2026-11-25): the KB library lives in the workspace rail —
     // search, add, edit, delete, restore (out of the admin panel).
     [kbLibraryOpen, setKbLibraryOpen] = useState(false),
@@ -710,11 +715,12 @@ export default function App() {
       setTickets(data.tickets);
       setError("");
       // Owner (2026-11-23, plan item 8): knowledge base for the composer
-      // hints — a nicety, never a failure.
+      // hints — a nicety, never a failure. Feeds kbHints ONLY; the KB
+      // page list is managed by the page itself.
       void api<{ articles: KbArticle[] }>("/kb", auth)
         // Owner (2026-11-26): a stub/odd response without `articles` used to
         // setKbArticles(undefined) and crash the whole render.
-        .then((kb) => setKbArticles(kb.articles ?? []))
+        .then((kb) => setKbHints(kb.articles ?? []))
         .catch(() => undefined);
       const selected = selectedRef.current
         ? data.tickets.find((t) => t.ticket_id === selectedRef.current)
@@ -1557,6 +1563,29 @@ export default function App() {
   const kbSelected =
     (kbArticles ?? []).find((article) => article.article_id === kbSelectedId) ??
     null;
+  // Owner (2026-11-26): 'В текст' inserts the attachment marker at the
+  // textarea cursor (fallback: the end of the text).
+  const kbBodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const insertKbMarker = (attachmentId: string) => {
+    if (!kbEditing) return;
+    const marker = ` attachment:${attachmentId}`;
+    const el = kbBodyRef.current;
+    const start =
+      el && typeof el.selectionStart === "number"
+        ? el.selectionStart
+        : kbEditing.body.length;
+    const end = el && typeof el.selectionEnd === "number" ? el.selectionEnd : start;
+    const body =
+      kbEditing.body.slice(0, start) + marker + kbEditing.body.slice(end);
+    setKbEditing({ ...kbEditing, body });
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + marker.length;
+        el.setSelectionRange(pos, pos);
+      });
+    }
+  };
   const openKbHistory = async (article: KbArticle) => {
     setKbHistoryFor(article);
     setKbHistory([]);
@@ -1588,21 +1617,21 @@ export default function App() {
       /* download is best-effort */
     }
   };
-  const uploadKbFiles = async (files: FileList | null) => {
-    if (!kbEditing || !files || !files.length) return;
+  const uploadKbFiles = async (article: KbArticle, files: FileList | null) => {
+    if (!files || !files.length) return;
     try {
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.append("file", file);
         const item = await adminApi<KbAttachmentView>(
-          `/kb/${kbEditing.article_id}/attachments`,
+          `/kb/${article.article_id}/attachments`,
           auth,
           { method: "POST", body: form },
         );
-        const apply = (article: KbArticle) =>
-          article.article_id === kbEditing.article_id
-            ? { ...article, attachments: [...(article.attachments ?? []), item] }
-            : article;
+        const apply = (candidate: KbArticle) =>
+          candidate.article_id === article.article_id
+            ? { ...candidate, attachments: [...(candidate.attachments ?? []), item] }
+            : candidate;
         setKbArticles((items) => items.map(apply));
         setKbEditing((current) => (current ? apply(current) : current));
       }
@@ -2356,7 +2385,7 @@ export default function App() {
               onSend={send}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={() => setDroppedFiles([])}
-              kbArticles={kbArticles}
+              kbArticles={kbHints}
             />
           </>
         ) : (
@@ -2929,6 +2958,7 @@ export default function App() {
                     }
                   />
                   <textarea
+                    ref={kbBodyRef}
                     className="kb-editor-body"
                     required
                     maxLength={10000}
@@ -2949,12 +2979,7 @@ export default function App() {
                           <button
                             type="button"
                             title="Вставить ссылку на файл в текст"
-                            onClick={() =>
-                              setKbEditing({
-                                ...kbEditing,
-                                body: `${kbEditing.body} attachment:${item.attachment_id}`,
-                              })
-                            }
+                            onClick={() => insertKbMarker(item.attachment_id)}
                           >
                             В текст
                           </button>
@@ -2975,7 +3000,9 @@ export default function App() {
                       type="file"
                       multiple
                       onChange={(event) => {
-                        void uploadKbFiles(event.target.files);
+                        if (kbEditing) {
+                          void uploadKbFiles(kbEditing, event.target.files);
+                        }
                         event.target.value = "";
                       }}
                     />
@@ -3047,6 +3074,19 @@ export default function App() {
                       ))}
                     </div>
                   )}
+                  {/* Owner (2026-11-26): files attach right in the view —
+                      no need to enter edit mode first. */}
+                  <label className="kb-upload">
+                    Прикрепить файлы
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(event) => {
+                        void uploadKbFiles(kbSelected, event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
                   <div className="kb-editor-actions">
                     <button onClick={() => setKbEditing(kbSelected)}>
                       Изменить
