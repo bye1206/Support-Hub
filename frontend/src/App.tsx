@@ -444,6 +444,51 @@ function KbInlineImage({ id, token }: { id: string; token: string }) {
   return src ? <img className="kb-inline-image" src={src} alt="" /> : null;
 }
 
+// Owner (2026-11-26): renders article text with `attachment:<id>` markers
+// resolved — images INLINE, other files as links. Shared by the article
+// view and the editor's live preview ("скриншот прямо в тексте").
+function KbBody({
+  body,
+  attachments,
+  token,
+  onDownload,
+}: {
+  body: string;
+  attachments: KbAttachmentView[];
+  token: string;
+  onDownload: (item: KbAttachmentView) => void;
+}) {
+  return (
+    <>
+      {body
+        .split(/(attachment:[0-9a-fA-F-]{36})/)
+        .map((part, index) => {
+          const marker = part.match(/^attachment:([0-9a-fA-F-]{36})$/);
+          if (!marker) {
+            return <span key={index}>{part}</span>;
+          }
+          const file = attachments.find(
+            (item) => item.attachment_id === marker[1],
+          );
+          if (!file) {
+            return <span key={index}>{part}</span>;
+          }
+          return file.mime_type.startsWith("image/") ? (
+            <KbInlineImage key={index} id={file.attachment_id} token={token} />
+          ) : (
+            <button
+              key={index}
+              className="kb-inline-file"
+              onClick={() => onDownload(file)}
+            >
+              {file.file_name}
+            </button>
+          );
+        })}
+    </>
+  );
+}
+
 async function adminApi<T>(
   path: string,
   auth: Credentials,
@@ -2923,19 +2968,6 @@ export default function App() {
                 <p className="kb-empty">Статей пока нет</p>
               )}
             </nav>
-            <button
-              className={`kb-trash ${kbMode === "archive" ? "active" : ""}`}
-              title="Недавно удалённые"
-              aria-label="Недавно удалённые"
-              onClick={() =>
-                setKbMode((mode) => (mode === "archive" ? "articles" : "archive"))
-              }
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" />
-                <path d="M10 11v5m4-5v5" />
-              </svg>
-            </button>
           </aside>
           <section className="kb-content">
             {kbMode === "archive" ? (
@@ -3043,6 +3075,20 @@ export default function App() {
                       setKbEditing({ ...kbEditing, body: event.target.value })
                     }
                   />
+                  {/* Owner (2026-11-26): a live preview under the editor —
+                      the screenshot appears RIGHT IN THE TEXT the moment
+                      the marker lands there (drop / paste / В текст). */}
+                  <div className="kb-preview">
+                    <div className="kb-attachments-label">Предпросмотр</div>
+                    <div className="kb-view-body">
+                      <KbBody
+                        body={kbEditing.body}
+                        attachments={kbEditing.attachments ?? []}
+                        token={auth.token}
+                        onDownload={(item) => void downloadKbAttachment(item)}
+                      />
+                    </div>
+                  </div>
                   {/* Owner (2026-11-26): a dedicated attachments box — its
                       own drop zone (attach only), chips with В текст /
                       Удалить, and the attach button. */}
@@ -3131,37 +3177,12 @@ export default function App() {
                     onDrop={(event) => handleKbDrop(event, false)}
                     onPaste={handleKbPaste}
                   >
-                    {kbSelected.body
-                      .split(/(attachment:[0-9a-fA-F-]{36})/)
-                      .map((part, index) => {
-                        const marker = part.match(
-                          /^attachment:([0-9a-fA-F-]{36})$/,
-                        );
-                        if (!marker) {
-                          return <span key={index}>{part}</span>;
-                        }
-                        const file = (kbSelected.attachments ?? []).find(
-                          (item) => item.attachment_id === marker[1],
-                        );
-                        if (!file) {
-                          return <span key={index}>{part}</span>;
-                        }
-                        return file.mime_type.startsWith("image/") ? (
-                          <KbInlineImage
-                            key={index}
-                            id={file.attachment_id}
-                            token={auth.token}
-                          />
-                        ) : (
-                          <button
-                            key={index}
-                            className="kb-inline-file"
-                            onClick={() => void downloadKbAttachment(file)}
-                          >
-                            {file.file_name}
-                          </button>
-                        );
-                      })}
+                    <KbBody
+                      body={kbSelected.body}
+                      attachments={kbSelected.attachments ?? []}
+                      token={auth.token}
+                      onDownload={(item) => void downloadKbAttachment(item)}
+                    />
                   </div>
                   {(kbSelected.attachments?.length ?? 0) > 0 && (
                     <div className="kb-attachments">

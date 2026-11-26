@@ -681,13 +681,13 @@
   flex: 1;
 }
 .profile-copy strong {
-  overflow: hidden;
   color: #384356;
   font-size: 11px;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.profile-copy span {
+/* Owner (2026-11-26): scoped to the DIRECT status line only — this rule
+   used to reach into the rating badge and shrink its digits to 9px. */
+.profile-copy > span {
   overflow: hidden;
   color: #9ba4b1;
   font-size: 9px;
@@ -2505,6 +2505,19 @@ button.kb-attachment-chip:hover {
   border: 1px solid #eef0f4;
   border-radius: 8px;
 }
+.kb-preview {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+.kb-preview .kb-view-body {
+  max-width: none;
+  margin: 0;
+  font-size: 12.5px;
+}
 .kb-attachments-label {
   font-size: 10.5px;
   font-weight: 700;
@@ -3690,9 +3703,11 @@ body:has(.app-shell[data-theme="dark"]) {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 18px;
+  height: 19px;
   line-height: 1;
   font-size: 13px;
+  /* The crown pokes above the line — must not be clipped. */
+  overflow: visible;
 }
 .profile-button .profile-copy > span {
   display: inline-flex;
@@ -4345,12 +4360,11 @@ button.team-row.clickable:hover {
 .rating-crown-stack {
   position: relative;
   display: inline-flex;
-  margin-top: 6px;
   line-height: 1;
 }
 .rating-crown {
   position: absolute;
-  top: -6px;
+  top: -7px;
   left: 50%;
   transform: translateX(-50%);
   width: 12px;
@@ -4368,7 +4382,7 @@ button.team-row.clickable:hover {
   border-color: #f2b93b;
 }
 .rating-value {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   color: #17191d;
 }

@@ -171,8 +171,25 @@ function ComposerImpl({
                 aria-selected={false}
                 className="composer-kb-item"
                 onClick={() => {
+                  // Owner (2026-11-26): image markers become visible
+                  // "(скриншот N)" captions IN the text (numbered in the
+                  // attachments' order, images only); the files themselves
+                  // ride along as chips via onKbArticleInsert.
+                  const labels = new Map<string, string>();
+                  let imageNo = 0;
+                  (article.attachments ?? []).forEach((item) => {
+                    if (item.mime_type.startsWith("image/")) {
+                      imageNo += 1;
+                      labels.set(item.attachment_id, ` (скриншот ${imageNo})`);
+                    }
+                  });
                   setText(
-                    article.body.replace(/ ?attachment:[0-9a-fA-F-]{36}/g, ""),
+                    article.body.replace(
+                      / ?attachment:[0-9a-fA-F-]{36}/g,
+                      (marker) =>
+                        labels.get(marker.trim().slice("attachment:".length)) ??
+                        "",
+                    ),
                   );
                   onKbArticleInsert?.(article);
                   areaRef.current?.focus();
