@@ -8,6 +8,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, desc, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.operator import _user_login_map
@@ -1258,12 +1259,18 @@ def _kb_view(
 async def _kb_attachment_map(
     session: AsyncSession, article_ids: set[uuid.UUID]
 ) -> dict[uuid.UUID, list[KbAttachment]]:
-    """Attachments grouped per article (Owner, 2026-11-26)."""
+    """Attachments grouped per article (Owner, 2026-11-26).
+
+    Tolerates the 0026 migration not being applied yet: the KB lists and
+    the composer hints must not 500 because the table is missing."""
     if not article_ids:
         return {}
-    rows = await session.scalars(
-        select(KbAttachment).where(KbAttachment.article_id.in_(article_ids))
-    )
+    try:
+        rows = await session.scalars(
+            select(KbAttachment).where(KbAttachment.article_id.in_(article_ids))
+        )
+    except SQLAlchemyError:
+        return {}
     grouped: dict[uuid.UUID, list[KbAttachment]] = {}
     for row in rows:
         grouped.setdefault(row.article_id, []).append(row)

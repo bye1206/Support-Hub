@@ -610,6 +610,9 @@ export default function App() {
     // the KB page, not a footer section.
     [kbMode, setKbMode] = useState<"articles" | "archive">("articles"),
     [kbArchiveQuery, setKbArchiveQuery] = useState(""),
+    // Owner (2026-11-26): attachment upload progress + drag-over glow.
+    [kbUploading, setKbUploading] = useState(false),
+    [kbDragOver, setKbDragOver] = useState(false),
     [dragOverConversation, setDragOverConversation] = useState(false),
     [resolveCategoryId, setResolveCategoryId] = useState(""),
     [resolveThemeId, setResolveThemeId] = useState(""),
@@ -1619,7 +1622,9 @@ export default function App() {
   };
   const uploadKbFiles = async (article: KbArticle, files: FileList | null) => {
     if (!files || !files.length) return;
+    setKbUploading(true);
     try {
+      let uploaded = 0;
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.append("file", file);
@@ -1628,6 +1633,7 @@ export default function App() {
           auth,
           { method: "POST", body: form },
         );
+        uploaded += 1;
         const apply = (candidate: KbArticle) =>
           candidate.article_id === article.article_id
             ? { ...candidate, attachments: [...(candidate.attachments ?? []), item] }
@@ -1635,10 +1641,30 @@ export default function App() {
         setKbArticles((items) => items.map(apply));
         setKbEditing((current) => (current ? apply(current) : current));
       }
-      setToast("Файлы прикреплены");
+      setToast(`Прикреплено файлов: ${uploaded}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Файл не прикреплён");
+    } finally {
+      setKbUploading(false);
     }
+  };
+  // Owner (2026-11-26): drop files anywhere on the article pane (view or
+  // editor) — they attach to the open article.
+  const kbTarget = kbEditing ?? kbSelected;
+  const handleKbDrop = (event: React.DragEvent) => {
+    if (!kbTarget) return;
+    event.preventDefault();
+    setKbDragOver(false);
+    void uploadKbFiles(kbTarget, event.dataTransfer.files);
+  };
+  const handleKbPaste = (event: React.ClipboardEvent) => {
+    if (!kbTarget) return;
+    const files = Array.from(event.clipboardData.files);
+    if (!files.length) return;
+    event.preventDefault();
+    const transfer = new DataTransfer();
+    files.forEach((file) => transfer.items.add(file));
+    void uploadKbFiles(kbTarget, transfer.files);
   };
   const removeKbAttachment = async (item: KbAttachmentView) => {
     if (!kbEditing) return;
@@ -2869,7 +2895,19 @@ export default function App() {
               )}
             </button>
           </aside>
-          <section className="kb-content">
+          <section
+            className={`kb-content ${kbDragOver ? "kb-drag-over" : ""}`}
+            onDragOver={(event) => {
+              if (!kbTarget || kbMode === "archive") return;
+              event.preventDefault();
+              setKbDragOver(true);
+            }}
+            onDragLeave={(event) => {
+              if (event.currentTarget === event.target) setKbDragOver(false);
+            }}
+            onDrop={handleKbDrop}
+            onPaste={handleKbPaste}
+          >
             {kbMode === "archive" ? (
               <div className="kb-archive-page">
                 <input
@@ -2995,10 +3033,11 @@ export default function App() {
                     </div>
                   )}
                   <label className="kb-upload">
-                    Прикрепить файлы
+                    {kbUploading ? "Загружаем…" : "Прикрепить файлы"}
                     <input
                       type="file"
                       multiple
+                      disabled={kbUploading}
                       onChange={(event) => {
                         if (kbEditing) {
                           void uploadKbFiles(kbEditing, event.target.files);
@@ -3077,10 +3116,11 @@ export default function App() {
                   {/* Owner (2026-11-26): files attach right in the view —
                       no need to enter edit mode first. */}
                   <label className="kb-upload">
-                    Прикрепить файлы
+                    {kbUploading ? "Загружаем…" : "Прикрепить файлы"}
                     <input
                       type="file"
                       multiple
+                      disabled={kbUploading}
                       onChange={(event) => {
                         void uploadKbFiles(kbSelected, event.target.files);
                         event.target.value = "";

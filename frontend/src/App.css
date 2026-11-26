@@ -2493,6 +2493,15 @@ button.kb-attachment-chip:hover {
 .kb-upload input {
   display: none;
 }
+.kb-upload.kb-uploading,
+.kb-upload:has(input:disabled) {
+  color: #9aa3b0;
+}
+.kb-content.kb-drag-over {
+  outline: 2px dashed rgba(226, 0, 26, 0.4);
+  outline-offset: -8px;
+  background: #fffafa;
+}
 .kb-archive-item {
   display: flex;
   align-items: center;

@@ -15,6 +15,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.operators import require_operator
@@ -1451,15 +1452,20 @@ async def list_active_kb_articles(
                 name_by_operator[row.id] = (
                     row.display_name or row.email.split("@")[0]
                 )
-        attachment_rows = (
-            await session.scalars(
-                select(KbAttachment).where(
-                    KbAttachment.article_id.in_({a.id for a in articles})
+        attachment_rows = []
+        if articles:
+            # Owner (2026-11-26): tolerate the 0026 migration not being
+            # applied yet — hints must not 500 because of a missing table.
+            try:
+                attachment_rows = list(
+                    await session.scalars(
+                        select(KbAttachment).where(
+                            KbAttachment.article_id.in_({a.id for a in articles})
+                        )
+                    )
                 )
-            )
-            if articles
-            else []
-        )
+            except SQLAlchemyError:
+                attachment_rows = []
         attachments_by_article: dict[Any, list[KbAttachment]] = {}
         for item in attachment_rows:
             attachments_by_article.setdefault(item.article_id, []).append(item)
