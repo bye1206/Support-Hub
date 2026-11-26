@@ -1004,10 +1004,16 @@ async def list_categories(
 async def list_colleagues(
     operator: Annotated[Operator, Depends(require_operator)], request: Request
 ) -> dict[str, Any]:
-    """Active staff for ticket transfer selection (docs/06 §6)."""
+    """Active staff for ticket transfer selection (docs/06 §6).
+
+    Owner (2026-11-26): the rating badge rides next to every name, so the
+    colleagues list carries avg_rating too."""
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         colleagues = await OperatorRepository().list_active(session)
+        averages = await TicketRatingRepository().avg_by_operators(
+            session, {colleague.id for colleague in colleagues}
+        )
     return {
         "colleagues": [
             {
@@ -1015,6 +1021,11 @@ async def list_colleagues(
                 "display_name": colleague.display_name,
                 "email": colleague.email,
                 "presence_status": colleague.presence_status.value,
+                "avg_rating": (
+                    round(averages[colleague.id], 2)
+                    if colleague.id in averages
+                    else None
+                ),
             }
             for colleague in colleagues
             if colleague.id != operator.id

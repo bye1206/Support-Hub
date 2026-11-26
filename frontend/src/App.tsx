@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { RatingBadge } from "./RatingBadge";
 import "./App.css";
 import { AdminPanel } from "./AdminPanel";
 import { Composer } from "./Composer";
@@ -75,6 +76,8 @@ type Colleague = {
   display_name: string | null;
   email: string;
   presence_status?: string;
+  // Owner (2026-11-26): the rating badge next to the name.
+  avg_rating?: number | null;
 };
 type AdInfo = {
   available: boolean;
@@ -171,35 +174,6 @@ type OperatorProfile = {
   avg_rating?: number | null;
 };
 type Theme = "light" | "dark";
-// Owner (2026-11-20): the average rating badge; above 4.7 a golden crown
-// appears over the number.
-function RatingBadge({ value }: { value?: number | null }) {
-  if (value == null) return null;
-  const gold = value > 4.7;
-  if (!gold) {
-    return (
-      <span className="rating-badge" title="Средняя оценка">
-        <span className="rating-value">{value}</span>
-      </span>
-    );
-  }
-  return (
-    // Owner (2026-11-26): variant 6 — a small crown sits on top of a
-    // golden capsule with the digits, one ornamental emblem.
-    <span className="rating-badge" title="Средняя оценка">
-      <span className="rating-crown-stack">
-        <svg className="rating-crown" viewBox="2 2 20 12" aria-hidden="true">
-          <path
-            d="M2.5 5.5l5 4.2L12 2.5l4.5 7.2 5-4.2-1.8 8H4.3l-1.8-8Z"
-            fill="#e8a10e"
-          />
-        </svg>
-        <span className="rating-capsule">
-          <span className="rating-value gold">{value}</span>
-        </span>
-      </span>    </span>
-  );
-}
 type AdGroup = { name: string; description?: string };
 type AdSearchResult = {
   login: string;
@@ -1904,6 +1878,11 @@ export default function App() {
     );
     return colleague?.display_name || colleague?.email || shortId(operatorId);
   };
+  // Owner (2026-11-26): the rating badge in the moves — keyed by the
+  // operator the event points at (assignee, else the actor).
+  const ratingByOperator = new Map(
+    team.map((member) => [member.operator_id, member.avg_rating]),
+  );
   return (
     <div
       className={`app-shell ${current ? (details ? "" : "details-collapsed") : "no-ticket"}`}
@@ -1965,6 +1944,7 @@ export default function App() {
           <button className={`rail-button ${adminOpen ? "active" : ""}`} title="Панель управления" aria-label="Открыть панель управления"           onClick={() => {
             setAdminOpen(true);
             setHistoryPage(false);
+            setKbLibraryOpen(false);
             setProfileMenuOpen(false);
           }}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2763,7 +2743,14 @@ export default function App() {
                       className="history-event"
                       key={`${event.created_at}-${event.actor_id}`}
                     >
-                      {moveText(event, assignmentName)}
+                      <span>
+                        {moveText(event, assignmentName)}
+                        <RatingBadge
+                          value={ratingByOperator.get(
+                            event.assignee_id || event.actor_id || "",
+                          )}
+                        />
+                      </span>
                       <time>{ago(event.created_at)}</time>
                     </div>
                   ))
@@ -2862,6 +2849,7 @@ export default function App() {
                     </span>
                     <span className="colleague-name">
                       {colleague.display_name || colleague.email}
+                      <RatingBadge value={colleague.avg_rating} />
                       <span className="muted">{colleague.email}</span>
                     </span>
                   </button>
@@ -3310,7 +3298,14 @@ export default function App() {
                   className="history-event"
                   key={`${event.created_at}-${event.actor_id}`}
                 >
-                  {moveText(event, assignmentName)}
+                  <span>
+                    {moveText(event, assignmentName)}
+                    <RatingBadge
+                      value={ratingByOperator.get(
+                        event.assignee_id || event.actor_id || "",
+                      )}
+                    />
+                  </span>
                   <time>
                     {new Date(event.created_at).toLocaleString("ru-RU")}
                   </time>
@@ -3715,7 +3710,10 @@ export default function App() {
                       {initials(member.display_name || member.email)}
                     </span>
                     <span className="colleague-name">
+                      {/* Owner (2026-11-26): the rating rides next to the
+                          name everywhere an operator is listed. */}
                       {member.display_name || member.email}
+                      <RatingBadge value={member.avg_rating} />
                       <span className="muted">{member.email}</span>
                     </span>
                     <span className="team-presence">
@@ -4221,7 +4219,14 @@ export default function App() {
                         className="history-event"
                         key={`${event.created_at}-${event.actor_id}`}
                       >
-                        {moveText(event, (id) => shortId(id))}
+                        <span>
+                          {moveText(event, (id) => shortId(id))}
+                          <RatingBadge
+                            value={ratingByOperator.get(
+                              event.assignee_id || event.actor_id || "",
+                            )}
+                          />
+                        </span>
                         <time>{ago(event.created_at)}</time>
                       </div>
                     ))}

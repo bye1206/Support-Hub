@@ -4378,6 +4378,13 @@ button.team-row.clickable:hover {
   border: 1.3px solid #e8a10e;
   border-radius: 999px;
 }
+/* Owner (2026-11-26): below 4.7 — same capsule, plain color. */
+.rating-capsule.plain {
+  border-color: #d6dbe2;
+}
+.app-shell[data-theme="dark"] .rating-capsule.plain {
+  border-color: #3a4251;
+}
 .app-shell[data-theme="dark"] .rating-capsule {
   border-color: #f2b93b;
 }
