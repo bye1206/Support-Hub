@@ -2574,17 +2574,8 @@ export default function App() {
               </div>
             ) : (
               <>
-            {/* Owner (2026-11-19): status and SLA are separate blocks with
-                a divider line between them. The status card is self-titled —
-                no label needed. */}
-            <section className="detail-section">
-              <div className={`status-card ${current.status.toLowerCase()}`}>
-                <span className="status-card-dot" />
-                <span className="status-card-name">
-                  {statusName[current.status]}
-                </span>
-              </div>
-            </section>
+            {/* Owner (2026-11-26): the status block is gone from the
+                details panel — the header badge carries the status. */}
             <section className="detail-section">
               <div className="detail-label">SLA</div>
               <div
@@ -2834,7 +2825,8 @@ export default function App() {
             </nav>
             <button
               className={`kb-trash ${kbMode === "archive" ? "active" : ""}`}
-              title="Недавно удалённые статьи"
+              title="Недавно удалённые"
+              aria-label="Недавно удалённые"
               onClick={() =>
                 setKbMode((mode) => (mode === "archive" ? "articles" : "archive"))
               }
@@ -2843,7 +2835,6 @@ export default function App() {
                 <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" />
                 <path d="M10 11v5m4-5v5" />
               </svg>
-              Недавно удалённые
               {kbArchive.length > 0 && (
                 <span className="kb-trash-count">{kbArchive.length}</span>
               )}

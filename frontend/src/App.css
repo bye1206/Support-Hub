@@ -726,12 +726,13 @@
   white-space: nowrap;
 }
 .status-badge {
-  padding: 5px 8px;
-  border-radius: 6px;
+  /* Owner (2026-11-26): bigger and bolder next to the ticket title. */
+  padding: 5px 10px;
+  border-radius: 7px;
   background: #fff5e7;
   color: #c38736;
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 800;
   white-space: nowrap;
 }
 .status-badge.ai_processing {
@@ -882,9 +883,10 @@
 }
 .message.from-system {
   /* Owner (2026-11-26): system events are right-aligned, pink and
-     signed "Системное сообщение" (owner request). */
+     signed "Системное сообщение" (owner request). row-reverse alone
+     puts the bubble on the right; justify-content flex-end would push
+     it back LEFT (main-end in row-reverse) — the bug the owner saw. */
   flex-direction: row-reverse;
-  justify-content: flex-end;
   margin-bottom: 14px;
 }
 .message.from-system .message-content {
@@ -1425,8 +1427,9 @@
   align-items: center;
   justify-content: center;
   padding: 5px;
+  /* Owner (2026-11-26): round. */
+  border-radius: 999px;
   border: 1px solid #e4e8ed;
-  border-radius: 6px;
   background: #fff;
   color: #17191d;
   cursor: pointer;
@@ -2325,20 +2328,22 @@
   letter-spacing: 0.4px;
   color: #8b93a1;
 }
-/* Owner (2026-11-26): the trash page button in the KB sidebar. */
+/* Owner (2026-11-26): the trash icon — bottom-left of the KB sidebar. */
 .kb-trash {
   margin-top: auto;
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 6px 10px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid #e9ecf1;
   border-radius: 7px;
   background: #fff;
   color: #707b8b;
-  font-size: 11.5px;
   cursor: pointer;
+  position: relative;
 }
 .kb-trash:hover {
   border-color: rgba(226, 0, 26, 0.25);
@@ -2359,17 +2364,22 @@
   stroke-linejoin: round;
 }
 .kb-trash-count {
-  margin-left: auto;
-  padding: 1px 7px;
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
   border-radius: 999px;
-  background: #eef0f4;
-  font-size: 10px;
+  background: #e2001a;
+  font-size: 9px;
   font-weight: 700;
-  color: #4d5560;
+  line-height: 14px;
+  color: #fff;
 }
 .kb-trash.active .kb-trash-count {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: #fff;
+  color: #17191d;
 }
 .kb-archive-page {
   display: grid;
@@ -3649,6 +3659,7 @@ body:has(.app-shell[data-theme="dark"]) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  line-height: 1;
 }
 .profile-button .profile-copy span {
   display: inline-flex;
@@ -4304,8 +4315,8 @@ button.team-row.clickable:hover {
 .rating-crown {
   /* Owner (2026-11-26): the crown sits ON the capsule edge — one emblem,
      not a floating icon. */
-  width: 13px;
-  height: 9px;
+  width: 11px;
+  height: 7px;
   margin-bottom: -2px;
   position: relative;
   z-index: 1;
@@ -4314,7 +4325,7 @@ button.team-row.clickable:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 8px;
+  padding: 1px 7px;
   border: 1.4px solid #e8a10e;
   border-radius: 999px;
 }
