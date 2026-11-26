@@ -1878,11 +1878,6 @@ export default function App() {
     );
     return colleague?.display_name || colleague?.email || shortId(operatorId);
   };
-  // Owner (2026-11-26): the rating badge in the moves — keyed by the
-  // operator the event points at (assignee, else the actor).
-  const ratingByOperator = new Map(
-    team.map((member) => [member.operator_id, member.avg_rating]),
-  );
   return (
     <div
       className={`app-shell ${current ? (details ? "" : "details-collapsed") : "no-ticket"}`}
@@ -2743,14 +2738,7 @@ export default function App() {
                       className="history-event"
                       key={`${event.created_at}-${event.actor_id}`}
                     >
-                      <span>
-                        {moveText(event, assignmentName)}
-                        <RatingBadge
-                          value={ratingByOperator.get(
-                            event.assignee_id || event.actor_id || "",
-                          )}
-                        />
-                      </span>
+                      {moveText(event, assignmentName)}
                       <time>{ago(event.created_at)}</time>
                     </div>
                   ))
@@ -2848,8 +2836,10 @@ export default function App() {
                       {initials(colleague.display_name || colleague.email)}
                     </span>
                     <span className="colleague-name">
-                      {colleague.display_name || colleague.email}
-                      <RatingBadge value={colleague.avg_rating} />
+                      <span className="colleague-name-line">
+                        {colleague.display_name || colleague.email}
+                        <RatingBadge value={colleague.avg_rating} />
+                      </span>
                       <span className="muted">{colleague.email}</span>
                     </span>
                   </button>
@@ -3298,14 +3288,7 @@ export default function App() {
                   className="history-event"
                   key={`${event.created_at}-${event.actor_id}`}
                 >
-                  <span>
-                    {moveText(event, assignmentName)}
-                    <RatingBadge
-                      value={ratingByOperator.get(
-                        event.assignee_id || event.actor_id || "",
-                      )}
-                    />
-                  </span>
+                  {moveText(event, assignmentName)}
                   <time>
                     {new Date(event.created_at).toLocaleString("ru-RU")}
                   </time>
@@ -3711,9 +3694,11 @@ export default function App() {
                     </span>
                     <span className="colleague-name">
                       {/* Owner (2026-11-26): the rating rides next to the
-                          name everywhere an operator is listed. */}
-                      {member.display_name || member.email}
-                      <RatingBadge value={member.avg_rating} />
+                          name (one line), the email stays below. */}
+                      <span className="colleague-name-line">
+                        {member.display_name || member.email}
+                        <RatingBadge value={member.avg_rating} />
+                      </span>
                       <span className="muted">{member.email}</span>
                     </span>
                     <span className="team-presence">
@@ -4219,14 +4204,7 @@ export default function App() {
                         className="history-event"
                         key={`${event.created_at}-${event.actor_id}`}
                       >
-                        <span>
-                          {moveText(event, (id) => shortId(id))}
-                          <RatingBadge
-                            value={ratingByOperator.get(
-                              event.assignee_id || event.actor_id || "",
-                            )}
-                          />
-                        </span>
+                        {moveText(event, (id) => shortId(id))}
                         <time>{ago(event.created_at)}</time>
                       </div>
                     ))}

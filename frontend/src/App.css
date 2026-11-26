@@ -3614,6 +3614,13 @@ body:has(.app-shell[data-theme="dark"]) {
   font-weight: 600;
   color: #344052;
 }
+/* Owner (2026-11-26): name + rating on ONE line, email below. */
+.colleague-name-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .colleague-name .muted {
   font-size: 11.5px;
   font-weight: 500;
