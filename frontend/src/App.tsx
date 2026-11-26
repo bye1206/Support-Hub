@@ -175,19 +175,38 @@ type Theme = "light" | "dark";
 // appears over the number.
 function RatingBadge({ value }: { value?: number | null }) {
   if (value == null) return null;
+  const gold = value > 4.7;
   return (
     <span className="rating-badge" title="Средняя оценка">
-      {value > 4.7 && (
-        // Owner (2026-11-26): a drawn crown (not the emoji) so the badge
-        // reads as ONE symbol: crown + digits side by side, aligned.
-        <svg className="rating-crown" viewBox="0 0 24 24" aria-hidden="true">
+      {gold && (
+        // Owner (2026-11-26): the crown never looked right, so from 4.7
+        // the digits turn golden, framed by small flourishes.
+        <svg className="rating-flourish" viewBox="0 0 22 12" aria-hidden="true">
           <path
-            d="M2.5 7.5l5 4.2L12 4.5l4.5 7.2 5-4.2-1.8 11H4.3L2.5 7.5Z"
-            fill="#f0b429"
+            d="M1 6c4-5 8-5 10 0s6 5 10 0"
+            fill="none"
+            stroke="#d9a514"
+            strokeWidth="1.8"
+            strokeLinecap="round"
           />
         </svg>
       )}
-      <span className="rating-value">{value}</span>
+      <span className={gold ? "rating-value gold" : "rating-value"}>{value}</span>
+      {gold && (
+        <svg
+          className="rating-flourish flip"
+          viewBox="0 0 22 12"
+          aria-hidden="true"
+        >
+          <path
+            d="M1 6c4-5 8-5 10 0s6 5 10 0"
+            fill="none"
+            stroke="#d9a514"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
     </span>
   );
 }
@@ -541,6 +560,10 @@ export default function App() {
     [kbNewTitle, setKbNewTitle] = useState(""),
     [kbNewBody, setKbNewBody] = useState(""),
     [kbEditing, setKbEditing] = useState<KbArticle | null>(null),
+    // Owner (2026-11-26): OneNote-style two-pane KB — the sidebar lists
+    // pages, the pane shows/edits the selected one.
+    [kbSelectedId, setKbSelectedId] = useState<string | null>(null),
+    [kbCreating, setKbCreating] = useState(false),
     [kbArchive, setKbArchive] = useState<KbArticle[]>([]),
     [dragOverConversation, setDragOverConversation] = useState(false),
     [resolveCategoryId, setResolveCategoryId] = useState(""),
@@ -649,7 +672,9 @@ export default function App() {
       // Owner (2026-11-23, plan item 8): knowledge base for the composer
       // hints — a nicety, never a failure.
       void api<{ articles: KbArticle[] }>("/kb", auth)
-        .then((kb) => setKbArticles(kb.articles))
+        // Owner (2026-11-26): a stub/odd response without `articles` used to
+        // setKbArticles(undefined) and crash the whole render.
+        .then((kb) => setKbArticles(kb.articles ?? []))
         .catch(() => undefined);
       const selected = selectedRef.current
         ? data.tickets.find((t) => t.ticket_id === selectedRef.current)
@@ -1380,7 +1405,18 @@ export default function App() {
   const openKbLibrary = () => {
     setKbLibraryOpen(true);
     void adminApi<{ articles: KbArticle[] }>("/kb", auth)
-      .then((data) => setKbArticles(data.articles))
+      .then((data) => {
+        setKbArticles(data.articles);
+        // Keep the selection if it survived; otherwise pick the first page
+        // so the pane is never empty on entry.
+        setKbSelectedId((current) =>
+          current && data.articles.some((a) => a.article_id === current)
+            ? current
+            : data.articles[0]?.article_id ?? null,
+        );
+        setKbCreating(false);
+        setKbEditing(null);
+      })
       .catch(() => undefined);
     void adminApi<{ articles: KbArticle[] }>("/kb/archive", auth)
       .then((data) => setKbArchive(data.articles))
@@ -1398,6 +1434,8 @@ export default function App() {
       );
       setKbNewTitle("");
       setKbNewBody("");
+      setKbCreating(false);
+      setKbSelectedId(article.article_id);
       setToast("Статья добавлена");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Статья не сохранена");
@@ -1438,6 +1476,9 @@ export default function App() {
       setKbArticles((items) =>
         items.filter((item) => item.article_id !== article.article_id),
       );
+      setKbSelectedId((current) =>
+        current === article.article_id ? null : current,
+      );
       setKbArchive((items) => [
         {
           ...article,
@@ -1466,11 +1507,15 @@ export default function App() {
           a.title.localeCompare(b.title, "ru"),
         ),
       );
+      setKbSelectedId(restored.article_id);
       setToast("Статья восстановлена");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Статья не восстановлена");
     }
   };
+  const kbSelected =
+    (kbArticles ?? []).find((article) => article.article_id === kbSelectedId) ??
+    null;
   const transferToPerson = async (targetOperatorId: string) => {
     if (!current) return;
     try {
@@ -2620,43 +2665,26 @@ export default function App() {
         // Owner (2026-11-26): the KB is a full page (like the queue and
         // the admin panel), not a modal on top of the workspace.
         <div className="kb-page" role="region" aria-label="База знаний">
-          <header className="history-page-header">
-            <div>
-              <p className="eyebrow">SUPPORT HUB</p>
-              <h1>База знаний</h1>
-            </div>
-          </header>
-          <p className="kb-page-intro">
-            Справочник для быстрых ответов: статьи может добавлять и менять
-            любой оператор, автор и время видны под статьёй.
-          </p>
-          <div className="kb-page-tools">
+          <aside className="kb-sidebar">
             <input
               className="kb-search"
               placeholder="Поиск по статьям"
               value={kbQuery}
               onChange={(event) => setKbQuery(event.target.value)}
             />
-            <form className="kb-add-form" onSubmit={(event) => void saveKbArticle(event)}>
-              <input
-                required
-                maxLength={200}
-                placeholder="Заголовок статьи"
-                value={kbNewTitle}
-                onChange={(event) => setKbNewTitle(event.target.value)}
-              />
-              <textarea
-                required
-                maxLength={10000}
-                placeholder="Текст ответа"
-                value={kbNewBody}
-                onChange={(event) => setKbNewBody(event.target.value)}
-                rows={3}
-              />
-              <button type="submit">Добавить</button>
-            </form>
-          </div>
-          <div className="kb-library-list">
+            <button
+              className="kb-new"
+              onClick={() => {
+                setKbCreating(true);
+                setKbSelectedId(null);
+                setKbEditing(null);
+                setKbNewTitle("");
+                setKbNewBody("");
+              }}
+            >
+              + Новая статья
+            </button>
+            <nav className="kb-list" aria-label="Статьи">
               {kbArticles
                 .filter((article) => {
                   const needle = kbQuery.trim().toLowerCase();
@@ -2667,93 +2695,137 @@ export default function App() {
                   );
                 })
                 .map((article) => (
-                  <div
+                  <button
                     key={article.article_id}
-                    className={`kb-library-row ${article.is_active === false ? "inactive" : ""}`}
+                    className={`kb-list-item ${kbSelectedId === article.article_id ? "active" : ""}`}
+                    onClick={() => {
+                      setKbSelectedId(article.article_id);
+                      setKbCreating(false);
+                      setKbEditing(null);
+                    }}
                   >
-                    {kbEditing?.article_id === article.article_id ? (
-                      <form
-                        className="kb-edit-form"
-                        onSubmit={(event) => void updateKbArticle(event)}
-                      >
-                        <input
-                          required
-                          maxLength={200}
-                          value={kbEditing.title}
-                          onChange={(event) =>
-                            setKbEditing({ ...kbEditing, title: event.target.value })
-                          }
-                        />
-                        <textarea
-                          required
-                          maxLength={10000}
-                          rows={3}
-                          value={kbEditing.body}
-                          onChange={(event) =>
-                            setKbEditing({ ...kbEditing, body: event.target.value })
-                          }
-                        />
-                        <div className="kb-actions">
-                          <button type="submit">Сохранить</button>
-                          <button type="button" onClick={() => setKbEditing(null)}>
-                            Отмена
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <>
-                        <div className="kb-library-text">
-                          <strong>{article.title}</strong>
-                          <span>{article.body}</span>
-                          <span className="kb-attribution">
-                            Добавил: {article.created_by || "—"} ·{" "}
-                            {article.created_at ? kbStamp(article.created_at) : "—"}
-                            {article.updated_by
-                              ? ` · Изменял: ${article.updated_by} · ${kbStamp(article.updated_at)}`
-                              : ""}
-                          </span>
-                        </div>
-                        <div className="kb-actions">
-                          <button onClick={() => setKbEditing(article)}>Изменить</button>
-                          <button
-                            className="kb-danger"
-                            onClick={() => void deleteKbArticle(article)}
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                    <strong>{article.title}</strong>
+                    <span>
+                      {article.body.length > 64
+                        ? `${article.body.slice(0, 64)}…`
+                        : article.body}
+                    </span>
+                  </button>
                 ))}
               {!kbArticles.length && (
-                <p className="admin-muted">Статей пока нет</p>
+                <p className="kb-empty">Статей пока нет</p>
               )}
-              {kbArchive.length > 0 && (
-                <>
-                  <p className="kb-archive-title">
-                    Недавно удалённые — восстановить можно в течение 14 дней,
-                    потом удалятся насовсем
+            </nav>
+            {kbArchive.length > 0 && (
+              <div className="kb-archive">
+                <p className="kb-archive-title">Недавно удалённые</p>
+                {kbArchive.map((article) => (
+                  <div key={article.article_id} className="kb-archive-item">
+                    <span title={article.title}>{article.title}</span>
+                    <button onClick={() => void restoreKbArticle(article)}>
+                      Восстановить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </aside>
+          <section className="kb-content">
+            {kbCreating ? (
+              <form
+                className="kb-editor"
+                onSubmit={(event) => void saveKbArticle(event)}
+              >
+                <input
+                  className="kb-editor-title"
+                  required
+                  maxLength={200}
+                  placeholder="Заголовок статьи"
+                  value={kbNewTitle}
+                  onChange={(event) => setKbNewTitle(event.target.value)}
+                />
+                <textarea
+                  className="kb-editor-body"
+                  required
+                  maxLength={10000}
+                  placeholder="Текст ответа"
+                  rows={14}
+                  value={kbNewBody}
+                  onChange={(event) => setKbNewBody(event.target.value)}
+                />
+                <div className="kb-editor-actions">
+                  <button type="submit">Сохранить</button>
+                  <button type="button" onClick={() => setKbCreating(false)}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            ) : kbSelected ? (
+              kbEditing?.article_id === kbSelected.article_id ? (
+                <form
+                  className="kb-editor"
+                  onSubmit={(event) => void updateKbArticle(event)}
+                >
+                  <input
+                    className="kb-editor-title"
+                    required
+                    maxLength={200}
+                    value={kbEditing.title}
+                    onChange={(event) =>
+                      setKbEditing({ ...kbEditing, title: event.target.value })
+                    }
+                  />
+                  <textarea
+                    className="kb-editor-body"
+                    required
+                    maxLength={10000}
+                    rows={14}
+                    value={kbEditing.body}
+                    onChange={(event) =>
+                      setKbEditing({ ...kbEditing, body: event.target.value })
+                    }
+                  />
+                  <div className="kb-editor-actions">
+                    <button type="submit">Сохранить</button>
+                    <button type="button" onClick={() => setKbEditing(null)}>
+                      Отмена
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <article className="kb-view">
+                  <h2>{kbSelected.title}</h2>
+                  <p className="kb-attribution">
+                    Добавил: {kbSelected.created_by || "—"} ·{" "}
+                    {kbSelected.created_at ? kbStamp(kbSelected.created_at) : "—"}
+                    {kbSelected.updated_by
+                      ? ` · Изменял: ${kbSelected.updated_by} · ${kbStamp(kbSelected.updated_at)}`
+                      : ""}
                   </p>
-                  {kbArchive.map((article) => (
-                    <div key={article.article_id} className="kb-library-row">
-                      <div className="kb-library-text">
-                        <strong>{article.title}</strong>
-                        <span className="kb-attribution">
-                          Удалил: {article.deleted_by || "—"} ·{" "}
-                          {article.deleted_at ? kbStamp(article.deleted_at) : "—"}
-                        </span>
-                      </div>
-                      <div className="kb-actions">
-                        <button onClick={() => void restoreKbArticle(article)}>
-                          Восстановить
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
+                  <div className="kb-view-body">{kbSelected.body}</div>
+                  <div className="kb-editor-actions">
+                    <button onClick={() => setKbEditing(kbSelected)}>
+                      Изменить
+                    </button>
+                    <button
+                      className="kb-danger"
+                      onClick={() => void deleteKbArticle(kbSelected)}
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </article>
+              )
+            ) : (
+              <div className="kb-empty-state">
+                <h2>{kbArticles.length ? "Выберите статью" : "База знаний пуста"}</h2>
+                <p>
+                  Выберите статью слева или создайте новую — статьи
+                  подставляются в подсказки композера.
+                </p>
+              </div>
+            )}
+          </section>
         </div>
       )}
       {movesOpen && current && (

@@ -2202,32 +2202,28 @@
 
 /* Owner (2026-11-25): the knowledge base lives in the workspace rail —
    search, add, edit, delete and restore articles.
-   Owner (2026-11-26): a full page (like the queue / admin panel). */
+   Owner (2026-11-26): a full page, OneNote-style — sidebar with pages,
+   the pane shows or edits the selected article. */
 .kb-page {
   position: fixed;
   left: 68px;
   top: 0;
   right: 0;
   bottom: 0;
-  overflow-y: auto;
-  padding: 28px 36px 40px;
+  display: flex;
   background: #f5f6f8;
   z-index: 40;
 }
-.kb-page-intro {
-  margin: 4px 0 16px;
-  font-size: 12px;
-  color: #707b8b;
-}
-.kb-page-tools {
-  display: grid;
+.kb-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  max-width: 720px;
-}
-.kb-archive-title {
-  margin-top: 14px;
-  font-size: 11.5px;
-  color: #8b93a1;
+  padding: 20px 14px;
+  border-right: 1px solid #e6e9ee;
+  background: #fafbfc;
+  overflow-y: auto;
 }
 .kb-search {
   min-height: 34px;
@@ -2235,27 +2231,159 @@
   border: 1px solid #e9ecf1;
   border-radius: 7px;
   font-size: 12px;
+  background: #fff;
 }
-.kb-add-form {
+.kb-new {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid rgba(226, 0, 26, 0.35);
+  border-radius: 7px;
+  background: #fff;
+  color: #e2001a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.kb-new:hover {
+  background: #fdecec;
+}
+.kb-list {
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
-.kb-add-form input,
-.kb-add-form textarea,
-.kb-edit-form input,
-.kb-edit-form textarea {
-  padding: 7px 10px;
+.kb-list-item {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.kb-list-item:hover {
+  background: #eef0f4;
+}
+.kb-list-item.active {
+  background: #fff;
+  border-color: rgba(226, 0, 26, 0.25);
+  box-shadow: 0 1px 3px rgba(23, 25, 29, 0.06);
+}
+.kb-list-item strong {
+  font-size: 12.5px;
+  color: #384356;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-list-item span {
+  font-size: 11px;
+  color: #8b93a1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-empty {
+  font-size: 11.5px;
+  color: #8b93a1;
+}
+.kb-archive {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #e6e9ee;
+  display: grid;
+  gap: 6px;
+}
+.kb-archive-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #8b93a1;
+}
+.kb-archive-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  color: #4d5560;
+}
+.kb-archive-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-archive-item button {
+  flex-shrink: 0;
+  min-height: 26px;
+  padding: 4px 10px;
   border: 1px solid #e9ecf1;
   border-radius: 7px;
-  font-size: 12px;
+  background: #fff;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.kb-archive-item button:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.kb-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 28px 36px 40px;
+}
+.kb-view h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  color: #17191d;
+}
+.kb-attribution {
+  margin: 0 0 18px;
+  font-size: 11px;
+  color: #8b93a1;
+}
+.kb-view-body {
+  max-width: 760px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #384356;
+  white-space: pre-wrap;
+  margin-bottom: 24px;
+}
+.kb-editor {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+}
+.kb-editor-title {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: 700;
+  background: #fff;
+}
+.kb-editor-body {
+  padding: 10px 12px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  font-size: 12.5px;
   font-family: inherit;
+  line-height: 1.55;
+  background: #fff;
   resize: vertical;
 }
-.kb-add-form button,
-.kb-edit-form button,
-.kb-actions button {
+.kb-editor-actions {
+  display: flex;
+  gap: 8px;
+}
+.kb-editor-actions button {
   min-height: 30px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border: 1px solid #e9ecf1;
   border-radius: 7px;
   background: #fff;
@@ -2263,66 +2391,39 @@
   font-weight: 500;
   cursor: pointer;
 }
-.kb-add-form button:hover,
-.kb-actions button:hover {
+.kb-editor-actions button:hover {
   border-color: rgba(226, 0, 26, 0.25);
   background: #fdecec;
 }
-.kb-add-form button {
-  justify-self: start;
+.kb-editor-actions button[type="submit"],
+.kb-editor-actions button:first-child {
   background: #e2001a;
   border-color: #e2001a;
   color: #fff;
 }
-.kb-add-form button:hover {
+.kb-editor-actions button[type="submit"]:hover,
+.kb-editor-actions button:first-child:hover {
   background: #c40017;
   border-color: #c40017;
-}
-.kb-library-list {
-  display: grid;
-  gap: 8px;
-}
-.kb-library-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-}
-.kb-library-row.inactive {
-  opacity: 0.55;
-}
-.kb-library-text {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.kb-library-text strong {
-  font-size: 12.5px;
-}
-.kb-library-text > span {
-  font-size: 11.5px;
-  color: #4d5560;
-  white-space: pre-wrap;
-}
-.kb-attribution {
-  font-size: 10.5px !important;
-  color: #8b93a1 !important;
-}
-.kb-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
 }
 .kb-danger {
   color: #e2001a;
 }
-.kb-edit-form {
+.kb-empty-state {
+  max-width: 480px;
+  margin-top: 12vh;
   display: grid;
   gap: 8px;
-  flex: 1;
+}
+.kb-empty-state h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #384356;
+}
+.kb-empty-state p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #8b93a1;
 }
 .action-section button {
   min-height: 34px;
@@ -3971,8 +4072,8 @@ button.team-row.clickable:hover {
   background: rgba(226, 0, 26, 0.14);
 }
 
-/* Owner (2026-11-20): the rating badge; above 4.7 a golden crown.
-   Owner (2026-11-26): ONE symbol — crown inline with the digits. */
+/* Owner (2026-11-20): the rating badge; above 4.7 golden digits framed
+   by flourishes (Owner, 2026-11-26: the crown never looked right). */
 .rating-badge {
   display: inline-flex;
   flex-direction: row;
@@ -3981,14 +4082,20 @@ button.team-row.clickable:hover {
   line-height: 1;
   vertical-align: 1px;
 }
-.rating-crown {
-  width: 12px;
-  height: 12px;
+.rating-flourish {
+  width: 13px;
+  height: 7px;
+}
+.rating-flourish.flip {
+  transform: scaleX(-1);
 }
 .rating-value {
   font-size: 11px;
   font-weight: 800;
   color: #17191d;
+}
+.rating-value.gold {
+  color: #c9970d;
 }
 /* Owner (2026-11-20): the back arrow sits right above the modal title. */
 .modal-arrow {
