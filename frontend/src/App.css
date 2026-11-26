@@ -1431,6 +1431,13 @@
   color: #17191d;
   cursor: pointer;
 }
+/* Owner (2026-11-26): hints ON (default) looks like an active mode
+   button — black background, white icon. */
+.composer-kb-toggle:not(.off) {
+  background: #17191d;
+  border-color: #17191d;
+  color: #fff;
+}
 .composer-kb-toggle svg {
   width: 15px;
   height: 15px;
@@ -2313,20 +2320,159 @@
   font-size: 11.5px;
   color: #8b93a1;
 }
-.kb-archive {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid #e6e9ee;
-  display: grid;
-  gap: 6px;
-}
-.kb-archive-title {
-  margin: 0;
-  font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: #8b93a1;
+}
+/* Owner (2026-11-26): the trash page button in the KB sidebar. */
+.kb-trash {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  background: #fff;
+  color: #707b8b;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.kb-trash:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.kb-trash.active {
+  background: #17191d;
+  border-color: #17191d;
+  color: #fff;
+}
+.kb-trash svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.kb-trash-count {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef0f4;
+  font-size: 10px;
+  font-weight: 700;
+  color: #4d5560;
+}
+.kb-trash.active .kb-trash-count {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.kb-archive-page {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+.kb-archive-list {
+  display: grid;
+  gap: 8px;
+}
+.kb-archive-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fff;
+}
+/* Owner (2026-11-26): attachments on KB articles. */
+.kb-attachments,
+.kb-editor-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kb-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 11px;
+  color: #384356;
+}
+.kb-attachment-chip button {
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid #e9ecf1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  color: #707b8b;
+}
+.kb-attachment-chip button:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.kb-attachment-chip .kb-danger {
+  color: #e2001a;
+}
+button.kb-attachment-chip {
+  cursor: pointer;
+}
+button.kb-attachment-chip:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.kb-inline-image {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin: 10px 0;
+  border-radius: 8px;
+  border: 1px solid #eef0f4;
+}
+.kb-inline-file {
+  display: inline-flex;
+  padding: 2px 8px;
+  border: 1px solid rgba(226, 0, 26, 0.25);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 11px;
+  color: #e2001a;
+  cursor: pointer;
+}
+.kb-inline-file:hover {
+  background: #fdecec;
+}
+.kb-upload {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  color: #707b8b;
+  cursor: pointer;
+}
+.kb-upload:hover {
+  border-color: rgba(226, 0, 26, 0.25);
+  background: #fdecec;
+}
+.kb-upload input {
+  display: none;
 }
 .kb-archive-item {
   display: flex;
@@ -3498,6 +3644,12 @@ body:has(.app-shell[data-theme="dark"]) {
   gap: 2px;
   min-width: 0;
 }
+/* Owner (2026-11-26): the rating emblem aligns with the NAME line. */
+.profile-button .profile-copy strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .profile-button .profile-copy span {
   display: inline-flex;
   align-items: center;
@@ -4150,8 +4302,13 @@ button.team-row.clickable:hover {
   line-height: 1;
 }
 .rating-crown {
+  /* Owner (2026-11-26): the crown sits ON the capsule edge — one emblem,
+     not a floating icon. */
   width: 13px;
   height: 9px;
+  margin-bottom: -2px;
+  position: relative;
+  z-index: 1;
 }
 .rating-capsule {
   display: inline-flex;

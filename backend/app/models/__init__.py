@@ -14,7 +14,7 @@ from app.models.conversation import (
     SessionStatus,
 )
 from app.models.dialog_participant import DialogParticipant
-from app.models.kb_article import KbArticle
+from app.models.kb_article import KbArticle, KbAttachment
 from app.models.message import (
     Message,
     MessageAuthorType,
@@ -53,6 +53,7 @@ __all__ = [
     "IntegrationEventStatus",
     "InternalNote",
     "KbArticle",
+    "KbAttachment",
     "Message",
     "MessageAttachment",
     "MessageAuthorType",

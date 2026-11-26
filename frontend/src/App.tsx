@@ -393,6 +393,12 @@ const fmtDuration = (ms: number) => {
   const minutes = total % 60;
   return hours > 0 ? `${hours} ч ${minutes} мин` : `${minutes} мин`;
 };
+type KbAttachmentView = {
+  attachment_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+};
 type KbArticle = {
   article_id: string;
   title: string;
@@ -404,12 +410,40 @@ type KbArticle = {
   updated_by?: string | null;
   deleted_by?: string | null;
   deleted_at?: string | null;
+  attachments?: KbAttachmentView[];
 };
 type KbHistoryEvent = {
   action: string;
   actor_name: string | null;
   created_at: string;
 };
+
+// Owner (2026-11-26): an image referenced in the body via its
+// `attachment:<id>` marker is fetched with the auth header and shown
+// inline (plain <img> cannot send Authorization).
+function KbInlineImage({ id, token }: { id: string; token: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let alive = true;
+    fetch(`/api/v1/admin/kb/attachments/${id}/file`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => (response.ok ? response.blob() : null))
+      .then((blob) => {
+        if (blob && alive) {
+          objectUrl = URL.createObjectURL(blob);
+          setSrc(objectUrl);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [id, token]);
+  return src ? <img className="kb-inline-image" src={src} alt="" /> : null;
+}
 
 async function adminApi<T>(
   path: string,
@@ -423,7 +457,10 @@ async function adminApi<T>(
   const response = await fetch(`/api/v1/admin${path}`, {
     ...init,
     headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      // FormData sets its own multipart boundary — never pre-set JSON.
+      ...(init?.body && !(init.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
       Authorization: `Bearer ${auth.token}`,
       ...init?.headers,
     },
@@ -564,6 +601,10 @@ export default function App() {
     // Owner (2026-11-26): the per-article history modal (audit log).
     [kbHistoryFor, setKbHistoryFor] = useState<KbArticle | null>(null),
     [kbHistory, setKbHistory] = useState<KbHistoryEvent[]>([]),
+    // Owner (2026-11-26): the trash page (deleted articles) is a mode of
+    // the KB page, not a footer section.
+    [kbMode, setKbMode] = useState<"articles" | "archive">("articles"),
+    [kbArchiveQuery, setKbArchiveQuery] = useState(""),
     [dragOverConversation, setDragOverConversation] = useState(false),
     [resolveCategoryId, setResolveCategoryId] = useState(""),
     [resolveThemeId, setResolveThemeId] = useState(""),
@@ -1415,6 +1456,7 @@ export default function App() {
         );
         setKbCreating(false);
         setKbEditing(null);
+        setKbMode("articles");
       })
       .catch(() => undefined);
     void adminApi<{ articles: KbArticle[] }>("/kb/archive", auth)
@@ -1526,6 +1568,68 @@ export default function App() {
       setKbHistory(data.events);
     } catch {
       setKbHistory([]);
+    }
+  };
+  const downloadKbAttachment = async (item: KbAttachmentView) => {
+    try {
+      const response = await fetch(
+        `/api/v1/admin/kb/attachments/${item.attachment_id}/file`,
+        { headers: { Authorization: `Bearer ${auth.token}` } },
+      );
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = item.file_name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* download is best-effort */
+    }
+  };
+  const uploadKbFiles = async (files: FileList | null) => {
+    if (!kbEditing || !files || !files.length) return;
+    try {
+      for (const file of Array.from(files)) {
+        const form = new FormData();
+        form.append("file", file);
+        const item = await adminApi<KbAttachmentView>(
+          `/kb/${kbEditing.article_id}/attachments`,
+          auth,
+          { method: "POST", body: form },
+        );
+        const apply = (article: KbArticle) =>
+          article.article_id === kbEditing.article_id
+            ? { ...article, attachments: [...(article.attachments ?? []), item] }
+            : article;
+        setKbArticles((items) => items.map(apply));
+        setKbEditing((current) => (current ? apply(current) : current));
+      }
+      setToast("Файлы прикреплены");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Файл не прикреплён");
+    }
+  };
+  const removeKbAttachment = async (item: KbAttachmentView) => {
+    if (!kbEditing) return;
+    try {
+      await adminApi(`/kb/attachments/${item.attachment_id}`, auth, {
+        method: "DELETE",
+      });
+      const apply = (article: KbArticle) =>
+        article.article_id === kbEditing.article_id
+          ? {
+              ...article,
+              attachments: (article.attachments ?? []).filter(
+                (candidate) => candidate.attachment_id !== item.attachment_id,
+              ),
+            }
+          : article;
+      setKbArticles((items) => items.map(apply));
+      setKbEditing((current) => (current ? apply(current) : current));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Файл не удалён");
     }
   };
   const transferToPerson = async (targetOperatorId: string) => {
@@ -2728,22 +2832,68 @@ export default function App() {
                 <p className="kb-empty">Статей пока нет</p>
               )}
             </nav>
-            {kbArchive.length > 0 && (
-              <div className="kb-archive">
-                <p className="kb-archive-title">Недавно удалённые</p>
-                {kbArchive.map((article) => (
-                  <div key={article.article_id} className="kb-archive-item">
-                    <span title={article.title}>{article.title}</span>
-                    <button onClick={() => void restoreKbArticle(article)}>
-                      Восстановить
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <button
+              className={`kb-trash ${kbMode === "archive" ? "active" : ""}`}
+              title="Недавно удалённые статьи"
+              onClick={() =>
+                setKbMode((mode) => (mode === "archive" ? "articles" : "archive"))
+              }
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" />
+                <path d="M10 11v5m4-5v5" />
+              </svg>
+              Недавно удалённые
+              {kbArchive.length > 0 && (
+                <span className="kb-trash-count">{kbArchive.length}</span>
+              )}
+            </button>
           </aside>
           <section className="kb-content">
-            {kbCreating ? (
+            {kbMode === "archive" ? (
+              <div className="kb-archive-page">
+                <input
+                  className="kb-search"
+                  placeholder="Поиск по удалённым статьям"
+                  value={kbArchiveQuery}
+                  onChange={(event) => setKbArchiveQuery(event.target.value)}
+                />
+                <div className="kb-archive-list">
+                  {[...kbArchive]
+                    .filter((article) => {
+                      const needle = kbArchiveQuery.trim().toLowerCase();
+                      if (!needle) return true;
+                      return (
+                        article.title.toLowerCase().includes(needle) ||
+                        article.body.toLowerCase().includes(needle)
+                      );
+                    })
+                    .sort((a, b) =>
+                      (b.deleted_at ?? "").localeCompare(a.deleted_at ?? ""),
+                    )
+                    .map((article) => (
+                      <div key={article.article_id} className="kb-archive-row">
+                        <div className="kb-library-text">
+                          <strong>{article.title}</strong>
+                          <span>{article.body.length > 90 ? `${article.body.slice(0, 90)}…` : article.body}</span>
+                          <span className="kb-attribution">
+                            Удалил: {article.deleted_by || "—"} ·{" "}
+                            {article.deleted_at ? kbStamp(article.deleted_at) : "—"}
+                          </span>
+                        </div>
+                        <div className="kb-actions">
+                          <button onClick={() => void restoreKbArticle(article)}>
+                            Восстановить
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  {!kbArchive.length && (
+                    <p className="kb-empty">Корзина пуста</p>
+                  )}
+                </div>
+              </div>
+            ) : kbCreating ? (
               <form
                 className="kb-editor"
                 onSubmit={(event) => void saveKbArticle(event)}
@@ -2797,6 +2947,48 @@ export default function App() {
                       setKbEditing({ ...kbEditing, body: event.target.value })
                     }
                   />
+                  {(kbEditing.attachments?.length ?? 0) > 0 && (
+                    <div className="kb-editor-files">
+                      {kbEditing.attachments!.map((item) => (
+                        <span
+                          key={item.attachment_id}
+                          className="kb-attachment-chip"
+                        >
+                          {item.file_name}
+                          <button
+                            type="button"
+                            title="Вставить ссылку на файл в текст"
+                            onClick={() =>
+                              setKbEditing({
+                                ...kbEditing,
+                                body: `${kbEditing.body} attachment:${item.attachment_id}`,
+                              })
+                            }
+                          >
+                            В текст
+                          </button>
+                          <button
+                            type="button"
+                            className="kb-danger"
+                            onClick={() => void removeKbAttachment(item)}
+                          >
+                            Удалить
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <label className="kb-upload">
+                    Прикрепить файлы
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(event) => {
+                        void uploadKbFiles(event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
                   <div className="kb-editor-actions">
                     <button type="submit">Сохранить</button>
                     <button type="button" onClick={() => setKbEditing(null)}>
@@ -2816,7 +3008,54 @@ export default function App() {
                         : ""}
                     </p>
                   )}
-                  <div className="kb-view-body">{kbSelected.body}</div>
+                  <div className="kb-view-body">
+                    {kbSelected.body
+                      .split(/(attachment:[0-9a-fA-F-]{36})/)
+                      .map((part, index) => {
+                        const marker = part.match(
+                          /^attachment:([0-9a-fA-F-]{36})$/,
+                        );
+                        if (!marker) {
+                          return <span key={index}>{part}</span>;
+                        }
+                        const file = (kbSelected.attachments ?? []).find(
+                          (item) => item.attachment_id === marker[1],
+                        );
+                        if (!file) {
+                          return <span key={index}>{part}</span>;
+                        }
+                        return file.mime_type.startsWith("image/") ? (
+                          <KbInlineImage
+                            key={index}
+                            id={file.attachment_id}
+                            token={auth.token}
+                          />
+                        ) : (
+                          <button
+                            key={index}
+                            className="kb-inline-file"
+                            onClick={() => void downloadKbAttachment(file)}
+                          >
+                            {file.file_name}
+                          </button>
+                        );
+                      })}
+                  </div>
+                  {(kbSelected.attachments?.length ?? 0) > 0 && (
+                    <div className="kb-attachments">
+                      {kbSelected.attachments!.map((item) => (
+                        <button
+                          key={item.attachment_id}
+                          className="kb-attachment-chip"
+                          title="Скачать"
+                          onClick={() => void downloadKbAttachment(item)}
+                        >
+                          {item.file_name} ·{" "}
+                          {Math.max(1, Math.round(item.size_bytes / 1024))} КБ
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="kb-editor-actions">
                     <button onClick={() => setKbEditing(kbSelected)}>
                       Изменить

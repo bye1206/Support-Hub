@@ -28,6 +28,7 @@ from app.models import (
     AuditLog,
     ConversationSession,
     InternalNote,
+    KbAttachment,
     Message,
     MessageAttachment,
     Operator,
@@ -1426,10 +1427,42 @@ async def list_active_kb_articles(
     request: Request,
 ) -> dict[str, Any]:
     """Owner (2026-11-23, plan item 8): active knowledge base articles for
-    the composer — manual insert and typing hints."""
+    the composer — manual insert and typing hints.
+
+    Owner bugfix (2026-11-26): this poll used to return a LEAN view
+    without attribution, and the queue refresh overwrote the full list —
+    the KB page flashed 'Создал: …' and then lost it. Same shape as
+    /admin/kb now (minus archived)."""
     deps = request.app.state.deps
     async with deps.db.session_factory() as session:
         articles = await KbRepository().list_active(session)
+        operator_ids = {
+            op_id
+            for article in articles
+            for op_id in (article.created_by, article.updated_by)
+            if op_id
+        }
+        name_by_operator: dict[Any, str] = {}
+        if operator_ids:
+            rows = await session.scalars(
+                select(Operator).where(Operator.id.in_(operator_ids))
+            )
+            for row in rows:
+                name_by_operator[row.id] = (
+                    row.display_name or row.email.split("@")[0]
+                )
+        attachment_rows = (
+            await session.scalars(
+                select(KbAttachment).where(
+                    KbAttachment.article_id.in_({a.id for a in articles})
+                )
+            )
+            if articles
+            else []
+        )
+        attachments_by_article: dict[Any, list[KbAttachment]] = {}
+        for item in attachment_rows:
+            attachments_by_article.setdefault(item.article_id, []).append(item)
     return {
         "articles": [
             {
@@ -1437,6 +1470,22 @@ async def list_active_kb_articles(
                 "title": article.title,
                 "body": article.body,
                 "updated_at": article.updated_at.isoformat(),
+                "created_at": article.created_at.isoformat(),
+                "created_by": name_by_operator.get(article.created_by)
+                if article.created_by
+                else None,
+                "updated_by": name_by_operator.get(article.updated_by)
+                if article.updated_by
+                else None,
+                "attachments": [
+                    {
+                        "attachment_id": str(item.id),
+                        "file_name": item.file_name,
+                        "mime_type": item.mime_type,
+                        "size_bytes": item.size_bytes,
+                    }
+                    for item in attachments_by_article.get(article.id, [])
+                ],
             }
             for article in articles
         ]

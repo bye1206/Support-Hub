@@ -3,8 +3,9 @@
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.operator import _user_login_map
 from app.auth.operators import require_operator, require_role
 from app.errors import ApiError
+from app.infra.file_storage import FileStorageError, LocalFileStorage
 from app.models import (
     AuditActorType,
     AuditLog,
     KbArticle,
+    KbAttachment,
     Operator,
     OperatorPresenceLog,
     OperatorRole,
@@ -1222,7 +1225,11 @@ async def _operator_name_map(
     }
 
 
-def _kb_view(article: KbArticle, names: dict[uuid.UUID, str]) -> dict[str, object]:
+def _kb_view(
+    article: KbArticle,
+    names: dict[uuid.UUID, str],
+    attachments: list[KbAttachment] | None = None,
+) -> dict[str, object]:
     return {
         "article_id": str(article.id),
         "title": article.title,
@@ -1235,7 +1242,32 @@ def _kb_view(article: KbArticle, names: dict[uuid.UUID, str]) -> dict[str, objec
         "updated_by": names.get(article.updated_by) if article.updated_by else None,
         "deleted_at": article.deleted_at.isoformat() if article.deleted_at else None,
         "deleted_by": names.get(article.deleted_by) if article.deleted_by else None,
+        # Owner (2026-11-26): files on the article.
+        "attachments": [
+            {
+                "attachment_id": str(item.id),
+                "file_name": item.file_name,
+                "mime_type": item.mime_type,
+                "size_bytes": item.size_bytes,
+            }
+            for item in (attachments or [])
+        ],
     }
+
+
+async def _kb_attachment_map(
+    session: AsyncSession, article_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, list[KbAttachment]]:
+    """Attachments grouped per article (Owner, 2026-11-26)."""
+    if not article_ids:
+        return {}
+    rows = await session.scalars(
+        select(KbAttachment).where(KbAttachment.article_id.in_(article_ids))
+    )
+    grouped: dict[uuid.UUID, list[KbAttachment]] = {}
+    for row in rows:
+        grouped.setdefault(row.article_id, []).append(row)
+    return grouped
 
 
 @router.get("/kb")
@@ -1253,7 +1285,13 @@ async def list_kb_articles(
             {a.created_by for a in articles if a.created_by}
             | {a.updated_by for a in articles if a.updated_by},
         )
-    return {"articles": [_kb_view(article, names) for article in articles]}
+        attachments = await _kb_attachment_map(session, {a.id for a in articles})
+    return {
+        "articles": [
+            _kb_view(article, names, attachments.get(article.id))
+            for article in articles
+        ]
+    }
 
 
 @router.get("/kb/archive")
@@ -1270,7 +1308,13 @@ async def list_kb_archive(
             {a.created_by for a in articles if a.created_by}
             | {a.deleted_by for a in articles if a.deleted_by},
         )
-    return {"articles": [_kb_view(article, names) for article in articles]}
+        attachments = await _kb_attachment_map(session, {a.id for a in articles})
+    return {
+        "articles": [
+            _kb_view(article, names, attachments.get(article.id))
+            for article in articles
+        ]
+    }
 
 
 @router.post("/kb", status_code=201)
@@ -1373,6 +1417,95 @@ async def restore_kb_article(
             {article.created_by, article.updated_by} - {None},  # type: ignore[arg-type]
         )
     return _kb_view(article, names)
+
+
+@router.post("/kb/{article_id}/attachments")
+async def upload_kb_attachment(
+    article_id: uuid.UUID,
+    request: Request,
+    actor: Annotated[Operator, Depends(require_operator)],
+    file: Annotated[UploadFile, File(...)],
+) -> dict[str, object]:
+    """Owner (2026-11-26): files on KB articles — standalone chips and
+    inline images via `attachment:<id>` markers in the body."""
+    content = await file.read()
+    if not content:
+        raise ApiError(code="EMPTY_FILE", message="Файл пустой", status_code=422)
+    deps = request.app.state.deps
+    async with deps.db.session_factory() as session, session.begin():
+        article = await KbRepository().get(session, article_id)
+        if article is None or article.deleted_at is not None:
+            raise ApiError("KB_NOT_FOUND", "Article was not found", status_code=404)
+        try:
+            storage_key = await LocalFileStorage().save(content)
+        except FileStorageError as exc:
+            raise ApiError(
+                code="STORAGE_ERROR", message=str(exc), status_code=500
+            ) from exc
+        attachment = KbAttachment(
+            article_id=article.id,
+            file_name=(file.filename or "file")[:255],
+            mime_type=(file.content_type or "application/octet-stream")[:100],
+            size_bytes=len(content),
+            storage_key=storage_key,
+            created_by=actor.id,
+        )
+        session.add(attachment)
+        await session.flush()
+        session.add(AuditLog(
+            actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
+            action="kb.attachment_added", entity_type="kb_article",
+            entity_id=article.id,
+            details={"file_name": attachment.file_name},
+        ))
+    return {
+        "attachment_id": str(attachment.id),
+        "file_name": attachment.file_name,
+        "mime_type": attachment.mime_type,
+        "size_bytes": attachment.size_bytes,
+    }
+
+
+@router.get("/kb/attachments/{attachment_id}/file")
+async def download_kb_attachment(
+    attachment_id: uuid.UUID,
+    request: Request,
+    _actor: Annotated[Operator, Depends(require_operator)],
+) -> Response:
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        attachment = await session.get(KbAttachment, attachment_id)
+        if attachment is None:
+            raise ApiError("NOT_FOUND", "Attachment not found", status_code=404)
+        try:
+            content = await LocalFileStorage().open(attachment.storage_key)
+        except FileStorageError as exc:
+            raise ApiError(
+                code="STORAGE_ERROR", message="Файл не найден", status_code=404
+            ) from exc
+    quoted = quote(attachment.file_name)
+    return Response(
+        content=content,
+        media_type=attachment.mime_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quoted}"
+        },
+    )
+
+
+@router.delete("/kb/attachments/{attachment_id}", status_code=204)
+async def delete_kb_attachment(
+    attachment_id: uuid.UUID,
+    request: Request,
+    actor: Annotated[Operator, Depends(require_operator)],
+) -> None:
+    db = request.app.state.deps.db
+    async with db.session_factory() as session, session.begin():
+        attachment = await session.get(KbAttachment, attachment_id)
+        if attachment is None:
+            raise ApiError("NOT_FOUND", "Attachment not found", status_code=404)
+        await LocalFileStorage().delete(attachment.storage_key)
+        await session.delete(attachment)
 
 
 @router.get("/kb/{article_id}/history")
