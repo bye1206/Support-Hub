@@ -176,39 +176,28 @@ type Theme = "light" | "dark";
 function RatingBadge({ value }: { value?: number | null }) {
   if (value == null) return null;
   const gold = value > 4.7;
+  if (!gold) {
+    return (
+      <span className="rating-badge" title="Средняя оценка">
+        <span className="rating-value">{value}</span>
+      </span>
+    );
+  }
   return (
+    // Owner (2026-11-26): variant 6 — a small crown sits on top of a
+    // golden capsule with the digits, one ornamental emblem.
     <span className="rating-badge" title="Средняя оценка">
-      {gold && (
-        // Owner (2026-11-26): curls sweep toward the digits so the badge
-        // reads as one ornamental golden emblem.
-        <svg className="rating-flourish" viewBox="0 0 18 14" aria-hidden="true">
+      <span className="rating-crown-stack">
+        <svg className="rating-crown" viewBox="0 0 24 16" aria-hidden="true">
           <path
-            d="M16.5 7c-2.6-5.4-8.2-5.8-10-1.6C5.2 8.5 7.6 10.6 9.6 9.4"
-            fill="none"
-            stroke="#d9a514"
-            strokeWidth="1.7"
-            strokeLinecap="round"
+            d="M2.5 5.5l5 4.2L12 2.5l4.5 7.2 5-4.2-1.8 8H4.3l-1.8-8Z"
+            fill="#e8a10e"
           />
-          <circle cx="11" cy="8.6" r="1.15" fill="#d9a514" />
         </svg>
-      )}
-      <span className={gold ? "rating-value gold" : "rating-value"}>{value}</span>
-      {gold && (
-        <svg
-          className="rating-flourish flip"
-          viewBox="0 0 18 14"
-          aria-hidden="true"
-        >
-          <path
-            d="M16.5 7c-2.6-5.4-8.2-5.8-10-1.6C5.2 8.5 7.6 10.6 9.6 9.4"
-            fill="none"
-            stroke="#d9a514"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-          />
-          <circle cx="11" cy="8.6" r="1.15" fill="#d9a514" />
-        </svg>
-      )}
+        <span className="rating-capsule">
+          <span className="rating-value gold">{value}</span>
+        </span>
+      </span>
     </span>
   );
 }

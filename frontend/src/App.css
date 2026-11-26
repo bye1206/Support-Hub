@@ -4135,22 +4135,34 @@ button.team-row.clickable:hover {
   background: rgba(226, 0, 26, 0.14);
 }
 
-/* Owner (2026-11-20): the rating badge; above 4.7 golden digits framed
-   by curls (Owner, 2026-11-26: the crown never looked right). */
+/* Owner (2026-11-20): the rating badge; above 4.7 golden digits.
+   Owner (2026-11-26): variant 6 — a crown on top of a golden capsule. */
 .rating-badge {
   display: inline-flex;
-  flex-direction: row;
   align-items: center;
-  gap: 2px;
   line-height: 1;
-  vertical-align: 1px;
+  vertical-align: middle;
 }
-.rating-flourish {
-  width: 15px;
-  height: 12px;
+.rating-crown-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
 }
-.rating-flourish.flip {
-  transform: scaleX(-1);
+.rating-crown {
+  width: 13px;
+  height: 9px;
+}
+.rating-capsule {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border: 1.4px solid #e8a10e;
+  border-radius: 999px;
+}
+.app-shell[data-theme="dark"] .rating-capsule {
+  border-color: #f2b93b;
 }
 .rating-value {
   font-size: 11px;
