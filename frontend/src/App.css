@@ -880,29 +880,41 @@
   gap: 10px;
   margin-bottom: 21px;
 }
-.message.system {
-  /* Owner (2026-11-18): system phrases are neither user nor operator —
-     centered, gray, no bubble, no avatar. */
-  justify-content: center;
+.message.from-system {
+  /* Owner (2026-11-26): system events are right-aligned, pink and
+     signed "Системное сообщение" (owner request). */
+  flex-direction: row-reverse;
+  justify-content: flex-end;
   margin-bottom: 14px;
 }
-.message.system .message-content {
-  text-align: center;
+.message.from-system .message-content {
+  text-align: right;
 }
-.message.system .message-heading strong {
-  display: none;
+.message.from-system .message-heading {
+  justify-content: flex-end;
 }
-.message.system .message-heading time {
-  display: block;
-  margin-bottom: 3px;
+.message.from-system .message-heading strong {
+  color: #d2374a;
+  font-size: 9.5px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
 }
-.message.system .message-bubble {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  color: #8a93a2;
-  font-size: 10.5px;
-  font-style: italic;
+.message.from-system .message-bubble {
+  border-color: rgba(226, 0, 26, 0.28);
+  border-radius: 11px 3px 11px 11px;
+  background: #fdecec;
+  color: #a11224;
+  text-align: left;
+  font-style: normal;
+  font-size: 12px;
+}
+.app-shell[data-theme="dark"] .message.from-system .message-bubble {
+  background: rgba(226, 0, 26, 0.16);
+  border-color: rgba(255, 92, 110, 0.35);
+  color: #ff92a0;
+}
+.app-shell[data-theme="dark"] .message.from-system .message-heading strong {
+  color: #ff92a0;
 }
 /* Owner (2026-11-19): read-only history lists — AI messages are centered
    so they never read as user text. */
@@ -1409,15 +1421,29 @@
   text-overflow: ellipsis;
 }
 .composer-kb-toggle {
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
   border: 1px solid #e4e8ed;
   border-radius: 6px;
   background: #fff;
-  color: #7e8796;
-  font: inherit;
-  font-size: 9px;
+  color: #17191d;
+  cursor: pointer;
 }
-.composer-kb-toggle.off { color: #b1b7c1; border-style: dashed; }
+.composer-kb-toggle svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.composer-kb-toggle.off {
+  color: #b1b7c1;
+  border-style: dashed;
+}
 .composer-hint {
   display: flex;
   align-items: center;
@@ -2408,6 +2434,43 @@
 }
 .kb-danger {
   color: #e2001a;
+}
+.kb-history-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.kb-history-button svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+.kb-history-modal {
+  width: min(440px, 92vw);
+  display: grid;
+  gap: 10px;
+}
+.kb-history-list {
+  display: grid;
+  gap: 6px;
+}
+.kb-history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 1px solid #eef0f4;
+  border-radius: 7px;
+  font-size: 11.5px;
+}
+.kb-history-row strong {
+  color: #384356;
+}
+.kb-history-row span {
+  color: #8b93a1;
 }
 .kb-empty-state {
   max-width: 480px;
@@ -4073,18 +4136,18 @@ button.team-row.clickable:hover {
 }
 
 /* Owner (2026-11-20): the rating badge; above 4.7 golden digits framed
-   by flourishes (Owner, 2026-11-26: the crown never looked right). */
+   by curls (Owner, 2026-11-26: the crown never looked right). */
 .rating-badge {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   line-height: 1;
   vertical-align: 1px;
 }
 .rating-flourish {
-  width: 13px;
-  height: 7px;
+  width: 15px;
+  height: 12px;
 }
 .rating-flourish.flip {
   transform: scaleX(-1);
@@ -4094,8 +4157,12 @@ button.team-row.clickable:hover {
   font-weight: 800;
   color: #17191d;
 }
-.rating-value.gold {
-  color: #c9970d;
+.rating-badge .rating-value.gold {
+  /* Strong selector: the dark-theme heading rule must not gray it out. */
+  color: #e8a10e;
+}
+.app-shell[data-theme="dark"] .rating-badge .rating-value.gold {
+  color: #f2b93b;
 }
 /* Owner (2026-11-20): the back arrow sits right above the modal title. */
 .modal-arrow {

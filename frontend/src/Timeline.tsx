@@ -296,10 +296,10 @@ function TimelineImpl({
             className={
               author === "OPERATOR"
                 ? "message from-operator"
-                : // Owner (2026-11-18): system phrases are neither user nor
-                  // operator — they get a centered system style.
+                : // Owner (2026-11-26): system events are right-aligned,
+                  // pink and signed (owner request).
                   author === "SYSTEM"
-                  ? "message system"
+                  ? "message from-system"
                   : "message"
             }
           >
@@ -341,7 +341,7 @@ function TimelineImpl({
                     : author === "AI"
                       ? "AI-помощник"
                       : author === "SYSTEM"
-                        ? ""
+                        ? "Системное сообщение"
                         : m.author_name || operatorName}
                 </strong>
                 <time>

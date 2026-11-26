@@ -282,10 +282,25 @@ function ComposerImpl({
             <button
               type="button"
               className={`composer-kb-toggle ${hintsOff ? "off" : ""}`}
-              title="Подсказки из базы знаний при наборе"
+              title={
+                hintsOff
+                  ? "Подсказки из базы знаний выключены — включить"
+                  : "Подсказки из базы знаний включены — выключить"
+              }
+              aria-pressed={!hintsOff}
               onClick={toggleHints}
             >
-              {hintsOff ? "Подсказки БЗ выкл" : "Подсказки БЗ вкл"}
+              {/* Owner (2026-11-26): a pen writing on paper instead of the
+                  text button. ON = black, OFF = muted dashed. */}
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 3h10l4 4v14H5V3Z" />
+                <path d="M15 3v4h4" />
+                <path
+                  d="M8.5 16.5l6.8-6.8 2 2-6.8 6.8H8.5v-2Z"
+                  fill="currentColor"
+                  stroke="none"
+                />
+              </svg>
             </button>
           )}
         </div>

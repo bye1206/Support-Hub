@@ -1365,7 +1365,7 @@ async def restore_kb_article(
         await KbRepository().restore(session, article)
         session.add(AuditLog(
             actor_type=AuditActorType.OPERATOR, actor_id=actor.id,
-            action="kb.restored", entity_type="kb_article", entity_id=article_id,
+            action=            "kb.restored", entity_type="kb_article", entity_id=article_id,
             details={"title": article.title},
         ))
         names = await _operator_name_map(
@@ -1373,3 +1373,44 @@ async def restore_kb_article(
             {article.created_by, article.updated_by} - {None},  # type: ignore[arg-type]
         )
     return _kb_view(article, names)
+
+
+@router.get("/kb/{article_id}/history")
+async def kb_article_history(
+    article_id: uuid.UUID,
+    request: Request,
+    _actor: Annotated[Operator, Depends(require_operator)],
+) -> dict[str, object]:
+    """Owner (2026-11-26): the KB article's life story — who created,
+    edited, deleted and restored it, and when (from the audit log)."""
+    db = request.app.state.deps.db
+    async with db.session_factory() as session:
+        rows = await session.scalars(
+            select(AuditLog)
+            .where(
+                AuditLog.entity_type == "kb_article",
+                AuditLog.entity_id == article_id,
+            )
+            .order_by(AuditLog.created_at)
+        )
+        events = list(rows)
+        names = await _operator_name_map(
+            session, {event.actor_id for event in events if event.actor_id}
+        )
+    action_labels = {
+        "kb.created": "Создана",
+        "kb.updated": "Изменена",
+        "kb.deleted": "Удалена",
+        "kb.restored": "Восстановлена",
+    }
+    return {
+        "events": [
+            {
+                "action": action_labels.get(event.action, event.action),
+                "actor_name": names.get(event.actor_id) if event.actor_id else None,
+                "created_at": event.created_at.isoformat(),
+                "title": (event.details or {}).get("title"),
+            }
+            for event in events
+        ],
+    }

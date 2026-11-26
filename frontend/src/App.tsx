@@ -179,32 +179,34 @@ function RatingBadge({ value }: { value?: number | null }) {
   return (
     <span className="rating-badge" title="Средняя оценка">
       {gold && (
-        // Owner (2026-11-26): the crown never looked right, so from 4.7
-        // the digits turn golden, framed by small flourishes.
-        <svg className="rating-flourish" viewBox="0 0 22 12" aria-hidden="true">
+        // Owner (2026-11-26): curls sweep toward the digits so the badge
+        // reads as one ornamental golden emblem.
+        <svg className="rating-flourish" viewBox="0 0 18 14" aria-hidden="true">
           <path
-            d="M1 6c4-5 8-5 10 0s6 5 10 0"
+            d="M16.5 7c-2.6-5.4-8.2-5.8-10-1.6C5.2 8.5 7.6 10.6 9.6 9.4"
             fill="none"
             stroke="#d9a514"
-            strokeWidth="1.8"
+            strokeWidth="1.7"
             strokeLinecap="round"
           />
+          <circle cx="11" cy="8.6" r="1.15" fill="#d9a514" />
         </svg>
       )}
       <span className={gold ? "rating-value gold" : "rating-value"}>{value}</span>
       {gold && (
         <svg
           className="rating-flourish flip"
-          viewBox="0 0 22 12"
+          viewBox="0 0 18 14"
           aria-hidden="true"
         >
           <path
-            d="M1 6c4-5 8-5 10 0s6 5 10 0"
+            d="M16.5 7c-2.6-5.4-8.2-5.8-10-1.6C5.2 8.5 7.6 10.6 9.6 9.4"
             fill="none"
             stroke="#d9a514"
-            strokeWidth="1.8"
+            strokeWidth="1.7"
             strokeLinecap="round"
           />
+          <circle cx="11" cy="8.6" r="1.15" fill="#d9a514" />
         </svg>
       )}
     </span>
@@ -414,6 +416,11 @@ type KbArticle = {
   deleted_by?: string | null;
   deleted_at?: string | null;
 };
+type KbHistoryEvent = {
+  action: string;
+  actor_name: string | null;
+  created_at: string;
+};
 
 async function adminApi<T>(
   path: string,
@@ -565,6 +572,9 @@ export default function App() {
     [kbSelectedId, setKbSelectedId] = useState<string | null>(null),
     [kbCreating, setKbCreating] = useState(false),
     [kbArchive, setKbArchive] = useState<KbArticle[]>([]),
+    // Owner (2026-11-26): the per-article history modal (audit log).
+    [kbHistoryFor, setKbHistoryFor] = useState<KbArticle | null>(null),
+    [kbHistory, setKbHistory] = useState<KbHistoryEvent[]>([]),
     [dragOverConversation, setDragOverConversation] = useState(false),
     [resolveCategoryId, setResolveCategoryId] = useState(""),
     [resolveThemeId, setResolveThemeId] = useState(""),
@@ -1516,6 +1526,19 @@ export default function App() {
   const kbSelected =
     (kbArticles ?? []).find((article) => article.article_id === kbSelectedId) ??
     null;
+  const openKbHistory = async (article: KbArticle) => {
+    setKbHistoryFor(article);
+    setKbHistory([]);
+    try {
+      const data = await adminApi<{ events: KbHistoryEvent[] }>(
+        `/kb/${article.article_id}/history`,
+        auth,
+      );
+      setKbHistory(data.events);
+    } catch {
+      setKbHistory([]);
+    }
+  };
   const transferToPerson = async (targetOperatorId: string) => {
     if (!current) return;
     try {
@@ -1681,7 +1704,7 @@ export default function App() {
           s<span>•</span>
         </div>
         <button
-          className={`rail-button ${!historyPage && !adminOpen ? "active" : ""}`}
+          className={`rail-button ${!historyPage && !adminOpen && !kbLibraryOpen ? "active" : ""}`}
           title="Очередь обращений"
           aria-label="Очередь обращений"
           onClick={() => {
@@ -2795,13 +2818,15 @@ export default function App() {
               ) : (
                 <article className="kb-view">
                   <h2>{kbSelected.title}</h2>
-                  <p className="kb-attribution">
-                    Добавил: {kbSelected.created_by || "—"} ·{" "}
-                    {kbSelected.created_at ? kbStamp(kbSelected.created_at) : "—"}
-                    {kbSelected.updated_by
-                      ? ` · Изменял: ${kbSelected.updated_by} · ${kbStamp(kbSelected.updated_at)}`
-                      : ""}
-                  </p>
+                  {(kbSelected.created_by || kbSelected.updated_by) && (
+                    <p className="kb-attribution">
+                      Создал: {kbSelected.created_by || "—"} ·{" "}
+                      {kbSelected.created_at ? kbStamp(kbSelected.created_at) : "—"}
+                      {kbSelected.updated_by
+                        ? ` · Изменил: ${kbSelected.updated_by} · ${kbStamp(kbSelected.updated_at)}`
+                        : ""}
+                    </p>
+                  )}
                   <div className="kb-view-body">{kbSelected.body}</div>
                   <div className="kb-editor-actions">
                     <button onClick={() => setKbEditing(kbSelected)}>
@@ -2812,6 +2837,17 @@ export default function App() {
                       onClick={() => void deleteKbArticle(kbSelected)}
                     >
                       Удалить
+                    </button>
+                    <button
+                      className="kb-history-button"
+                      title="Кто и когда создавал, изменял, удалял"
+                      onClick={() => void openKbHistory(kbSelected)}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3.5 2" />
+                      </svg>
+                      История
                     </button>
                   </div>
                 </article>
@@ -2826,6 +2862,40 @@ export default function App() {
               </div>
             )}
           </section>
+        </div>
+      )}
+      {kbHistoryFor && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setKbHistoryFor(null)}
+          role="presentation"
+        >
+          <div
+            className="modal kb-history-modal"
+            role="dialog"
+            aria-label="История статьи"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title">История · {kbHistoryFor.title}</div>
+            <div className="kb-history-list">
+              {kbHistory.map((event, index) => (
+                <div className="kb-history-row" key={index}>
+                  <strong>{event.action}</strong>
+                  <span>
+                    {event.actor_name || "—"} · {kbStamp(event.created_at)}
+                  </span>
+                </div>
+              ))}
+              {!kbHistory.length && (
+                <p className="admin-muted">
+                  Событий нет — статья создана до ведения истории
+                </p>
+              )}
+            </div>
+            <button className="quiet-action" onClick={() => setKbHistoryFor(null)}>
+              Закрыть
+            </button>
+          </div>
         </div>
       )}
       {movesOpen && current && (
