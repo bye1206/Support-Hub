@@ -2,7 +2,16 @@ import { memo, useEffect, useRef, useState, type FormEvent } from "react";
 
 type Mode = "reply" | "note";
 
-type KbArticle = { article_id: string; title: string; body: string };
+type KbArticle = {
+  article_id: string;
+  title: string;
+  body: string;
+  attachments?: {
+    attachment_id: string;
+    file_name: string;
+    mime_type: string;
+  }[];
+};
 
 type Props = {
   disabled: boolean;
@@ -16,6 +25,10 @@ type Props = {
   // Owner (2026-11-23, plan item 8): knowledge base articles for the
   // auto-reply insert and the typing hints.
   kbArticles?: KbArticle[];
+  // Owner (2026-11-26): the parent downloads the inserted article's
+  // attachments and queues them as outgoing files (the raw
+  // `attachment:<id>` markers are stripped from the reply text).
+  onKbArticleInsert?: (article: KbArticle) => void;
 };
 
 // Owns its own draft state (decomposition round 2026-11-17): typing used to
@@ -26,6 +39,7 @@ function ComposerImpl({
   droppedFiles = [],
   onDroppedFilesConsumed,
   kbArticles = [],
+  onKbArticleInsert,
 }: Props) {
   const [mode, setMode] = useState<Mode>("reply");
   const [text, setText] = useState("");
@@ -157,7 +171,10 @@ function ComposerImpl({
                 aria-selected={false}
                 className="composer-kb-item"
                 onClick={() => {
-                  setText(article.body);
+                  setText(
+                    article.body.replace(/ ?attachment:[0-9a-fA-F-]{36}/g, ""),
+                  );
+                  onKbArticleInsert?.(article);
                   areaRef.current?.focus();
                 }}
               >

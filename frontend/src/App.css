@@ -2373,24 +2373,6 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.kb-trash-count {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: #e2001a;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 14px;
-  color: #fff;
-}
-.kb-trash.active .kb-trash-count {
-  background: #fff;
-  color: #17191d;
-}
 .kb-archive-page {
   display: grid;
   gap: 14px;
@@ -2463,12 +2445,6 @@ button.kb-attachment-chip:hover {
 .kb-attachment-name:hover {
   color: #e2001a;
 }
-.kb-editor-body.kb-drag-over,
-.kb-view-body.kb-drag-over {
-  outline: 2px dashed rgba(226, 0, 26, 0.4);
-  outline-offset: -4px;
-  background: #fffafa;
-}
 .kb-inline-image {
   display: block;
   max-width: 100%;
@@ -2515,10 +2491,26 @@ button.kb-attachment-chip:hover {
 .kb-upload:has(input:disabled) {
   color: #9aa3b0;
 }
-.kb-content.kb-drag-over {
+.kb-editor-body.kb-drag-over,
+.kb-view-body.kb-drag-over,
+.kb-editor-attachments.kb-drag-over {
   outline: 2px dashed rgba(226, 0, 26, 0.4);
-  outline-offset: -8px;
+  outline-offset: -4px;
   background: #fffafa;
+}
+.kb-editor-attachments {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+}
+.kb-attachments-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #8b93a1;
 }
 .kb-archive-item {
   display: flex;
@@ -3700,6 +3692,7 @@ body:has(.app-shell[data-theme="dark"]) {
   gap: 6px;
   height: 18px;
   line-height: 1;
+  font-size: 13px;
 }
 .profile-button .profile-copy > span {
   display: inline-flex;
@@ -4339,7 +4332,10 @@ button.team-row.clickable:hover {
 }
 
 /* Owner (2026-11-20): the rating badge; above 4.7 golden digits.
-   Owner (2026-11-26): variant 6 — a crown on top of a golden capsule. */
+   Owner (2026-11-26): variant 6 — a crown on top of a golden capsule.
+   The crown is ABSOLUTELY positioned above the capsule: it reserves no
+   flow space, so the emblem is exactly capsule-height on the text line
+   and can never sit lower than the operator's name. */
 .rating-badge {
   display: inline-flex;
   align-items: center;
@@ -4347,19 +4343,18 @@ button.team-row.clickable:hover {
   vertical-align: middle;
 }
 .rating-crown-stack {
+  position: relative;
   display: inline-flex;
-  flex-direction: column;
-  align-items: center;
+  margin-top: 6px;
   line-height: 1;
 }
 .rating-crown {
-  /* Owner (2026-11-26): the crown sits ON the capsule edge — one emblem,
-     not a floating icon. */
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
   width: 12px;
   height: 7px;
-  margin-bottom: -3px;
-  position: relative;
-  z-index: 1;
 }
 .rating-capsule {
   display: inline-flex;
@@ -4373,7 +4368,7 @@ button.team-row.clickable:hover {
   border-color: #f2b93b;
 }
 .rating-value {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: #17191d;
 }

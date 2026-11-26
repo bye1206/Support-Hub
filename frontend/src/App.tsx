@@ -197,8 +197,7 @@ function RatingBadge({ value }: { value?: number | null }) {
         <span className="rating-capsule">
           <span className="rating-value gold">{value}</span>
         </span>
-      </span>
-    </span>
+      </span>    </span>
   );
 }
 type AdGroup = { name: string; description?: string };
@@ -1569,8 +1568,7 @@ export default function App() {
   // Owner (2026-11-26): 'В текст' inserts the attachment marker at the
   // textarea cursor (fallback: the end of the text).
   const kbBodyRef = useRef<HTMLTextAreaElement | null>(null);
-  const insertKbMarker = (attachmentId: string) => {
-    if (!kbEditing) return;
+  const insertKbMarker = (attachmentId: string) => {    if (!kbEditing) return;
     const marker = ` attachment:${attachmentId}`;
     const el = kbBodyRef.current;
     const start =
@@ -1620,11 +1618,14 @@ export default function App() {
       /* download is best-effort */
     }
   };
-  const uploadKbFiles = async (article: KbArticle, files: FileList | null) => {
-    if (!files || !files.length) return;
+  const uploadKbFiles = async (
+    article: KbArticle,
+    files: FileList | null,
+  ): Promise<KbAttachmentView[]> => {
+    if (!files || !files.length) return [];
     setKbUploading(true);
+    const created: KbAttachmentView[] = [];
     try {
-      let uploaded = 0;
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.append("file", file);
@@ -1633,7 +1634,7 @@ export default function App() {
           auth,
           { method: "POST", body: form },
         );
-        uploaded += 1;
+        created.push(item);
         const apply = (candidate: KbArticle) =>
           candidate.article_id === article.article_id
             ? { ...candidate, attachments: [...(candidate.attachments ?? []), item] }
@@ -1641,21 +1642,31 @@ export default function App() {
         setKbArticles((items) => items.map(apply));
         setKbEditing((current) => (current ? apply(current) : current));
       }
-      setToast(`Прикреплено файлов: ${uploaded}`);
+      setToast(`Прикреплено файлов: ${created.length}`);
+      return created;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Файл не прикреплён");
+      return [];
     } finally {
       setKbUploading(false);
     }
   };
-  // Owner (2026-11-26): drop files anywhere on the article pane (view or
-  // editor) — they attach to the open article.
+  // Owner (2026-11-26): drop files on the TEXTAREA = attach AND insert
+  // image markers into the text; drop on the attachments box = attach.
   const kbTarget = kbEditing ?? kbSelected;
-  const handleKbDrop = (event: React.DragEvent) => {
+  const handleKbDrop = (event: React.DragEvent, insertIntoText: boolean) => {
     if (!kbTarget) return;
     event.preventDefault();
     setKbDragOver(false);
-    void uploadKbFiles(kbTarget, event.dataTransfer.files);
+    const files = event.dataTransfer.files;
+    void (async () => {
+      const items = await uploadKbFiles(kbTarget, files);
+      if (insertIntoText) {
+        items
+          .filter((item) => item.mime_type.startsWith("image/"))
+          .forEach((item) => insertKbMarker(item.attachment_id));
+      }
+    })();
   };
   const handleKbPaste = (event: React.ClipboardEvent) => {
     if (!kbTarget) return;
@@ -1664,7 +1675,13 @@ export default function App() {
     event.preventDefault();
     const transfer = new DataTransfer();
     files.forEach((file) => transfer.items.add(file));
-    void uploadKbFiles(kbTarget, transfer.files);
+    void (async () => {
+      const items = await uploadKbFiles(kbTarget, transfer.files);
+      // A pasted screenshot means "show it in the text".
+      items
+        .filter((item) => item.mime_type.startsWith("image/"))
+        .forEach((item) => insertKbMarker(item.attachment_id));
+    })();
   };
   const removeKbAttachment = async (item: KbAttachmentView) => {
     if (!kbEditing) return;
@@ -2412,6 +2429,34 @@ export default function App() {
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={() => setDroppedFiles([])}
               kbArticles={kbHints}
+              onKbArticleInsert={(article) => {
+                // Owner (2026-11-26): the inserted article's files go out
+                // with the reply — downloaded and queued as chips.
+                void (async () => {
+                  const outgoing: File[] = [];
+                  for (const item of article.attachments ?? []) {
+                    try {
+                      const response = await fetch(
+                        `/api/v1/admin/kb/attachments/${item.attachment_id}/file`,
+                        { headers: { Authorization: `Bearer ${auth.token}` } },
+                      );
+                      if (!response.ok) continue;
+                      const blob = await response.blob();
+                      outgoing.push(
+                        new File([blob], item.file_name, { type: item.mime_type }),
+                      );
+                    } catch {
+                      /* skip a file that would not download */
+                    }
+                  }
+                  if (outgoing.length) {
+                    setDroppedFiles((prev) => [...prev, ...outgoing]);
+                    setToast(
+                      `Статья вставлена — файлов приложено: ${outgoing.length}`,
+                    );
+                  }
+                })();
+              }}
             />
           </>
         ) : (
@@ -2890,9 +2935,6 @@ export default function App() {
                 <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" />
                 <path d="M10 11v5m4-5v5" />
               </svg>
-              {kbArchive.length > 0 && (
-                <span className="kb-trash-count">{kbArchive.length}</span>
-              )}
             </button>
           </aside>
           <section className="kb-content">
@@ -2995,52 +3037,71 @@ export default function App() {
                       setKbDragOver(true);
                     }}
                     onDragLeave={() => setKbDragOver(false)}
-                    onDrop={handleKbDrop}
+                    onDrop={(event) => handleKbDrop(event, true)}
                     onPaste={handleKbPaste}
                     onChange={(event) =>
                       setKbEditing({ ...kbEditing, body: event.target.value })
                     }
                   />
-                  {(kbEditing.attachments?.length ?? 0) > 0 && (
-                    <div className="kb-editor-files">
-                      {kbEditing.attachments!.map((item) => (
-                        <span
-                          key={item.attachment_id}
-                          className="kb-attachment-chip"
-                        >
-                          {item.file_name}
-                          <button
-                            type="button"
-                            title="Вставить ссылку на файл в текст"
-                            onClick={() => insertKbMarker(item.attachment_id)}
+                  {/* Owner (2026-11-26): a dedicated attachments box — its
+                      own drop zone (attach only), chips with В текст /
+                      Удалить, and the attach button. */}
+                  <div
+                    className={`kb-editor-attachments ${kbDragOver ? "kb-drag-over" : ""}`}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setKbDragOver(true);
+                    }}
+                    onDragLeave={() => setKbDragOver(false)}
+                    onDrop={(event) => {
+                      if (!kbEditing) return;
+                      event.preventDefault();
+                      setKbDragOver(false);
+                      void uploadKbFiles(kbEditing, event.dataTransfer.files);
+                    }}
+                  >
+                    <div className="kb-attachments-label">Вложения</div>
+                    {(kbEditing.attachments?.length ?? 0) > 0 && (
+                      <div className="kb-editor-files">
+                        {kbEditing.attachments!.map((item) => (
+                          <span
+                            key={item.attachment_id}
+                            className="kb-attachment-chip"
                           >
-                            В текст
-                          </button>
-                          <button
-                            type="button"
-                            className="kb-danger"
-                            onClick={() => void removeKbAttachment(item)}
-                          >
-                            Удалить
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <label className="kb-upload">
-                    {kbUploading ? "Загружаем…" : "Прикрепить файлы"}
-                    <input
-                      type="file"
-                      multiple
-                      disabled={kbUploading}
-                      onChange={(event) => {
-                        if (kbEditing) {
-                          void uploadKbFiles(kbEditing, event.target.files);
-                        }
-                        event.target.value = "";
-                      }}
-                    />
-                  </label>
+                            {item.file_name}
+                            <button
+                              type="button"
+                              title="Вставить ссылку на файл в текст"
+                              onClick={() => insertKbMarker(item.attachment_id)}
+                            >
+                              В текст
+                            </button>
+                            <button
+                              type="button"
+                              className="kb-danger"
+                              onClick={() => void removeKbAttachment(item)}
+                            >
+                              Удалить
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <label className="kb-upload">
+                      {kbUploading ? "Загружаем…" : "Прикрепить файлы"}
+                      <input
+                        type="file"
+                        multiple
+                        disabled={kbUploading}
+                        onChange={(event) => {
+                          if (kbEditing) {
+                            void uploadKbFiles(kbEditing, event.target.files);
+                          }
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
                   <div className="kb-editor-actions">
                     <button type="submit">Сохранить</button>
                     <button type="button" onClick={() => setKbEditing(null)}>
@@ -3067,7 +3128,7 @@ export default function App() {
                       setKbDragOver(true);
                     }}
                     onDragLeave={() => setKbDragOver(false)}
-                    onDrop={handleKbDrop}
+                    onDrop={(event) => handleKbDrop(event, false)}
                     onPaste={handleKbPaste}
                   >
                     {kbSelected.body
@@ -3132,24 +3193,12 @@ export default function App() {
                             В текст
                           </button>
                         </span>
-                      ))}
-                    </div>
-                  )}
-                  {/* Owner (2026-11-26): files attach right in the view —
-                      no need to enter edit mode first. */}
-                  <label className="kb-upload">
-                    {kbUploading ? "Загружаем…" : "Прикрепить файлы"}
-                    <input
-                      type="file"
-                      multiple
-                      disabled={kbUploading}
-                      onChange={(event) => {
-                        void uploadKbFiles(kbSelected, event.target.files);
-                        event.target.value = "";
-                      }}
-                    />
-                  </label>
-                  <div className="kb-editor-actions">
+                       ))}
+                     </div>
+                   )}
+                   {/* Owner (2026-11-26): attaching happens in the EDITOR
+                       only — the view keeps read-only chips. */}
+                   <div className="kb-editor-actions">
                     <button onClick={() => setKbEditing(kbSelected)}>
                       Изменить
                     </button>
